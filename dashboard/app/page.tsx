@@ -427,6 +427,137 @@ function ApprovalsPanel({ approvals, onApprove, onReject }: {
   );
 }
 
+// ─── Command Palette ──────────────────────────────────────
+
+function CommandPalette({ open, onClose, onAction }: {
+  open: boolean; onClose: () => void;
+  onAction: (action: string, value: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<api.SearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      setQuery('');
+      setResults([]);
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!query.trim() || query.startsWith('/')) {
+      setResults([]);
+      return;
+    }
+    const timeout = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await api.search.query(query);
+        setResults(res.results);
+      } catch { setResults([]); }
+      setSearching(false);
+    }, 200);
+    return () => clearTimeout(timeout);
+  }, [query]);
+
+  const commands = [
+    { label: 'Add Task', key: '/task', icon: '◻' },
+    { label: 'Add Idea', key: '/idea', icon: '✦' },
+    { label: 'Add Habit', key: '/habit', icon: '↻' },
+    { label: 'Add Goal', key: '/goal', icon: '◎' },
+    { label: 'Write Journal', key: '/journal', icon: '✎' },
+    { label: 'Add Reading', key: '/reading', icon: '▤' },
+  ];
+
+  const filteredCommands = query.startsWith('/')
+    ? commands.filter((c) => c.key.includes(query.toLowerCase()))
+    : query ? [] : commands;
+
+  const handleSelect = (cmd: typeof commands[0]) => {
+    onAction(cmd.key.slice(1), '');
+    onClose();
+  };
+
+  if (!open) return null;
+
+  const typeIcons: Record<string, string> = {
+    task: '◻', idea: '✦', reading: '▤', goal: '◎', journal: '✎', habit: '↻', project: '◆',
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh]" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div
+        className="relative w-full max-w-lg bg-[#0d0d1a] border border-mc-border rounded-lg shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-mc-border">
+          <span className="text-mc-dim text-sm">⌘</span>
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search or type / for commands..."
+            className="flex-1 bg-transparent text-sm text-gray-200 outline-none font-mono placeholder:text-mc-dim"
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') onClose();
+              if (e.key === 'Enter' && filteredCommands.length > 0 && query.startsWith('/')) {
+                handleSelect(filteredCommands[0]);
+              }
+            }}
+          />
+          {searching && <span className="text-[10px] text-mc-dim animate-pulse">searching...</span>}
+          <kbd className="text-[10px] text-mc-dim border border-mc-border rounded px-1.5 py-0.5">ESC</kbd>
+        </div>
+
+        <div className="max-h-80 overflow-y-auto">
+          {filteredCommands.length > 0 && (
+            <div className="p-2">
+              <div className="font-mono text-[9px] text-mc-dim tracking-widest uppercase px-2 py-1">Commands</div>
+              {filteredCommands.map((cmd) => (
+                <button
+                  key={cmd.key}
+                  onClick={() => handleSelect(cmd)}
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded hover:bg-mc-surface text-left cursor-pointer bg-transparent border-none transition-colors"
+                >
+                  <span className="text-sm opacity-50">{cmd.icon}</span>
+                  <span className="text-xs text-gray-200">{cmd.label}</span>
+                  <span className="font-mono text-[10px] text-mc-dim ml-auto">{cmd.key}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {results.length > 0 && (
+            <div className="p-2">
+              <div className="font-mono text-[9px] text-mc-dim tracking-widest uppercase px-2 py-1">Results</div>
+              {results.map((r) => (
+                <div
+                  key={`${r.type}-${r.id}`}
+                  className="flex items-center gap-3 px-3 py-2 rounded hover:bg-mc-surface transition-colors"
+                >
+                  <span className="text-sm opacity-50">{typeIcons[r.type] || '·'}</span>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs text-gray-200 truncate block">{r.title}</span>
+                    <span className="font-mono text-[9px] text-mc-dim">{r.type}</span>
+                  </div>
+                  {r.status && <Badge color="#ffffff08" textColor="#555">{r.status}</Badge>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {query && !query.startsWith('/') && results.length === 0 && !searching && (
+            <div className="text-xs text-mc-dim text-center py-6">No results found</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Connection status indicator ──────────────────────────
 
 function ConnectionBar({ health }: { health: api.HealthStatus | null }) {
@@ -467,6 +598,27 @@ export default function Dashboard() {
   const [showHabitInput, setShowHabitInput] = useState(false);
   const [showGoalInput, setShowGoalInput] = useState(false);
   const [showJournalInput, setShowJournalInput] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+
+  // Cmd+K shortcut
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowCommandPalette((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  const handleCommandAction = (action: string, _value: string) => {
+    const map: Record<string, (v: boolean) => void> = {
+      task: setShowTaskInput, idea: setShowIdeaInput, reading: setShowReadingInput,
+      habit: setShowHabitInput, goal: setShowGoalInput, journal: setShowJournalInput,
+    };
+    map[action]?.(true);
+  };
 
   // Clock
   useEffect(() => { const i = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(i); }, []);
@@ -605,6 +757,13 @@ export default function Dashboard() {
           </div>
           <span className="font-mono text-[11px] text-mc-dim">v0.2</span>
           <ConnectionBar health={healthStatus} />
+          <button
+            onClick={() => setShowCommandPalette(true)}
+            className="flex items-center gap-2 px-2.5 py-1 bg-mc-surface border border-mc-border rounded text-mc-dim hover:border-mc-accent/30 hover:text-mc-muted transition-colors cursor-pointer"
+          >
+            <span className="text-[11px] font-mono">Search...</span>
+            <kbd className="text-[9px] border border-mc-border rounded px-1 py-0.5">⌘K</kbd>
+          </button>
           {error && <span className="font-mono text-[11px] text-mc-red">{error}</span>}
         </div>
 
@@ -696,7 +855,39 @@ export default function Dashboard() {
             />
           </div>
         </div>
+
+        {/* Agent Cost Summary - full width */}
+        {agentsList.length > 0 && (
+          <div className="lg:col-span-3">
+            <SectionHeader icon="$" title="Agent Costs" count={agentsList.length} />
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+              {agentsList.map((a) => {
+                const totalCost = a.recent_runs.reduce((sum, r) => sum + (r.cost_usd || 0), 0);
+                return (
+                  <div key={a.id} className="bg-mc-surface rounded px-3.5 py-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-gray-300 truncate">{a.name}</span>
+                      <span className="font-mono text-[11px] font-bold" style={{ color: totalCost > 0.1 ? '#ffd166' : '#00ffc8' }}>
+                        ${totalCost.toFixed(3)}
+                      </span>
+                    </div>
+                    <div className="font-mono text-[9px] text-mc-dim mt-0.5">
+                      {a.recent_runs.length} recent runs · {a.model}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Command Palette */}
+      <CommandPalette
+        open={showCommandPalette}
+        onClose={() => setShowCommandPalette(false)}
+        onAction={handleCommandAction}
+      />
     </div>
   );
 }

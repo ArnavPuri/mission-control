@@ -43,8 +43,8 @@ async def list_agents(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{agent_id}/run")
-async def trigger_agent(agent_id: UUID, db: AsyncSession = Depends(get_db)):
-    """Manually trigger an agent run."""
+async def trigger_agent(agent_id: UUID, dry_run: bool = False, db: AsyncSession = Depends(get_db)):
+    """Manually trigger an agent run. Set dry_run=true to preview without executing actions."""
     agent = await db.get(AgentConfig, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -52,6 +52,26 @@ async def trigger_agent(agent_id: UUID, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=409, detail="Agent is already running")
 
     runner = AgentRunner()
+
+    if dry_run:
+        # Build context and show the rendered prompt + config without executing
+        context = await runner.build_context(agent, db)
+        prompt = runner.render_prompt(agent.prompt_template, context)
+        return {
+            "dry_run": True,
+            "agent": agent.name,
+            "model": agent.model,
+            "prompt_length": len(prompt),
+            "prompt_preview": prompt[:2000] + ("..." if len(prompt) > 2000 else ""),
+            "context_keys": list(context.keys()),
+            "context_sizes": {k: len(v) if isinstance(v, list) else 1 for k, v in context.items()},
+            "tools": agent.tools or [],
+            "data_reads": agent.data_reads or [],
+            "data_writes": agent.data_writes or [],
+            "requires_approval": agent.config.get("requires_approval", False) if agent.config else False,
+            "max_budget_usd": agent.max_budget_usd,
+        }
+
     run = await runner.start_run(agent, trigger="manual", db=db)
     return {"run_id": str(run.id), "status": "started"}
 

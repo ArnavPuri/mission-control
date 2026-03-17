@@ -25,7 +25,8 @@ from app.config import settings
 from app.db.session import async_session
 from app.db.models import (
     Task, Idea, ReadingItem, Project, AgentConfig, AgentRun,
-    TaskStatus, AgentStatus, EventLog,
+    TaskStatus, AgentStatus, EventLog, Habit, Goal, GoalStatus,
+    JournalEntry, AgentApproval, ApprovalStatus,
 )
 from app.orchestrator.runner import AgentRunner
 from app.integrations.chat import handle_chat
@@ -128,6 +129,15 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         projects_active = await db.scalar(
             select(func.count(Project.id)).where(Project.status == "active")
         )
+        habits_active = await db.scalar(
+            select(func.count(Habit.id)).where(Habit.is_active == True)
+        )
+        goals_active = await db.scalar(
+            select(func.count(Goal.id)).where(Goal.status == GoalStatus.ACTIVE)
+        )
+        approvals_pending = await db.scalar(
+            select(func.count(AgentApproval.id)).where(AgentApproval.status == ApprovalStatus.PENDING)
+        )
 
     msg = (
         "📊 *Mission Control Status*\n\n"
@@ -135,8 +145,12 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔹 Tasks: {tasks_open} open\n"
         f"🔹 Ideas: {ideas_count}\n"
         f"🔹 Reading: {reading_count} unread\n"
+        f"🔹 Habits: {habits_active} active\n"
+        f"🔹 Goals: {goals_active} active\n"
         f"🔹 Agents: {agents_running} running"
     )
+    if approvals_pending:
+        msg += f"\n⏳ *{approvals_pending} pending approvals* — use /approve"
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 
@@ -189,12 +203,183 @@ async def cmd_projects(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("📋 *Projects*\n\n" + "\n".join(lines), parse_mode="Markdown")
 
 
+async def cmd_habit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Complete or create a habit."""
+    if not is_allowed(update.effective_user.id):
+        return
+    text = " ".join(context.args) if context.args else ""
+
+    if not text:
+        # List habits with streak info
+        async with async_session() as db:
+            result = await db.execute(select(Habit).where(Habit.is_active == True))
+            habits = result.scalars().all()
+        if not habits:
+            await update.message.reply_text("No habits yet. Use /habit <name> to create one.")
+            return
+        from datetime import datetime, timezone
+        today = datetime.now(timezone.utc).date()
+        lines = []
+        for h in habits:
+            done = any(c.completed_at.date() == today for c in (h.completions or []))
+            icon = "✅" if done else "⬜"
+            streak = f" 🔥{h.current_streak}" if h.current_streak > 0 else ""
+            lines.append(f"{icon} *{h.name}*{streak}")
+        await update.message.reply_text("↻ *Habits*\n\n" + "\n".join(lines), parse_mode="Markdown")
+        return
+
+    # Check if it matches an existing habit to complete it
+    async with async_session() as db:
+        result = await db.execute(select(Habit).where(Habit.is_active == True))
+        habits = result.scalars().all()
+        match = next((h for h in habits if text.lower() in h.name.lower()), None)
+
+        if match:
+            from datetime import datetime, timezone, timedelta
+            today = datetime.now(timezone.utc).date()
+            already = any(c.completed_at.date() == today for c in (match.completions or []))
+            if already:
+                await update.message.reply_text(f"Already completed *{match.name}* today! 🎉", parse_mode="Markdown")
+                return
+            from app.db.models import HabitCompletion
+            completion = HabitCompletion(habit_id=match.id)
+            db.add(completion)
+            yesterday = today - timedelta(days=1)
+            had_yesterday = any(c.completed_at.date() == yesterday for c in (match.completions or []))
+            if had_yesterday or match.current_streak == 0:
+                match.current_streak += 1
+            else:
+                match.current_streak = 1
+            match.best_streak = max(match.best_streak, match.current_streak)
+            match.total_completions += 1
+            await db.commit()
+            await update.message.reply_text(
+                f"✅ *{match.name}* completed! 🔥 Streak: {match.current_streak} days",
+                parse_mode="Markdown",
+            )
+        else:
+            # Create new habit
+            habit = Habit(name=text, source="telegram")
+            db.add(habit)
+            await db.commit()
+            await update.message.reply_text(f"↻ New habit created: *{text}*", parse_mode="Markdown")
+
+
+async def cmd_goal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_allowed(update.effective_user.id):
+        return
+    text = " ".join(context.args) if context.args else ""
+
+    if not text:
+        async with async_session() as db:
+            result = await db.execute(select(Goal).where(Goal.status == GoalStatus.ACTIVE))
+            goals = result.scalars().all()
+        if not goals:
+            await update.message.reply_text("No active goals. Use /goal <title> to create one.")
+            return
+        lines = []
+        for g in goals:
+            pct = round(g.progress * 100)
+            bar = "█" * (pct // 10) + "░" * (10 - pct // 10)
+            lines.append(f"◎ *{g.title}*\n   {bar} {pct}%")
+        await update.message.reply_text("◎ *Goals*\n\n" + "\n".join(lines), parse_mode="Markdown")
+        return
+
+    async with async_session() as db:
+        goal = Goal(title=text)
+        db.add(goal)
+        await db.commit()
+    await update.message.reply_text(f"◎ Goal created: *{text}*", parse_mode="Markdown")
+
+
+async def cmd_journal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_allowed(update.effective_user.id):
+        return
+    text = " ".join(context.args) if context.args else ""
+
+    if not text:
+        async with async_session() as db:
+            result = await db.execute(
+                select(JournalEntry).order_by(JournalEntry.created_at.desc()).limit(3)
+            )
+            entries = result.scalars().all()
+        if not entries:
+            await update.message.reply_text("No journal entries. Use /journal <text> to write one.")
+            return
+        lines = []
+        mood_emoji = {"great": "✦", "good": "●", "okay": "○", "low": "◌", "bad": "×"}
+        for e in entries:
+            m = mood_emoji.get(e.mood.value, "·") if e.mood else "·"
+            date = e.created_at.strftime("%b %d")
+            lines.append(f"{m} *{date}* — {e.content[:80]}{'...' if len(e.content) > 80 else ''}")
+        await update.message.reply_text("✎ *Journal*\n\n" + "\n".join(lines), parse_mode="Markdown")
+        return
+
+    async with async_session() as db:
+        entry = JournalEntry(content=text, source="telegram")
+        db.add(entry)
+        await db.commit()
+    await update.message.reply_text("✎ Journal entry saved.")
+
+
+async def cmd_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """List and approve pending agent actions."""
+    if not is_allowed(update.effective_user.id):
+        return
+
+    async with async_session() as db:
+        result = await db.execute(
+            select(AgentApproval).where(AgentApproval.status == ApprovalStatus.PENDING)
+            .order_by(AgentApproval.created_at.desc())
+        )
+        pending = result.scalars().all()
+
+    if not pending:
+        await update.message.reply_text("No pending approvals. ✅")
+        return
+
+    arg = " ".join(context.args) if context.args else ""
+    if arg:
+        # Approve by index (1-based)
+        try:
+            idx = int(arg) - 1
+            approval = pending[idx]
+        except (ValueError, IndexError):
+            await update.message.reply_text("Usage: /approve <number>")
+            return
+        async with async_session() as db:
+            a = await db.get(AgentApproval, approval.id)
+            from datetime import datetime, timezone
+            a.status = ApprovalStatus.APPROVED
+            a.reviewed_at = datetime.now(timezone.utc)
+            agent = await db.get(AgentConfig, a.agent_id)
+            if agent:
+                runner = AgentRunner()
+                await runner._process_actions(a.actions, agent, db)
+            await db.commit()
+        await update.message.reply_text(f"✅ Approved: {approval.summary[:200]}")
+        return
+
+    lines = []
+    for i, a in enumerate(pending, 1):
+        count = len(a.actions) if isinstance(a.actions, list) else 0
+        lines.append(f"*{i}.* {a.agent.name if a.agent else 'Unknown'} — {count} actions\n   _{a.summary[:100]}_")
+    await update.message.reply_text(
+        "⏳ *Pending Approvals*\n\n" + "\n\n".join(lines) + "\n\nUse /approve <number> to approve.",
+        parse_mode="Markdown",
+    )
+
+
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🎯 *Mission Control Commands*\n\n"
         "/task <text> — Add a task\n"
         "/idea <text> #tags — Capture an idea\n"
         "/read <title> [url] — Add to reading list\n"
+        "/habit [name] — List habits or complete/create one\n"
+        "/goal [title] — List goals or create one\n"
+        "/journal [text] — View or write journal\n"
+        "/approve [n] — List or approve pending actions\n"
         "/status — Dashboard stats\n"
         "/run <agent> — Trigger an agent\n"
         "/projects — List projects\n"
@@ -241,6 +426,10 @@ async def start_telegram_bot():
     app.add_handler(CommandHandler("task", cmd_task))
     app.add_handler(CommandHandler("idea", cmd_idea))
     app.add_handler(CommandHandler("read", cmd_read))
+    app.add_handler(CommandHandler("habit", cmd_habit))
+    app.add_handler(CommandHandler("goal", cmd_goal))
+    app.add_handler(CommandHandler("journal", cmd_journal))
+    app.add_handler(CommandHandler("approve", cmd_approve))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("run", cmd_run))
     app.add_handler(CommandHandler("projects", cmd_projects))
@@ -253,6 +442,10 @@ async def start_telegram_bot():
         BotCommand("task", "Add a task"),
         BotCommand("idea", "Capture an idea"),
         BotCommand("read", "Add to reading list"),
+        BotCommand("habit", "Complete or create a habit"),
+        BotCommand("goal", "View or create goals"),
+        BotCommand("journal", "Write a journal entry"),
+        BotCommand("approve", "Review pending agent actions"),
         BotCommand("status", "Dashboard stats"),
         BotCommand("run", "Trigger an agent"),
         BotCommand("projects", "List projects"),
