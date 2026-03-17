@@ -28,6 +28,7 @@ from app.db.models import (
     TaskStatus, AgentStatus, EventLog,
 )
 from app.orchestrator.runner import AgentRunner
+from app.integrations.chat import handle_chat
 
 logger = logging.getLogger(__name__)
 
@@ -202,21 +203,30 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle plain text messages - treat as quick task capture."""
+async def handle_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle plain text messages via the LLM chat assistant."""
     if not is_allowed(update.effective_user.id):
         return
     text = update.message.text.strip()
     if not text:
         return
 
-    # Quick capture: plain text becomes a task
-    async with async_session() as db:
-        task = Task(text=text, source="telegram")
-        db.add(task)
-        await db.commit()
+    # Show typing indicator while processing
+    await update.message.chat.send_action("typing")
 
-    await update.message.reply_text(f"✅ Quick task: {text}\n\n_Tip: use /idea for ideas, /read for articles_", parse_mode="Markdown")
+    try:
+        async with async_session() as db:
+            replies = await handle_chat(update.effective_user.id, text, db)
+
+        for reply in replies:
+            await update.message.reply_text(reply)
+    except Exception as e:
+        logger.error(f"Chat handler error: {e}", exc_info=True)
+        await update.message.reply_text(
+            "Sorry, I couldn't process that. Try a /command instead.\n"
+            f"_Error: {str(e)[:100]}_",
+            parse_mode="Markdown",
+        )
 
 
 async def start_telegram_bot():
@@ -236,7 +246,7 @@ async def start_telegram_bot():
     app.add_handler(CommandHandler("projects", cmd_projects))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("start", cmd_help))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_plain_text))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_chat_message))
 
     # Set bot commands menu
     await app.bot.set_my_commands([
