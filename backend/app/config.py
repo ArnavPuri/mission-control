@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     smart_model: str = "claude-sonnet-4-6"
     max_agent_budget_usd: float = 0.50
 
+    # --- Chat Assistant ---
+    chat_model: str = "claude-sonnet-4-6"
+    chat_session_timeout_minutes: int = 30
+
     # --- Telegram ---
     telegram_bot_token: str | None = None
     telegram_allowed_users: str | None = None  # comma-separated IDs
