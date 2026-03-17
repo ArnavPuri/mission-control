@@ -39,14 +39,14 @@ What's already built:
 |-------|------|-------|----------|
 | 1. Foundation Hardening | 3 | 15 | 20% |
 | 2. Intelligence Layer | 3 | 13 | 23% |
-| 3. Personal Productivity | 9 | 23 | 39% |
-| 4. Dashboard 2.0 | 6 | 18 | 33% |
+| 3. Personal Productivity | 10 | 23 | 43% |
+| 4. Dashboard 2.0 | 10 | 18 | 56% |
 | 5. Integrations | 4 | 18 | 22% |
 | 6. Multi-Agent Intelligence | 0 | 16 | 0% |
 | 7. Privacy & Scale | 0 | 16 | 0% |
 | 8. Mobile & Desktop | 0 | 10 | 0% |
 | 9. Community | 0 | 16 | 0% |
-| **Total** | **25** | **145** | **17%** |
+| **Total** | **30** | **145** | **21%** |
 
 ---
 
@@ -118,7 +118,7 @@ _Go beyond task management into a full life operating system._
 - [x] Habits table — recurring behaviors with streak tracking
 - [x] Daily check-in agent — asks about habit completion, logs streaks
 - [ ] Routine builder — morning/evening routines as checklists
-- [ ] Habit analytics — streaks, completion rates, trends over time
+- [x] Habit analytics — streaks, completion rates, weekly bar charts, trends
 
 ### 3.2 Goals & OKRs
 - [x] Goals table — long-term objectives linked to projects
@@ -165,8 +165,8 @@ _Transform the dashboard from a status board into a powerful daily driver._
 - [x] Radix UI component library with clean light theme
 - [x] Lucide icons throughout (replacing unicode)
 - [ ] Multi-page layout: Dashboard, Projects, Agents, Journal, Settings
-- [ ] Mobile-responsive design (usable on phone)
-- [ ] Dark mode / light mode toggle
+- [x] Mobile-responsive design (usable on phone)
+- [x] Dark mode / light mode toggle with localStorage persistence
 - [ ] Keyboard shortcuts for power users (vim-style navigation)
 - [ ] Drag-and-drop task reordering and project assignment
 
@@ -179,10 +179,10 @@ _Transform the dashboard from a status board into a powerful daily driver._
 - [ ] Project dashboards — dedicated view per project with all related items
 
 ### 4.3 Interactivity
-- [ ] Inline task editing (click to edit text, priority, tags)
+- [x] Inline task editing (double-click to edit text, click priority dot to change)
 - [ ] Bulk actions — select multiple tasks, bulk update status/priority
 - [ ] Quick capture — global keyboard shortcut to add task/idea/reading
-- [ ] Filters and saved views (e.g., "Critical tasks this week")
+- [x] Filters and saved views (filter tasks by status and priority with Radix dropdowns)
 - [x] Command palette (Cmd+K) for fast navigation and actions
 
 ### 4.4 Notifications & Alerts

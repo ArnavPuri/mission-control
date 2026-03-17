@@ -133,6 +133,76 @@ async def uncomplete_habit(habit_id: UUID, db: AsyncSession = Depends(get_db)):
     raise HTTPException(status_code=404, detail="No completion found for today")
 
 
+@router.get("/{habit_id}/history")
+async def habit_history(habit_id: UUID, days: int = 30, db: AsyncSession = Depends(get_db)):
+    """Get completion history for a habit over the last N days."""
+    habit = await db.get(Habit, habit_id)
+    if not habit:
+        raise HTTPException(status_code=404, detail="Habit not found")
+
+    today = datetime.now(timezone.utc).date()
+    completions_by_date: dict[str, bool] = {}
+    for c in (habit.completions or []):
+        completions_by_date[c.completed_at.date().isoformat()] = True
+
+    history = []
+    for i in range(days - 1, -1, -1):
+        d = today - timedelta(days=i)
+        history.append({"date": d.isoformat(), "completed": d.isoformat() in completions_by_date})
+
+    completed_count = sum(1 for h in history if h["completed"])
+    return {
+        "habit_id": str(habit.id),
+        "name": habit.name,
+        "days": days,
+        "history": history,
+        "completion_rate": completed_count / days if days > 0 else 0,
+        "completed_count": completed_count,
+        "current_streak": habit.current_streak,
+        "best_streak": habit.best_streak,
+    }
+
+
+@router.get("/analytics/overview")
+async def habits_analytics(days: int = 30, db: AsyncSession = Depends(get_db)):
+    """Get analytics overview across all active habits."""
+    result = await db.execute(select(Habit).where(Habit.is_active == True))
+    habits_list = result.scalars().all()
+
+    today = datetime.now(timezone.utc).date()
+    overview = []
+    for h in habits_list:
+        completions_set = {c.completed_at.date().isoformat() for c in (h.completions or [])}
+
+        # Weekly completion counts for the last N days, grouped by week
+        weeks: list[dict] = []
+        for w in range(days // 7):
+            week_start = today - timedelta(days=(w + 1) * 7 - 1)
+            count = 0
+            for d in range(7):
+                if (week_start + timedelta(days=d)).isoformat() in completions_set:
+                    count += 1
+            weeks.append({"week": w, "completions": count})
+        weeks.reverse()
+
+        completed_in_period = sum(
+            1 for i in range(days) if (today - timedelta(days=i)).isoformat() in completions_set
+        )
+
+        overview.append({
+            "id": str(h.id),
+            "name": h.name,
+            "color": h.color,
+            "current_streak": h.current_streak,
+            "best_streak": h.best_streak,
+            "total_completions": h.total_completions,
+            "completion_rate": completed_in_period / days if days > 0 else 0,
+            "weekly_data": weeks,
+        })
+
+    return {"habits": overview, "days": days}
+
+
 @router.delete("/{habit_id}")
 async def delete_habit(habit_id: UUID, db: AsyncSession = Depends(get_db)):
     habit = await db.get(Habit, habit_id)

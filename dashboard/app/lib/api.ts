@@ -152,6 +152,20 @@ export interface Habit {
   created_at: string;
 }
 
+export interface HabitAnalytics {
+  habits: {
+    id: string;
+    name: string;
+    color: string;
+    current_streak: number;
+    best_streak: number;
+    total_completions: number;
+    completion_rate: number;
+    weekly_data: { week: number; completions: number }[];
+  }[];
+  days: number;
+}
+
 export const habits = {
   list: (activeOnly = true) => request<Habit[]>(`/api/habits?active_only=${activeOnly}`),
   create: (data: Partial<Habit>) => request<{ id: string }>('/api/habits', { method: 'POST', body: JSON.stringify(data) }),
@@ -159,6 +173,7 @@ export const habits = {
   complete: (id: string) => request<{ current_streak: number }>(`/api/habits/${id}/complete`, { method: 'POST' }),
   uncomplete: (id: string) => request<{ uncompleted: boolean }>(`/api/habits/${id}/uncomplete`, { method: 'POST' }),
   delete: (id: string) => request<{ deleted: boolean }>(`/api/habits/${id}`, { method: 'DELETE' }),
+  analytics: (days = 30) => request<HabitAnalytics>(`/api/habits/analytics/overview?days=${days}`),
 };
 
 // --- Goals ---

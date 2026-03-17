@@ -16,6 +16,11 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+html.dark body {
+  background: #030712;
+  color: #f3f4f6;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
@@ -29,6 +34,13 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background: #374151;
+}
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #4b5563;
 }
 
 /* Pulse animation for running status */
