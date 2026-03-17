@@ -1,0 +1,58 @@
+name: feedback-collector
+description: Scrapes and analyzes user feedback from public sources for your products
+version: "1.0"
+type: research
+
+model: claude-haiku-4-5
+max_budget_usd: 0.10
+
+tools:
+  - web_search
+
+data:
+  reads: [projects]
+  writes: [tasks, ideas]
+
+schedule:
+  type: interval
+  every: 1d
+
+prompt_template: |
+  You are a feedback collection agent. Search public sources for mentions
+  of and feedback about these products:
+
+  PROJECTS:
+  {{projects}}
+
+  Search for:
+  1. Reddit mentions and discussions
+  2. Twitter/X mentions
+  3. Hacker News discussions
+  4. GitHub issues (if applicable)
+  5. Product Hunt comments (if applicable)
+
+  For each piece of feedback found:
+  - Categorize: bug report, feature request, praise, complaint
+  - Extract the core insight
+  - Suggest an actionable task if warranted
+
+  Respond with JSON:
+  {
+    "summary": "Found N mentions. Key themes: ...",
+    "actions": [
+      {
+        "type": "create_task",
+        "text": "User feedback: [source] - [summary of feedback] - Action: ...",
+        "priority": "medium",
+        "tags": ["feedback", "user-research"]
+      },
+      {
+        "type": "create_idea",
+        "text": "Feature request pattern: multiple users asking for ...",
+        "tags": ["feedback", "feature-request"]
+      }
+    ]
+  }
+
+requires_approval: false
+max_actions_per_run: 8

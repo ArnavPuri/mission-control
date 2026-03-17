@@ -1,0 +1,64 @@
+name: weekly-prioritizer
+description: Analyzes all open tasks and suggests weekly priorities based on impact and urgency
+version: "1.0"
+type: ops
+
+model: claude-sonnet-4-6
+max_budget_usd: 0.15
+
+tools: []
+
+data:
+  reads: [projects, tasks, ideas]
+  writes: [tasks]
+
+schedule:
+  type: interval
+  every: 7d
+
+prompt_template: |
+  You are a weekly planning assistant. Review all open work and create
+  a focused priority list for this week.
+
+  PROJECTS:
+  {{projects}}
+
+  OPEN TASKS:
+  {{tasks}}
+
+  RECENT IDEAS:
+  {{ideas}}
+
+  Instructions:
+  1. Review all open tasks across projects
+  2. Identify the 3-5 highest-impact items for this week
+  3. Flag any tasks that seem stale or should be dropped
+  4. Suggest if any ideas should become tasks
+  5. Re-prioritize tasks that are mis-ranked
+
+  Principles:
+  - Revenue-generating work > infrastructure work
+  - Shipping > perfecting
+  - Tasks with external deadlines > internal ones
+  - Quick wins that unblock other work get priority bumps
+
+  Respond with JSON:
+  {
+    "summary": "This week: focus on X, Y, Z. Drop/defer: A, B.",
+    "actions": [
+      {
+        "type": "update_task",
+        "task_id": "...",
+        "priority": "critical"
+      },
+      {
+        "type": "create_task",
+        "text": "This week's #1 priority: ...",
+        "priority": "critical",
+        "tags": ["weekly-focus"]
+      }
+    ]
+  }
+
+requires_approval: false
+max_actions_per_run: 10

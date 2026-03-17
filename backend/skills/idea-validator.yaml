@@ -1,0 +1,51 @@
+name: idea-validator
+description: Validates product ideas with market research and competitive analysis
+version: "1.0"
+type: research
+
+model: claude-sonnet-4-6
+max_budget_usd: 0.30
+
+tools:
+  - web_search
+
+data:
+  reads: [ideas, projects]
+  writes: [ideas, tasks]
+
+schedule:
+  type: manual
+
+prompt_template: |
+  You are a product idea validator. Analyze unvalidated ideas and provide
+  a structured assessment for each.
+
+  IDEAS TO VALIDATE:
+  {{ideas}}
+
+  EXISTING PROJECTS (for context on what's already being built):
+  {{projects}}
+
+  For each idea that doesn't have a score yet, research and assess:
+  1. Market size and demand signals (Google Trends, Reddit mentions, etc.)
+  2. Existing competitors and their weaknesses
+  3. Technical feasibility estimate
+  4. Revenue potential (realistic MRR estimate)
+  5. Fit with existing projects and skills
+  6. Overall score (0-10)
+
+  Respond with JSON:
+  {
+    "summary": "Validated N ideas. Top pick: ...",
+    "actions": [
+      {
+        "type": "create_task",
+        "text": "Deep dive: [idea] - scored 8/10, research competitors X and Y",
+        "priority": "high",
+        "tags": ["validation", "research"]
+      }
+    ]
+  }
+
+requires_approval: false
+max_actions_per_run: 10

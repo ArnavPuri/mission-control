@@ -1,0 +1,311 @@
+"""
+Agent Runner - Executes agents using the Claude Agent SDK.
+
+Supports multiple auth methods:
+  - ANTHROPIC_API_KEY (standard API)
+  - CLAUDE_CODE_OAUTH_TOKEN (subscription-based)
+  - Falls back to direct Anthropic SDK for non-Agent-SDK providers
+
+Each agent run:
+  1. Loads agent config from DB
+  2. Builds context from DB (projects, tasks, etc.)
+  3. Renders the prompt template with context
+  4. Executes via Claude Agent SDK
+  5. Parses structured output
+  6. Writes results back to DB
+  7. Logs the run
+"""
+
+import asyncio
+import json
+import os
+import logging
+from datetime import datetime, timezone
+from uuid import UUID
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import settings, LLMProvider
+from app.db.models import (
+    AgentConfig, AgentRun, AgentStatus, AgentRunStatus,
+    Project, Task, Idea, ReadingItem, EventLog, TaskStatus,
+)
+from app.api.ws import broadcast
+
+logger = logging.getLogger(__name__)
+
+
+class AgentRunner:
+    """Executes agent runs against the Claude Agent SDK or Anthropic API."""
+
+    async def build_context(self, agent: AgentConfig, db: AsyncSession) -> dict:
+        """Build the data context an agent needs based on its data_reads config."""
+        context = {}
+
+        if "projects" in (agent.data_reads or []):
+            result = await db.execute(select(Project))
+            context["projects"] = [
+                {"id": str(p.id), "name": p.name, "description": p.description, "status": p.status.value}
+                for p in result.scalars().all()
+            ]
+
+        if "tasks" in (agent.data_reads or []):
+            query = select(Task).where(Task.status != TaskStatus.DONE)
+            if agent.project_id:
+                query = query.where(Task.project_id == agent.project_id)
+            result = await db.execute(query)
+            context["tasks"] = [
+                {"id": str(t.id), "text": t.text, "priority": t.priority.value, "status": t.status.value}
+                for t in result.scalars().all()
+            ]
+
+        if "ideas" in (agent.data_reads or []):
+            result = await db.execute(select(Idea).order_by(Idea.created_at.desc()).limit(50))
+            context["ideas"] = [
+                {"id": str(i.id), "text": i.text, "tags": i.tags or []}
+                for i in result.scalars().all()
+            ]
+
+        if "reading" in (agent.data_reads or []):
+            result = await db.execute(select(ReadingItem).where(ReadingItem.is_read == False))
+            context["reading"] = [
+                {"id": str(r.id), "title": r.title, "url": r.url}
+                for r in result.scalars().all()
+            ]
+
+        # Include project-specific context if agent is bound to a project
+        if agent.project_id:
+            project = await db.get(Project, agent.project_id)
+            if project:
+                context["project"] = {
+                    "id": str(project.id),
+                    "name": project.name,
+                    "description": project.description,
+                    "status": project.status.value,
+                }
+
+        return context
+
+    def render_prompt(self, template: str, context: dict) -> str:
+        """Simple Jinja-style {{var}} template rendering."""
+        prompt = template
+        for key, value in context.items():
+            placeholder = "{{" + key + "}}"
+            if isinstance(value, (dict, list)):
+                prompt = prompt.replace(placeholder, json.dumps(value, indent=2))
+            else:
+                prompt = prompt.replace(placeholder, str(value))
+        return prompt
+
+    async def execute_with_agent_sdk(self, prompt: str, agent: AgentConfig) -> dict:
+        """Execute using Claude Agent SDK (supports both API key and OAuth)."""
+        from claude_agent_sdk import query, ClaudeAgentOptions
+
+        # Build options
+        options_kwargs = {
+            "system_prompt": (
+                f"You are {agent.name}, a specialized AI agent.\n"
+                f"Role: {agent.description}\n"
+                f"You MUST respond with valid JSON only. No markdown, no explanation.\n"
+                f"Your output should contain an 'actions' array of things you did or recommend,\n"
+                f"and a 'summary' string describing what you accomplished."
+            ),
+            "max_turns": 10,
+        }
+
+        if agent.model:
+            options_kwargs["model"] = agent.model
+
+        if agent.max_budget_usd:
+            options_kwargs["max_budget_usd"] = agent.max_budget_usd
+
+        # Map agent tools to SDK allowed tools
+        allowed_tools = ["Read", "Glob"]  # baseline read-only
+        if "bash" in (agent.tools or []):
+            allowed_tools.append("Bash")
+        if "web_search" in (agent.tools or []):
+            allowed_tools.append("WebSearch")
+        if "write" in (agent.tools or []):
+            allowed_tools.extend(["Write", "Edit"])
+
+        options_kwargs["allowed_tools"] = allowed_tools
+
+        options = ClaudeAgentOptions(**options_kwargs)
+
+        # Collect response
+        full_response = ""
+        async for message in query(prompt=prompt, options=options):
+            if hasattr(message, "result"):
+                full_response = message.result
+            elif hasattr(message, "content"):
+                for block in getattr(message, "content", []):
+                    if hasattr(block, "text"):
+                        full_response += block.text
+
+        # Try to parse as JSON
+        try:
+            # Strip markdown fences if present
+            cleaned = full_response.strip()
+            if cleaned.startswith("```"):
+                cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned
+                cleaned = cleaned.rsplit("```", 1)[0]
+            return json.loads(cleaned)
+        except (json.JSONDecodeError, IndexError):
+            return {"summary": full_response, "actions": [], "raw": True}
+
+    async def execute_with_anthropic_api(self, prompt: str, agent: AgentConfig) -> dict:
+        """Fallback: execute directly via Anthropic Messages API."""
+        import httpx
+
+        headers = {"Content-Type": "application/json", "anthropic-version": "2023-06-01"}
+
+        if settings.anthropic_api_key:
+            headers["x-api-key"] = settings.anthropic_api_key
+
+        async with httpx.AsyncClient(timeout=120) as client:
+            resp = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers=headers,
+                json={
+                    "model": agent.model or settings.default_model,
+                    "max_tokens": 4096,
+                    "system": (
+                        f"You are {agent.name}. {agent.description}\n"
+                        "Respond with valid JSON only: {{\"actions\": [...], \"summary\": \"...\"}}"
+                    ),
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+            )
+            data = resp.json()
+
+        text = ""
+        for block in data.get("content", []):
+            if block.get("type") == "text":
+                text += block["text"]
+
+        try:
+            cleaned = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            return {"summary": text, "actions": [], "raw": True}
+
+    async def start_run(self, agent: AgentConfig, trigger: str, db: AsyncSession) -> AgentRun:
+        """Start an agent run - creates log entry, executes, writes results."""
+
+        # Create run record
+        run = AgentRun(agent_id=agent.id, trigger=trigger, status=AgentRunStatus.RUNNING)
+        db.add(run)
+        agent.status = AgentStatus.RUNNING
+        await db.flush()
+
+        # Broadcast status
+        await broadcast("agent.started", {"agent_id": str(agent.id), "run_id": str(run.id)})
+
+        try:
+            # Build context and render prompt
+            context = await self.build_context(agent, db)
+            prompt = self.render_prompt(agent.prompt_template, context)
+            run.input_data = {"prompt_length": len(prompt), "context_keys": list(context.keys())}
+
+            # Execute based on provider
+            provider = settings.llm_provider
+            if provider in (LLMProvider.ANTHROPIC_API, LLMProvider.ANTHROPIC_OAUTH):
+                try:
+                    result = await self.execute_with_agent_sdk(prompt, agent)
+                except Exception as sdk_err:
+                    logger.warning(f"Agent SDK failed, falling back to API: {sdk_err}")
+                    result = await self.execute_with_anthropic_api(prompt, agent)
+            else:
+                result = await self.execute_with_anthropic_api(prompt, agent)
+
+            # Update run
+            run.status = AgentRunStatus.COMPLETED
+            run.output_data = result
+            run.completed_at = datetime.now(timezone.utc)
+            agent.status = AgentStatus.IDLE
+            agent.last_run_at = datetime.now(timezone.utc)
+
+            # Process agent output actions (write to DB)
+            await self._process_actions(result.get("actions", []), agent, db)
+
+            await broadcast("agent.completed", {
+                "agent_id": str(agent.id),
+                "run_id": str(run.id),
+                "summary": result.get("summary", ""),
+            })
+
+        except Exception as e:
+            run.status = AgentRunStatus.FAILED
+            run.error = str(e)
+            run.completed_at = datetime.now(timezone.utc)
+            agent.status = AgentStatus.ERROR
+            logger.error(f"Agent {agent.name} run failed: {e}")
+
+            await broadcast("agent.failed", {
+                "agent_id": str(agent.id),
+                "run_id": str(run.id),
+                "error": str(e),
+            })
+
+        await db.flush()
+
+        # Log event
+        event = EventLog(
+            event_type=f"agent.run.{run.status.value}",
+            entity_type="agent",
+            entity_id=agent.id,
+            source=f"agent:{agent.slug}",
+            data={"run_id": str(run.id), "trigger": trigger},
+        )
+        db.add(event)
+        await db.flush()
+
+        return run
+
+    async def _process_actions(self, actions: list, agent: AgentConfig, db: AsyncSession):
+        """Process structured actions from agent output and write to DB."""
+        for action in actions:
+            if not isinstance(action, dict):
+                continue
+
+            action_type = action.get("type", "")
+
+            if action_type == "create_task" and "tasks" in (agent.data_writes or []):
+                task = Task(
+                    text=action.get("text", "Untitled task"),
+                    priority=action.get("priority", "medium"),
+                    project_id=agent.project_id,
+                    source=f"agent:{agent.slug}",
+                    tags=action.get("tags", []),
+                )
+                db.add(task)
+                await broadcast("task.created", {"text": task.text, "source": task.source})
+
+            elif action_type == "create_idea" and "ideas" in (agent.data_writes or []):
+                idea = Idea(
+                    text=action.get("text", ""),
+                    tags=action.get("tags", []),
+                    source=f"agent:{agent.slug}",
+                )
+                db.add(idea)
+                await broadcast("idea.created", {"text": idea.text, "source": idea.source})
+
+            elif action_type == "update_task" and "tasks" in (agent.data_writes or []):
+                task_id = action.get("task_id")
+                if task_id:
+                    task = await db.get(Task, UUID(task_id))
+                    if task:
+                        if "status" in action:
+                            task.status = action["status"]
+                        if "priority" in action:
+                            task.priority = action["priority"]
+
+            elif action_type == "add_reading" and "reading" in (agent.data_writes or []):
+                item = ReadingItem(
+                    title=action.get("title", ""),
+                    url=action.get("url"),
+                    source=f"agent:{agent.slug}",
+                    tags=action.get("tags", []),
+                )
+                db.add(item)

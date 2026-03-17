@@ -1,0 +1,68 @@
+# ============================================================
+# Agent Skill Template
+# ============================================================
+# Copy this file and customize it to create a new agent.
+# The filename becomes the agent slug (e.g., my-agent.yaml -> my-agent)
+#
+# Place in the skills/ directory and restart the backend,
+# or call the skill sync API endpoint to reload.
+# ============================================================
+
+name: my-agent
+description: What this agent does in one sentence
+version: "1.0"
+type: general  # marketing, research, content, ops, general
+
+# --- LLM Config ---
+model: claude-haiku-4-5  # claude-haiku-4-5 (cheap/fast) or claude-sonnet-4-6 (smart)
+max_budget_usd: 0.10     # max cost per run
+
+# --- Tools this agent can use ---
+# Available: web_search, bash, write, db_read, db_write
+tools:
+  - web_search
+
+# --- Data Access ---
+# What DB tables this agent can read from and write to
+data:
+  reads: [projects, tasks]
+  writes: [tasks]
+
+# --- Schedule ---
+# type: interval | cron | manual
+# every: "4h", "30m", "1d" (for interval type)
+schedule:
+  type: manual
+
+# --- Prompt Template ---
+# Use {{variable}} for data injection. Available variables match data.reads:
+#   {{projects}} - JSON array of projects
+#   {{tasks}}    - JSON array of open tasks
+#   {{ideas}}    - JSON array of ideas
+#   {{reading}}  - JSON array of unread items
+#   {{project}}  - JSON object of bound project (if project_id is set)
+prompt_template: |
+  You are a helpful agent.
+
+  Here are the current projects:
+  {{projects}}
+
+  Here are the open tasks:
+  {{tasks}}
+
+  Analyze the situation and suggest improvements.
+
+  Respond with JSON:
+  {
+    "summary": "What you found and recommend",
+    "actions": [
+      {"type": "create_task", "text": "...", "priority": "medium", "tags": ["tag"]},
+      {"type": "create_idea", "text": "...", "tags": ["tag"]},
+      {"type": "add_reading", "title": "...", "url": "https://..."},
+      {"type": "update_task", "task_id": "...", "status": "done"}
+    ]
+  }
+
+# --- Constraints ---
+requires_approval: false   # if true, actions queue for manual approval
+max_actions_per_run: 10    # safety limit on DB writes per run
