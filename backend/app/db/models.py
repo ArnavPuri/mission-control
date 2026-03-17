@@ -60,6 +60,33 @@ class AgentRunStatus(str, PyEnum):
     CANCELLED = "cancelled"
 
 
+class ApprovalStatus(str, PyEnum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+
+
+class HabitFrequency(str, PyEnum):
+    DAILY = "daily"
+    WEEKLY = "weekly"
+    CUSTOM = "custom"
+
+
+class GoalStatus(str, PyEnum):
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    ABANDONED = "abandoned"
+
+
+class MoodLevel(str, PyEnum):
+    GREAT = "great"
+    GOOD = "good"
+    OKAY = "okay"
+    LOW = "low"
+    BAD = "bad"
+
+
 # ---------- Models ----------
 
 class Project(Base):
@@ -205,4 +232,127 @@ class EventLog(Base):
     __table_args__ = (
         Index("idx_events_type", "event_type"),
         Index("idx_events_created", "created_at"),
+    )
+
+
+# ---------- Habits & Streaks ----------
+
+class Habit(Base):
+    """Recurring behavior to track with streaks."""
+    __tablename__ = "habits"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, default="")
+    frequency = Column(Enum(HabitFrequency), default=HabitFrequency.DAILY, nullable=False)
+    target_days = Column(ARRAY(String), default=list)  # for custom: ["mon","wed","fri"]
+    current_streak = Column(Integer, default=0)
+    best_streak = Column(Integer, default=0)
+    total_completions = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
+    color = Column(String(7), default="#00ffc8")
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    completions = relationship("HabitCompletion", back_populates="habit", lazy="selectin", order_by="HabitCompletion.completed_at.desc()")
+
+
+class HabitCompletion(Base):
+    """Individual completion log for a habit."""
+    __tablename__ = "habit_completions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    habit_id = Column(UUID(as_uuid=True), ForeignKey("habits.id", ondelete="CASCADE"), nullable=False)
+    completed_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    notes = Column(Text, nullable=True)
+
+    habit = relationship("Habit", back_populates="completions")
+
+    __table_args__ = (
+        Index("idx_habit_completions_habit", "habit_id"),
+        Index("idx_habit_completions_date", "completed_at"),
+    )
+
+
+# ---------- Goals & Key Results ----------
+
+class Goal(Base):
+    """Long-term objective with measurable key results."""
+    __tablename__ = "goals"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title = Column(String(500), nullable=False)
+    description = Column(Text, default="")
+    status = Column(Enum(GoalStatus), default=GoalStatus.ACTIVE, nullable=False)
+    target_date = Column(DateTime(timezone=True), nullable=True)
+    progress = Column(Float, default=0.0)  # 0.0 to 1.0
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=True)
+    tags = Column(ARRAY(String), default=list)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    key_results = relationship("KeyResult", back_populates="goal", lazy="selectin", order_by="KeyResult.created_at")
+
+
+class KeyResult(Base):
+    """Measurable outcome tied to a goal."""
+    __tablename__ = "key_results"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    goal_id = Column(UUID(as_uuid=True), ForeignKey("goals.id", ondelete="CASCADE"), nullable=False)
+    title = Column(String(500), nullable=False)
+    target_value = Column(Float, nullable=False)  # e.g., 100
+    current_value = Column(Float, default=0.0)  # e.g., 45
+    unit = Column(String(50), default="")  # e.g., "%", "users", "articles"
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    goal = relationship("Goal", back_populates="key_results")
+
+
+# ---------- Journal ----------
+
+class JournalEntry(Base):
+    """Daily journal entry for reflection and tracking."""
+    __tablename__ = "journal_entries"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    content = Column(Text, nullable=False)
+    mood = Column(Enum(MoodLevel), nullable=True)
+    energy = Column(Integer, nullable=True)  # 1-5 scale
+    tags = Column(ARRAY(String), default=list)
+    wins = Column(ARRAY(String), default=list)  # things that went well
+    challenges = Column(ARRAY(String), default=list)  # things that were hard
+    gratitude = Column(ARRAY(String), default=list)  # gratitude items
+    source = Column(String(50), default="manual")
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("idx_journal_created", "created_at"),
+    )
+
+
+# ---------- Agent Approval Queue ----------
+
+class AgentApproval(Base):
+    """Pending agent actions that require human approval before execution."""
+    __tablename__ = "agent_approvals"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_id = Column(UUID(as_uuid=True), ForeignKey("agent_runs.id"), nullable=False)
+    agent_id = Column(UUID(as_uuid=True), ForeignKey("agent_configs.id"), nullable=False)
+    status = Column(Enum(ApprovalStatus), default=ApprovalStatus.PENDING, nullable=False)
+    actions = Column(JSON, nullable=False)  # the proposed actions
+    summary = Column(Text, default="")
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    agent = relationship("AgentConfig", foreign_keys=[agent_id])
+    run = relationship("AgentRun", foreign_keys=[run_id])
+
+    __table_args__ = (
+        Index("idx_approvals_status", "status"),
+        Index("idx_approvals_agent", "agent_id"),
     )

@@ -6,18 +6,23 @@
 
 ---
 
-## Current State (v0.1)
+## Current State (v0.2)
 
 What's already built:
 
 - **Core data model** — Projects, tasks, ideas, reading list with full CRUD
 - **Agent system** — YAML-defined skills, scheduled execution, Claude Agent SDK
-- **4 agents** — Reddit Scout, Idea Validator, Weekly Prioritizer, Feedback Collector
-- **Dashboard** — Real-time Next.js UI with WebSocket updates
+- **8 agents** — Reddit Scout, Idea Validator, Weekly Prioritizer, Feedback Collector, Daily Check-in, Goal Decomposer, Evening Reflection, Weekly Review
+- **Dashboard** — Real-time Next.js UI with WebSocket updates, 3-column layout
 - **Telegram bot** — Natural language chat + structured commands
 - **MCP server** — Claude Code integration via Model Context Protocol
 - **Multi-auth** — API key, OAuth, OpenRouter, Ollama support
 - **Event log** — Full audit trail of every system action
+- **Habits system** — Track daily/weekly habits with streak tracking
+- **Goals & OKRs** — Goals with measurable key results and progress bars
+- **Journal** — Daily entries with mood, energy, wins, challenges, gratitude
+- **Agent approval queue** — Human-in-the-loop review before agent actions execute
+- **Cross-entity search** — Search across all data types from one endpoint
 
 ---
 
@@ -46,7 +51,7 @@ _Make what exists rock-solid and easy to set up._
 - [ ] Graceful error handling for all LLM provider failures
 
 ### 1.4 Agent Robustness
-- [ ] Agent approval queue — human-in-the-loop before actions execute
+- [x] Agent approval queue — human-in-the-loop before actions execute
 - [ ] Retry logic with exponential backoff for transient LLM failures
 - [ ] Agent timeout enforcement (kill stuck runs)
 - [ ] Output validation — reject malformed agent responses gracefully
@@ -60,7 +65,7 @@ _Make agents smarter and the system more context-aware._
 
 ### 2.1 Semantic Search & Memory
 - [ ] pgvector embeddings on tasks, ideas, and reading items
-- [ ] Semantic search API (`/api/search?q=...`) across all entities
+- [x] Semantic search API (`/api/search?q=...`) across all entities
 - [ ] Dashboard search bar with instant results
 - [ ] Agent memory — long-term context that persists across runs
 - [ ] Deduplication: detect near-duplicate tasks and ideas before creating them
@@ -86,23 +91,23 @@ _Make agents smarter and the system more context-aware._
 _Go beyond task management into a full life operating system._
 
 ### 3.1 Habits & Routines
-- [ ] Habits table — recurring behaviors with streak tracking
-- [ ] Daily check-in agent — asks about habit completion, logs streaks
+- [x] Habits table — recurring behaviors with streak tracking
+- [x] Daily check-in agent — asks about habit completion, logs streaks
 - [ ] Routine builder — morning/evening routines as checklists
 - [ ] Habit analytics — streaks, completion rates, trends over time
 
 ### 3.2 Goals & OKRs
-- [ ] Goals table — long-term objectives linked to projects
-- [ ] Key results with measurable targets and progress tracking
-- [ ] Goal decomposition agent — breaks goals into actionable tasks
-- [ ] Weekly/monthly goal review agent with progress reports
+- [x] Goals table — long-term objectives linked to projects
+- [x] Key results with measurable targets and progress tracking
+- [x] Goal decomposition agent — breaks goals into actionable tasks
+- [x] Weekly/monthly goal review agent with progress reports
 - [ ] Goal visualization on dashboard (progress bars, burndown charts)
 
 ### 3.3 Journal & Reflection
-- [ ] Journal entries table — daily notes, reflections, wins
-- [ ] Daily reflection agent — prompts end-of-day review, generates insights
-- [ ] Weekly summary agent — synthesizes the week's activity into a report
-- [ ] Mood/energy tracking with optional daily check-in
+- [x] Journal entries table — daily notes, reflections, wins
+- [x] Daily reflection agent — prompts end-of-day review, generates insights
+- [x] Weekly summary agent — synthesizes the week's activity into a report
+- [x] Mood/energy tracking with optional daily check-in
 - [ ] Journal search with semantic similarity
 
 ### 3.4 Calendar & Time

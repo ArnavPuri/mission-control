@@ -1,0 +1,74 @@
+name: weekly-review
+description: Comprehensive weekly review that synthesizes progress, identifies patterns, and plans the next week
+version: "1.0"
+type: ops
+
+model: claude-sonnet-4-6
+max_budget_usd: 0.20
+
+tools: []
+
+data:
+  reads: [tasks, habits, goals, journal, projects, ideas]
+  writes: [journal, tasks]
+
+schedule:
+  type: cron
+  every: "0 10 * * 0"
+
+prompt_template: |
+  You are a strategic weekly review assistant. It's time for the weekly review.
+  Analyze the past week and create a comprehensive summary with actionable next steps.
+
+  PROJECTS:
+  {{projects}}
+
+  ALL TASKS:
+  {{tasks}}
+
+  HABITS:
+  {{habits}}
+
+  GOALS:
+  {{goals}}
+
+  JOURNAL ENTRIES (past week):
+  {{journal}}
+
+  IDEAS:
+  {{ideas}}
+
+  Instructions:
+  1. **Progress Report**: Summarize what was accomplished this week
+     - Tasks completed vs tasks created
+     - Habit streak status (which are strong, which need attention)
+     - Goal progress movement
+  2. **Pattern Analysis**: Look across journal entries for patterns
+     - Energy and mood trends
+     - Recurring challenges
+     - What activities correlate with good days
+  3. **Wins of the Week**: Highlight the top 3 accomplishments
+  4. **Next Week Plan**: Suggest top 5 priorities for next week
+  5. **Idea Review**: Flag any ideas worth acting on
+
+  Respond with JSON:
+  {
+    "summary": "Weekly Review: [1-line summary]",
+    "actions": [
+      {
+        "type": "create_journal",
+        "content": "## Weekly Review: [date range]\n\n### Progress...\n\n### Patterns...\n\n### Wins...\n\n### Next Week...",
+        "tags": ["weekly-review"],
+        "mood": "good"
+      },
+      {
+        "type": "create_task",
+        "text": "Week priority: ...",
+        "priority": "high",
+        "tags": ["weekly-priority"]
+      }
+    ]
+  }
+
+requires_approval: false
+max_actions_per_run: 8

@@ -135,6 +135,135 @@ export const agents = {
   runs: (id: string, limit = 20) => request<AgentRun[]>(`/api/agents/${id}/runs?limit=${limit}`),
 };
 
+// --- Habits ---
+
+export interface Habit {
+  id: string;
+  name: string;
+  description: string;
+  frequency: 'daily' | 'weekly' | 'custom';
+  current_streak: number;
+  best_streak: number;
+  total_completions: number;
+  is_active: boolean;
+  color: string;
+  completed_today: boolean;
+  project_id?: string;
+  created_at: string;
+}
+
+export const habits = {
+  list: (activeOnly = true) => request<Habit[]>(`/api/habits?active_only=${activeOnly}`),
+  create: (data: Partial<Habit>) => request<{ id: string }>('/api/habits', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<Habit>) => request<{ updated: boolean }>(`/api/habits/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  complete: (id: string) => request<{ current_streak: number }>(`/api/habits/${id}/complete`, { method: 'POST' }),
+  uncomplete: (id: string) => request<{ uncompleted: boolean }>(`/api/habits/${id}/uncomplete`, { method: 'POST' }),
+  delete: (id: string) => request<{ deleted: boolean }>(`/api/habits/${id}`, { method: 'DELETE' }),
+};
+
+// --- Goals ---
+
+export interface KeyResult {
+  id: string;
+  title: string;
+  target_value: number;
+  current_value: number;
+  unit: string;
+  progress: number;
+}
+
+export interface Goal {
+  id: string;
+  title: string;
+  description: string;
+  status: 'active' | 'completed' | 'abandoned';
+  target_date?: string;
+  progress: number;
+  project_id?: string;
+  tags: string[];
+  key_results: KeyResult[];
+  created_at: string;
+}
+
+export const goals = {
+  list: (status?: string) => {
+    const qs = status ? `?status=${status}` : '';
+    return request<Goal[]>(`/api/goals${qs}`);
+  },
+  create: (data: Partial<Goal>) => request<{ id: string }>('/api/goals', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<Goal>) => request<{ updated: boolean }>(`/api/goals/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  delete: (id: string) => request<{ deleted: boolean }>(`/api/goals/${id}`, { method: 'DELETE' }),
+  createKeyResult: (goalId: string, data: Partial<KeyResult>) =>
+    request<{ id: string }>(`/api/goals/${goalId}/key-results`, { method: 'POST', body: JSON.stringify(data) }),
+  updateKeyResult: (goalId: string, krId: string, data: Partial<KeyResult>) =>
+    request<{ updated: boolean }>(`/api/goals/${goalId}/key-results/${krId}`, { method: 'PATCH', body: JSON.stringify(data) }),
+};
+
+// --- Journal ---
+
+export interface JournalEntry {
+  id: string;
+  content: string;
+  mood?: 'great' | 'good' | 'okay' | 'low' | 'bad';
+  energy?: number;
+  tags: string[];
+  wins: string[];
+  challenges: string[];
+  gratitude: string[];
+  source: string;
+  created_at: string;
+}
+
+export const journal = {
+  list: (limit = 30) => request<JournalEntry[]>(`/api/journal?limit=${limit}`),
+  create: (data: Partial<JournalEntry>) => request<{ id: string }>('/api/journal', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<JournalEntry>) => request<{ updated: boolean }>(`/api/journal/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  delete: (id: string) => request<{ deleted: boolean }>(`/api/journal/${id}`, { method: 'DELETE' }),
+};
+
+// --- Approvals ---
+
+export interface Approval {
+  id: string;
+  agent_id: string;
+  agent_name: string;
+  run_id: string;
+  summary: string;
+  actions: any[];
+  action_count: number;
+  created_at: string;
+  expires_at?: string;
+}
+
+export const approvals = {
+  list: () => request<Approval[]>('/api/approvals'),
+  approve: (id: string) => request<{ status: string }>(`/api/approvals/${id}/approve`, { method: 'POST' }),
+  reject: (id: string) => request<{ status: string }>(`/api/approvals/${id}/reject`, { method: 'POST' }),
+};
+
+// --- Search ---
+
+export interface SearchResult {
+  type: string;
+  id: string;
+  title: string;
+  status?: string;
+  priority?: string;
+  tags?: string[];
+  created_at: string;
+}
+
+export interface SearchResponse {
+  query: string;
+  total: number;
+  results: SearchResult[];
+}
+
+export const search = {
+  query: (q: string, entityTypes = 'all', limit = 20) =>
+    request<SearchResponse>(`/api/search?q=${encodeURIComponent(q)}&entity_types=${entityTypes}&limit=${limit}`),
+};
+
 // --- Health ---
 
 export interface HealthStatus {

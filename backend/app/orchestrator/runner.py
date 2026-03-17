@@ -30,6 +30,7 @@ from app.config import settings, LLMProvider
 from app.db.models import (
     AgentConfig, AgentRun, AgentStatus, AgentRunStatus,
     Project, Task, Idea, ReadingItem, EventLog, TaskStatus,
+    Habit, Goal, JournalEntry, AgentApproval, ApprovalStatus,
 )
 from app.api.ws import broadcast
 
@@ -72,6 +73,31 @@ class AgentRunner:
             context["reading"] = [
                 {"id": str(r.id), "title": r.title, "url": r.url}
                 for r in result.scalars().all()
+            ]
+
+        if "habits" in (agent.data_reads or []):
+            result = await db.execute(select(Habit).where(Habit.is_active == True))
+            context["habits"] = [
+                {"id": str(h.id), "name": h.name, "current_streak": h.current_streak, "best_streak": h.best_streak}
+                for h in result.scalars().all()
+            ]
+
+        if "goals" in (agent.data_reads or []):
+            from app.db.models import GoalStatus
+            result = await db.execute(select(Goal).where(Goal.status == GoalStatus.ACTIVE))
+            context["goals"] = [
+                {"id": str(g.id), "title": g.title, "description": g.description, "progress": g.progress}
+                for g in result.scalars().all()
+            ]
+
+        if "journal" in (agent.data_reads or []):
+            result = await db.execute(
+                select(JournalEntry).order_by(JournalEntry.created_at.desc()).limit(7)
+            )
+            context["journal"] = [
+                {"id": str(j.id), "content": j.content[:200], "mood": j.mood.value if j.mood else None,
+                 "created_at": j.created_at.isoformat()}
+                for j in result.scalars().all()
             ]
 
         # Include project-specific context if agent is bound to a project
@@ -226,8 +252,29 @@ class AgentRunner:
             agent.status = AgentStatus.IDLE
             agent.last_run_at = datetime.now(timezone.utc)
 
-            # Process agent output actions (write to DB)
-            await self._process_actions(result.get("actions", []), agent, db)
+            # Check if agent requires approval
+            requires_approval = agent.config.get("requires_approval", False) if agent.config else False
+            actions = result.get("actions", [])
+
+            if requires_approval and actions:
+                # Queue for approval instead of executing immediately
+                from datetime import timedelta
+                approval = AgentApproval(
+                    run_id=run.id,
+                    agent_id=agent.id,
+                    actions=actions,
+                    summary=result.get("summary", ""),
+                    expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
+                )
+                db.add(approval)
+                await broadcast("approval.pending", {
+                    "agent_id": str(agent.id),
+                    "run_id": str(run.id),
+                    "action_count": len(actions),
+                    "summary": result.get("summary", ""),
+                })
+            else:
+                await self._process_actions(actions, agent, db)
 
             await broadcast("agent.completed", {
                 "agent_id": str(agent.id),
@@ -309,3 +356,30 @@ class AgentRunner:
                     tags=action.get("tags", []),
                 )
                 db.add(item)
+
+            elif action_type == "create_journal" and "journal" in (agent.data_writes or []):
+                from app.db.models import MoodLevel
+                mood_str = action.get("mood")
+                mood = MoodLevel(mood_str) if mood_str and mood_str in MoodLevel.__members__.values() else None
+                entry = JournalEntry(
+                    content=action.get("content", ""),
+                    mood=mood,
+                    energy=action.get("energy"),
+                    tags=action.get("tags", []),
+                    wins=action.get("wins", []),
+                    challenges=action.get("challenges", []),
+                    gratitude=action.get("gratitude", []),
+                    source=f"agent:{agent.slug}",
+                )
+                db.add(entry)
+                await broadcast("journal.created", {"source": f"agent:{agent.slug}"})
+
+            elif action_type == "create_goal" and "goals" in (agent.data_writes or []):
+                goal = Goal(
+                    title=action.get("title", "Untitled goal"),
+                    description=action.get("description", ""),
+                    project_id=agent.project_id,
+                    tags=action.get("tags", []),
+                )
+                db.add(goal)
+                await broadcast("goal.created", {"title": goal.title})

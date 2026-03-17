@@ -75,6 +75,17 @@ function InlineInput({ placeholder, onSubmit, onCancel }: { placeholder: string;
   );
 }
 
+function ProgressBar({ value, color = '#00ffc8' }: { value: number; color?: string }) {
+  return (
+    <div className="w-full h-1.5 bg-mc-border rounded-full overflow-hidden">
+      <div
+        className="h-full rounded-full transition-all duration-500"
+        style={{ width: `${Math.min(value * 100, 100)}%`, background: color }}
+      />
+    </div>
+  );
+}
+
 // ─── Panels ────────────────────────────────────────────────
 
 function ProjectsPanel({ projects }: { projects: api.Project[] }) {
@@ -233,6 +244,189 @@ function ReadingPanel({ items, onToggle, onAdd, showInput, setShowInput, onDelet
   );
 }
 
+// ─── New Panels ───────────────────────────────────────────
+
+function HabitsPanel({ habits, onToggle, onAdd, showInput, setShowInput }: {
+  habits: api.Habit[]; onToggle: (id: string) => void; onAdd: (name: string) => void;
+  showInput: boolean; setShowInput: (v: boolean) => void;
+}) {
+  return (
+    <div>
+      {showInput && <InlineInput placeholder="New habit..." onSubmit={onAdd} onCancel={() => setShowInput(false)} />}
+      <div className="flex flex-col gap-1.5">
+        {habits.map((h) => (
+          <div key={h.id} className="bg-mc-surface rounded px-3.5 py-2.5 flex items-center gap-3">
+            <div
+              onClick={() => onToggle(h.id)}
+              className="w-5 h-5 rounded-full border-2 flex items-center justify-center text-[10px] cursor-pointer transition-all shrink-0"
+              style={{
+                borderColor: h.completed_today ? h.color : '#333',
+                background: h.completed_today ? `${h.color}30` : 'transparent',
+                color: h.color,
+              }}
+            >
+              {h.completed_today && '✓'}
+            </div>
+            <div className="flex-1 min-w-0">
+              <span className="text-xs text-gray-200">{h.name}</span>
+              {h.description && <div className="text-[10px] text-mc-dim truncate">{h.description}</div>}
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {h.current_streak > 0 && (
+                <span className="font-mono text-[11px] font-bold" style={{ color: h.color }}>
+                  {h.current_streak}d
+                </span>
+              )}
+              <div className="text-right">
+                <div className="font-mono text-[9px] text-mc-dim">best {h.best_streak}d</div>
+              </div>
+            </div>
+          </div>
+        ))}
+        {habits.length === 0 && (
+          <div className="text-xs text-mc-dim text-center py-4">No habits yet. Add one to start tracking!</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GoalsPanel({ goals, onAdd, showInput, setShowInput }: {
+  goals: api.Goal[]; onAdd: (title: string) => void;
+  showInput: boolean; setShowInput: (v: boolean) => void;
+}) {
+  return (
+    <div>
+      {showInput && <InlineInput placeholder="New goal..." onSubmit={onAdd} onCancel={() => setShowInput(false)} />}
+      <div className="flex flex-col gap-2">
+        {goals.map((g) => {
+          const pct = Math.round(g.progress * 100);
+          const progressColor = pct >= 75 ? '#00ffc8' : pct >= 40 ? '#ffd166' : '#ff6b9d';
+          return (
+            <div key={g.id} className="bg-mc-surface rounded-md p-3.5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-gray-200 font-medium flex-1">{g.title}</span>
+                <span className="font-mono text-xs font-bold ml-2" style={{ color: progressColor }}>{pct}%</span>
+              </div>
+              <ProgressBar value={g.progress} color={progressColor} />
+              {g.key_results.length > 0 && (
+                <div className="mt-2 flex flex-col gap-1">
+                  {g.key_results.map((kr) => (
+                    <div key={kr.id} className="flex items-center gap-2">
+                      <span className="text-[10px] text-mc-dim flex-1 truncate">{kr.title}</span>
+                      <span className="font-mono text-[10px] text-mc-dim">
+                        {kr.current_value}/{kr.target_value} {kr.unit}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-1 mt-2">
+                {g.tags?.map((tag) => <Badge key={tag} color="#ffd16615" textColor="#ffd166">{tag}</Badge>)}
+                {g.target_date && (
+                  <span className="font-mono text-[9px] text-mc-dim ml-auto">
+                    Due {new Date(g.target_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        {goals.length === 0 && (
+          <div className="text-xs text-mc-dim text-center py-4">No goals yet. Set your first objective!</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function JournalPanel({ entries, onAdd, showInput, setShowInput, onDelete }: {
+  entries: api.JournalEntry[]; onAdd: (content: string) => void;
+  showInput: boolean; setShowInput: (v: boolean) => void; onDelete: (id: string) => void;
+}) {
+  const moodEmoji: Record<string, string> = { great: '✦', good: '●', okay: '○', low: '◌', bad: '×' };
+  const moodColor: Record<string, string> = { great: '#00ffc8', good: '#a78bfa', okay: '#ffd166', low: '#ff6b9d', bad: '#ff4444' };
+
+  return (
+    <div>
+      {showInput && <InlineInput placeholder="What's on your mind..." onSubmit={onAdd} onCancel={() => setShowInput(false)} />}
+      <div className="flex flex-col gap-1.5">
+        {entries.slice(0, 5).map((e) => (
+          <div key={e.id} className="bg-mc-surface rounded px-3.5 py-2.5">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  {e.mood && (
+                    <span className="text-xs" style={{ color: moodColor[e.mood] }}>{moodEmoji[e.mood]}</span>
+                  )}
+                  <span className="font-mono text-[10px] text-mc-dim">
+                    {new Date(e.created_at).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                  </span>
+                  {e.energy != null && (
+                    <span className="font-mono text-[9px] text-mc-dim">E:{e.energy}/5</span>
+                  )}
+                  {e.source !== 'manual' && <Badge color="#ffffff08" textColor="#555">{e.source}</Badge>}
+                </div>
+                <div className="text-xs text-gray-300 line-clamp-2">{e.content.substring(0, 150)}{e.content.length > 150 ? '...' : ''}</div>
+              </div>
+              <button onClick={() => onDelete(e.id)} className="bg-transparent border-none text-mc-dim hover:text-mc-red cursor-pointer text-sm px-0.5 ml-2 transition-colors">×</button>
+            </div>
+            {(e.wins.length > 0 || e.gratitude.length > 0) && (
+              <div className="flex gap-1 mt-1.5">
+                {e.wins.length > 0 && <Badge color="#00ffc815" textColor="#00ffc8">{e.wins.length} wins</Badge>}
+                {e.gratitude.length > 0 && <Badge color="#a78bfa15" textColor="#a78bfa">{e.gratitude.length} gratitude</Badge>}
+              </div>
+            )}
+          </div>
+        ))}
+        {entries.length === 0 && (
+          <div className="text-xs text-mc-dim text-center py-4">No journal entries yet. Start writing!</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ApprovalsPanel({ approvals, onApprove, onReject }: {
+  approvals: api.Approval[]; onApprove: (id: string) => void; onReject: (id: string) => void;
+}) {
+  if (approvals.length === 0) return null;
+  return (
+    <div className="lg:col-span-2 bg-[#1a1a0a] border border-[#ffd16640] rounded-lg p-4">
+      <SectionHeader icon="⏳" title="Pending Approvals" count={approvals.length} />
+      <div className="flex flex-col gap-2">
+        {approvals.map((a) => (
+          <div key={a.id} className="bg-mc-surface rounded px-3.5 py-2.5 flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs text-gray-200 font-medium">{a.agent_name}</span>
+                <Badge color="#ffd16620" textColor="#ffd166">{a.action_count} actions</Badge>
+              </div>
+              <div className="text-[11px] text-mc-dim truncate">{a.summary}</div>
+            </div>
+            <div className="flex gap-1.5 shrink-0">
+              <button
+                onClick={() => onApprove(a.id)}
+                className="font-mono text-[10px] tracking-wider uppercase px-3 py-1 rounded border cursor-pointer transition-colors"
+                style={{ background: '#00ffc815', borderColor: '#00ffc830', color: '#00ffc8' }}
+              >
+                approve
+              </button>
+              <button
+                onClick={() => onReject(a.id)}
+                className="font-mono text-[10px] tracking-wider uppercase px-3 py-1 rounded border cursor-pointer transition-colors"
+                style={{ background: '#ff444420', borderColor: '#ff444440', color: '#ff4444' }}
+              >
+                reject
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Connection status indicator ──────────────────────────
 
 function ConnectionBar({ health }: { health: api.HealthStatus | null }) {
@@ -258,6 +452,10 @@ export default function Dashboard() {
   const [tasksList, setTasks] = useState<api.Task[]>([]);
   const [ideasList, setIdeas] = useState<api.Idea[]>([]);
   const [readingList, setReading] = useState<api.ReadingItem[]>([]);
+  const [habitsList, setHabits] = useState<api.Habit[]>([]);
+  const [goalsList, setGoals] = useState<api.Goal[]>([]);
+  const [journalList, setJournal] = useState<api.JournalEntry[]>([]);
+  const [approvalsList, setApprovals] = useState<api.Approval[]>([]);
   const [healthStatus, setHealth] = useState<api.HealthStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -266,6 +464,9 @@ export default function Dashboard() {
   const [showTaskInput, setShowTaskInput] = useState(false);
   const [showIdeaInput, setShowIdeaInput] = useState(false);
   const [showReadingInput, setShowReadingInput] = useState(false);
+  const [showHabitInput, setShowHabitInput] = useState(false);
+  const [showGoalInput, setShowGoalInput] = useState(false);
+  const [showJournalInput, setShowJournalInput] = useState(false);
 
   // Clock
   useEffect(() => { const i = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(i); }, []);
@@ -273,13 +474,17 @@ export default function Dashboard() {
   // Load all data
   const loadData = useCallback(async () => {
     try {
-      const [p, a, t, i, r, h] = await Promise.all([
+      const [p, a, t, i, r, h, hab, g, j, ap] = await Promise.all([
         api.projects.list(),
         api.agents.list(),
         api.tasks.list(),
         api.ideas.list(),
         api.reading.list(),
         api.health.check(),
+        api.habits.list().catch(() => []),
+        api.goals.list().catch(() => []),
+        api.journal.list().catch(() => []),
+        api.approvals.list().catch(() => []),
       ]);
       setProjects(p);
       setAgents(a);
@@ -287,6 +492,10 @@ export default function Dashboard() {
       setIdeas(i);
       setReading(r);
       setHealth(h);
+      setHabits(hab);
+      setGoals(g);
+      setJournal(j);
+      setApprovals(ap);
       setError(null);
     } catch (e: any) {
       setError(e.message || 'Failed to connect to backend');
@@ -303,10 +512,11 @@ export default function Dashboard() {
   // WebSocket for live updates
   useEffect(() => {
     const ws = api.connectWebSocket((event) => {
-      // On any event, refresh the relevant data
-      if (event.type.startsWith('agent.')) loadData();
-      if (event.type.startsWith('task.')) loadData();
-      if (event.type.startsWith('idea.')) loadData();
+      if (event.type.startsWith('agent.') || event.type.startsWith('task.') ||
+          event.type.startsWith('idea.') || event.type.startsWith('approval.') ||
+          event.type.startsWith('journal.') || event.type.startsWith('goal.')) {
+        loadData();
+      }
     });
     return () => { ws?.close(); };
   }, [loadData]);
@@ -335,6 +545,16 @@ export default function Dashboard() {
     loadData();
   };
 
+  const toggleHabit = async (id: string) => {
+    const habit = habitsList.find((h) => h.id === id);
+    if (!habit) return;
+    try {
+      if (habit.completed_today) await api.habits.uncomplete(id);
+      else await api.habits.complete(id);
+      loadData();
+    } catch {}
+  };
+
   const addTask = async (text: string) => { await api.tasks.create({ text }); setShowTaskInput(false); loadData(); };
   const addIdea = async (text: string) => { await api.ideas.create({ text }); setShowIdeaInput(false); loadData(); };
   const addReading = async (text: string) => {
@@ -343,15 +563,24 @@ export default function Dashboard() {
     setShowReadingInput(false);
     loadData();
   };
+  const addHabit = async (name: string) => { await api.habits.create({ name }); setShowHabitInput(false); loadData(); };
+  const addGoal = async (title: string) => { await api.goals.create({ title }); setShowGoalInput(false); loadData(); };
+  const addJournal = async (content: string) => { await api.journal.create({ content }); setShowJournalInput(false); loadData(); };
 
   const deleteTask = async (id: string) => { await api.tasks.delete(id); loadData(); };
   const deleteIdea = async (id: string) => { await api.ideas.delete(id); loadData(); };
   const deleteReading = async (id: string) => { await api.reading.delete(id); loadData(); };
+  const deleteJournal = async (id: string) => { await api.journal.delete(id); loadData(); };
+
+  const handleApprove = async (id: string) => { await api.approvals.approve(id); loadData(); };
+  const handleReject = async (id: string) => { await api.approvals.reject(id); loadData(); };
 
   // --- Stats ---
   const runningAgents = agentsList.filter((a) => a.status === 'running').length;
   const activeProjects = projectsList.filter((p) => p.status === 'active').length;
   const openTasks = tasksList.filter((t) => t.status !== 'done').length;
+  const activeGoals = goalsList.filter((g) => g.status === 'active').length;
+  const todayHabits = habitsList.filter((h) => h.completed_today).length;
 
   // --- Loading state ---
   if (loading) {
@@ -374,7 +603,7 @@ export default function Dashboard() {
             <div className="w-2.5 h-2.5 rounded-full bg-mc-accent" style={{ boxShadow: '0 0 12px #00ffc880' }} />
             <h1 className="font-mono text-base font-bold text-mc-text tracking-widest uppercase m-0">Mission Control</h1>
           </div>
-          <span className="font-mono text-[11px] text-mc-dim">v0.1</span>
+          <span className="font-mono text-[11px] text-mc-dim">v0.2</span>
           <ConnectionBar health={healthStatus} />
           {error && <span className="font-mono text-[11px] text-mc-red">{error}</span>}
         </div>
@@ -385,6 +614,8 @@ export default function Dashboard() {
               { label: 'PROJECTS', value: activeProjects, color: '#00ffc8' },
               { label: 'AGENTS', value: `${runningAgents}/${agentsList.length}`, color: runningAgents > 0 ? '#00ffc8' : '#555' },
               { label: 'TASKS', value: openTasks, color: openTasks > 5 ? '#ff4444' : '#ffd166' },
+              { label: 'HABITS', value: `${todayHabits}/${habitsList.length}`, color: todayHabits === habitsList.length && habitsList.length > 0 ? '#00ffc8' : '#ffd166' },
+              { label: 'GOALS', value: activeGoals, color: '#a78bfa' },
             ].map((s) => (
               <div key={s.label} className="text-center">
                 <div className="font-mono text-base font-bold" style={{ color: s.color }}>{s.value}</div>
@@ -399,20 +630,28 @@ export default function Dashboard() {
       </header>
 
       {/* Main Grid */}
-      <div className="px-8 py-6 grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-[1400px] mx-auto">
+      <div className="px-8 py-6 grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-[1600px] mx-auto">
+
+        {/* Approval queue - full width, only shows when there are pending approvals */}
+        {approvalsList.length > 0 && (
+          <div className="lg:col-span-3">
+            <ApprovalsPanel approvals={approvalsList} onApprove={handleApprove} onReject={handleReject} />
+          </div>
+        )}
+
         {/* Projects - full width */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-3">
           <SectionHeader icon="◆" title="Projects" count={projectsList.length} />
           <ProjectsPanel projects={projectsList} />
         </div>
 
         {/* Agents - full width */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-3">
           <SectionHeader icon="⚡" title="Agents" count={agentsList.length} />
           <AgentsPanel agents={agentsList} projects={projectsList} onToggle={toggleAgent} />
         </div>
 
-        {/* Tasks - left column */}
+        {/* Column 1: Tasks */}
         <div>
           <SectionHeader icon="◻" title="Tasks" count={openTasks} onAdd={() => setShowTaskInput(true)} />
           <TasksPanel
@@ -421,8 +660,30 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* Right column: Ideas + Reading */}
+        {/* Column 2: Habits + Goals */}
         <div className="flex flex-col gap-6">
+          <div>
+            <SectionHeader icon="↻" title="Habits" count={habitsList.length} onAdd={() => setShowHabitInput(true)} />
+            <HabitsPanel
+              habits={habitsList} onToggle={toggleHabit}
+              onAdd={addHabit} showInput={showHabitInput} setShowInput={setShowHabitInput}
+            />
+          </div>
+          <div>
+            <SectionHeader icon="◎" title="Goals" count={activeGoals} onAdd={() => setShowGoalInput(true)} />
+            <GoalsPanel goals={goalsList} onAdd={addGoal} showInput={showGoalInput} setShowInput={setShowGoalInput} />
+          </div>
+        </div>
+
+        {/* Column 3: Journal + Ideas + Reading */}
+        <div className="flex flex-col gap-6">
+          <div>
+            <SectionHeader icon="✎" title="Journal" count={journalList.length} onAdd={() => setShowJournalInput(true)} />
+            <JournalPanel
+              entries={journalList} onAdd={addJournal}
+              showInput={showJournalInput} setShowInput={setShowJournalInput} onDelete={deleteJournal}
+            />
+          </div>
           <div>
             <SectionHeader icon="✦" title="Ideas" count={ideasList.length} onAdd={() => setShowIdeaInput(true)} />
             <IdeasPanel ideas={ideasList} onAdd={addIdea} showInput={showIdeaInput} setShowInput={setShowIdeaInput} onDelete={deleteIdea} />
