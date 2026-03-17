@@ -427,6 +427,125 @@ function ApprovalsPanel({ approvals, onApprove, onReject }: {
   );
 }
 
+// ─── Notification Bell ────────────────────────────────────
+
+function NotificationBell({ notifications, unreadCount, onMarkRead, onMarkAllRead }: {
+  notifications: api.Notification[]; unreadCount: number;
+  onMarkRead: (id: string) => void; onMarkAllRead: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const categoryColors: Record<string, string> = {
+    success: '#00ffc8', error: '#ff4444', warning: '#ffd166', info: '#a78bfa', approval: '#ffd166',
+  };
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="relative w-8 h-8 flex items-center justify-center bg-mc-surface border border-mc-border rounded hover:border-mc-accent/30 transition-colors cursor-pointer"
+      >
+        <span className="text-sm text-mc-dim">&#9678;</span>
+        {unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 w-4 h-4 bg-mc-red rounded-full flex items-center justify-center text-[8px] text-white font-bold">
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-10 w-80 bg-[#0d0d1a] border border-mc-border rounded-lg shadow-2xl overflow-hidden z-50">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-mc-border">
+            <span className="font-mono text-[10px] text-mc-muted tracking-widest uppercase">Notifications</span>
+            {unreadCount > 0 && (
+              <button
+                onClick={() => { onMarkAllRead(); }}
+                className="text-[10px] text-mc-accent bg-transparent border-none cursor-pointer hover:underline"
+              >
+                Mark all read
+              </button>
+            )}
+          </div>
+          <div className="max-h-64 overflow-y-auto">
+            {notifications.slice(0, 10).map((n) => (
+              <div
+                key={n.id}
+                className="px-3 py-2 border-b border-mc-border/50 hover:bg-mc-surface transition-colors cursor-pointer"
+                style={{ opacity: n.is_read ? 0.5 : 1 }}
+                onClick={() => { if (!n.is_read) onMarkRead(n.id); }}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: categoryColors[n.category] || '#888' }} />
+                  <span className="text-[11px] text-gray-200 flex-1 truncate">{n.title}</span>
+                  <span className="font-mono text-[9px] text-mc-dim">
+                    {new Date(n.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                {n.body && <div className="text-[10px] text-mc-dim mt-0.5 truncate pl-3.5">{n.body}</div>}
+              </div>
+            ))}
+            {notifications.length === 0 && (
+              <div className="text-xs text-mc-dim text-center py-6">No notifications</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Activity Heatmap ─────────────────────────────────────
+
+function ActivityHeatmap({ tasks, journal, habits }: {
+  tasks: api.Task[]; journal: api.JournalEntry[]; habits: api.Habit[];
+}) {
+  // Build activity map for last 12 weeks (84 days)
+  const today = new Date();
+  const days: { date: string; count: number; level: number }[] = [];
+
+  for (let i = 83; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().split('T')[0];
+
+    // Count activities on this day
+    let count = 0;
+    count += tasks.filter((t) => t.created_at.startsWith(dateStr)).length;
+    count += journal.filter((j) => j.created_at.startsWith(dateStr)).length;
+
+    const level = count === 0 ? 0 : count <= 2 ? 1 : count <= 5 ? 2 : count <= 10 ? 3 : 4;
+    days.push({ date: dateStr, count, level });
+  }
+
+  const colors = ['#161625', '#00ffc820', '#00ffc850', '#00ffc880', '#00ffc8'];
+
+  return (
+    <div>
+      <div className="flex gap-0.5 flex-wrap" style={{ maxWidth: '100%' }}>
+        {days.map((d) => (
+          <div
+            key={d.date}
+            className="rounded-sm"
+            style={{
+              width: 10, height: 10,
+              background: colors[d.level],
+              border: d.level === 0 ? '1px solid #222' : 'none',
+            }}
+            title={`${d.date}: ${d.count} activities`}
+          />
+        ))}
+      </div>
+      <div className="flex items-center gap-2 mt-2">
+        <span className="font-mono text-[9px] text-mc-dim">Less</span>
+        {colors.map((c, i) => (
+          <div key={i} className="rounded-sm" style={{ width: 8, height: 8, background: c, border: i === 0 ? '1px solid #222' : 'none' }} />
+        ))}
+        <span className="font-mono text-[9px] text-mc-dim">More</span>
+        <span className="font-mono text-[9px] text-mc-dim ml-auto">Last 12 weeks</span>
+      </div>
+    </div>
+  );
+}
+
 // ─── Command Palette ──────────────────────────────────────
 
 function CommandPalette({ open, onClose, onAction }: {
@@ -587,6 +706,8 @@ export default function Dashboard() {
   const [goalsList, setGoals] = useState<api.Goal[]>([]);
   const [journalList, setJournal] = useState<api.JournalEntry[]>([]);
   const [approvalsList, setApprovals] = useState<api.Approval[]>([]);
+  const [notificationsList, setNotifications] = useState<api.Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [healthStatus, setHealth] = useState<api.HealthStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -626,7 +747,7 @@ export default function Dashboard() {
   // Load all data
   const loadData = useCallback(async () => {
     try {
-      const [p, a, t, i, r, h, hab, g, j, ap] = await Promise.all([
+      const [p, a, t, i, r, h, hab, g, j, ap, notifs, unread] = await Promise.all([
         api.projects.list(),
         api.agents.list(),
         api.tasks.list(),
@@ -637,6 +758,8 @@ export default function Dashboard() {
         api.goals.list().catch(() => []),
         api.journal.list().catch(() => []),
         api.approvals.list().catch(() => []),
+        api.notifications.list().catch(() => []),
+        api.notifications.unreadCount().catch(() => ({ unread: 0 })),
       ]);
       setProjects(p);
       setAgents(a);
@@ -648,6 +771,8 @@ export default function Dashboard() {
       setGoals(g);
       setJournal(j);
       setApprovals(ap);
+      setNotifications(notifs);
+      setUnreadCount(unread.unread);
       setError(null);
     } catch (e: any) {
       setError(e.message || 'Failed to connect to backend');
@@ -666,7 +791,8 @@ export default function Dashboard() {
     const ws = api.connectWebSocket((event) => {
       if (event.type.startsWith('agent.') || event.type.startsWith('task.') ||
           event.type.startsWith('idea.') || event.type.startsWith('approval.') ||
-          event.type.startsWith('journal.') || event.type.startsWith('goal.')) {
+          event.type.startsWith('journal.') || event.type.startsWith('goal.') ||
+          event.type.startsWith('notification.')) {
         loadData();
       }
     });
@@ -727,6 +853,9 @@ export default function Dashboard() {
   const handleApprove = async (id: string) => { await api.approvals.approve(id); loadData(); };
   const handleReject = async (id: string) => { await api.approvals.reject(id); loadData(); };
 
+  const markNotifRead = async (id: string) => { await api.notifications.markRead(id); loadData(); };
+  const markAllNotifsRead = async () => { await api.notifications.markAllRead(); loadData(); };
+
   // --- Stats ---
   const runningAgents = agentsList.filter((a) => a.status === 'running').length;
   const activeProjects = projectsList.filter((p) => p.status === 'active').length;
@@ -764,6 +893,10 @@ export default function Dashboard() {
             <span className="text-[11px] font-mono">Search...</span>
             <kbd className="text-[9px] border border-mc-border rounded px-1 py-0.5">⌘K</kbd>
           </button>
+          <NotificationBell
+            notifications={notificationsList} unreadCount={unreadCount}
+            onMarkRead={markNotifRead} onMarkAllRead={markAllNotifsRead}
+          />
           {error && <span className="font-mono text-[11px] text-mc-red">{error}</span>}
         </div>
 
@@ -854,6 +987,12 @@ export default function Dashboard() {
               onAdd={addReading} showInput={showReadingInput} setShowInput={setShowReadingInput} onDelete={deleteReading}
             />
           </div>
+        </div>
+
+        {/* Activity Heatmap - full width */}
+        <div className="lg:col-span-3">
+          <SectionHeader icon="▦" title="Activity" count={tasksList.length + journalList.length} />
+          <ActivityHeatmap tasks={tasksList} journal={journalList} habits={habitsList} />
         </div>
 
         {/* Agent Cost Summary - full width */}

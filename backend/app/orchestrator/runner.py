@@ -282,6 +282,34 @@ class AgentRunner:
                 "summary": result.get("summary", ""),
             })
 
+            # Create notification
+            try:
+                from app.api.notifications import create_notification
+                summary = result.get("summary", "Run completed")
+                category = "approval" if requires_approval and actions else "success"
+                await create_notification(
+                    db, title=f"{agent.name} completed",
+                    body=summary[:200], category=category,
+                    source=f"agent:{agent.slug}",
+                )
+            except Exception:
+                pass  # notifications are best-effort
+
+            # Agent chaining: if this agent has a "chain_to" config, trigger the next agent
+            chain_to = agent.config.get("chain_to") if agent.config else None
+            if chain_to:
+                try:
+                    from sqlalchemy import select as sa_select
+                    chain_result = await db.execute(
+                        sa_select(AgentConfig).where(AgentConfig.slug == chain_to)
+                    )
+                    next_agent = chain_result.scalar_one_or_none()
+                    if next_agent and next_agent.status != AgentStatus.RUNNING:
+                        logger.info(f"Chaining: {agent.name} -> {next_agent.name}")
+                        asyncio.create_task(self._chain_run(next_agent.id, result, trigger))
+                except Exception as chain_err:
+                    logger.warning(f"Agent chaining failed: {chain_err}")
+
         except Exception as e:
             run.status = AgentRunStatus.FAILED
             run.error = str(e)
@@ -294,6 +322,17 @@ class AgentRunner:
                 "run_id": str(run.id),
                 "error": str(e),
             })
+
+            # Notification for failures
+            try:
+                from app.api.notifications import create_notification
+                await create_notification(
+                    db, title=f"{agent.name} failed",
+                    body=str(e)[:200], category="error",
+                    source=f"agent:{agent.slug}",
+                )
+            except Exception:
+                pass
 
         await db.flush()
 
@@ -309,6 +348,20 @@ class AgentRunner:
         await db.flush()
 
         return run
+
+    async def _chain_run(self, next_agent_id, previous_result: dict, trigger: str):
+        """Run the next agent in a chain, passing previous output as context."""
+        from app.db.session import async_session
+        async with async_session() as db:
+            next_agent = await db.get(AgentConfig, next_agent_id)
+            if not next_agent or next_agent.status == AgentStatus.RUNNING:
+                return
+            # Inject previous result into the agent's context
+            if next_agent.config is None:
+                next_agent.config = {}
+            next_agent.config["_chain_input"] = previous_result
+            await self.start_run(next_agent, trigger=f"chain:{trigger}", db=db)
+            await db.commit()
 
     async def _process_actions(self, actions: list, agent: AgentConfig, db: AsyncSession):
         """Process structured actions from agent output and write to DB."""

@@ -41,12 +41,12 @@ _Make what exists rock-solid and easy to set up._
 - [ ] Alembic migration pipeline (currently uses auto-create on startup)
 - [ ] Seed data with example projects, tasks, and ideas for new users
 - [ ] Database backup/restore commands (`mc backup`, `mc restore`)
-- [ ] Data export to JSON/CSV for portability
+- [x] Data export to JSON/CSV for portability
 
 ### 1.3 Testing & Reliability
 - [ ] Backend test suite (pytest) with CI pipeline
 - [ ] Dashboard test suite (Vitest + React Testing Library)
-- [ ] Agent dry-run mode (preview actions without executing)
+- [x] Agent dry-run mode (preview actions without executing)
 - [ ] Health check improvements: detailed diagnostics per component
 - [ ] Graceful error handling for all LLM provider failures
 
@@ -66,12 +66,12 @@ _Make agents smarter and the system more context-aware._
 ### 2.1 Semantic Search & Memory
 - [ ] pgvector embeddings on tasks, ideas, and reading items
 - [x] Semantic search API (`/api/search?q=...`) across all entities
-- [ ] Dashboard search bar with instant results
+- [x] Dashboard search bar with instant results
 - [ ] Agent memory — long-term context that persists across runs
 - [ ] Deduplication: detect near-duplicate tasks and ideas before creating them
 
 ### 2.2 Smarter Agents
-- [ ] Agent chaining — output of one agent feeds into another
+- [x] Agent chaining — output of one agent feeds into another
 - [ ] Conditional triggers — run agent when specific DB conditions are met
 - [ ] Agent-to-agent communication via shared context
 - [ ] Multi-step agent workflows (DAGs) with dependency resolution
@@ -148,8 +148,8 @@ _Transform the dashboard from a status board into a powerful daily driver._
 - [ ] Kanban board view for tasks (by status columns)
 - [ ] Calendar view for tasks with due dates
 - [ ] Timeline/Gantt view for project planning
-- [ ] Agent cost dashboard — spending per agent, per day, cumulative
-- [ ] Activity heatmap (GitHub-style contribution graph)
+- [x] Agent cost dashboard — spending per agent, per day, cumulative
+- [x] Activity heatmap (GitHub-style contribution graph)
 - [ ] Project dashboards — dedicated view per project with all related items
 
 ### 4.3 Interactivity
@@ -157,10 +157,10 @@ _Transform the dashboard from a status board into a powerful daily driver._
 - [ ] Bulk actions — select multiple tasks, bulk update status/priority
 - [ ] Quick capture — global keyboard shortcut to add task/idea/reading
 - [ ] Filters and saved views (e.g., "Critical tasks this week")
-- [ ] Command palette (Cmd+K) for fast navigation and actions
+- [x] Command palette (Cmd+K) for fast navigation and actions
 
 ### 4.4 Notifications & Alerts
-- [ ] In-app notification center for agent completions and alerts
+- [x] In-app notification center for agent completions and alerts
 - [ ] Browser push notifications for critical events
 - [ ] Daily digest email (optional)
 - [ ] Customizable alert rules (e.g., "notify me when any critical task is created")
@@ -190,15 +190,15 @@ _Connect Mission Control to the tools people already use._
 - [ ] Zapier/Make webhook endpoint for connecting anything
 
 ### 5.3 Webhook System
-- [ ] Inbound webhooks — generic endpoint that agents can process
-- [ ] Outbound webhooks — notify external services on events
+- [x] Inbound webhooks — generic endpoint that agents can process
+- [x] Outbound webhooks — notify external services on events
 - [ ] Webhook templates for common services
-- [ ] Webhook log with replay capability
+- [x] Webhook log with replay capability
 
 ### 5.4 API & Developer Platform
 - [ ] Public REST API with API key authentication
 - [ ] API rate limiting and usage tracking
-- [ ] OpenAPI/Swagger documentation auto-generated
+- [x] OpenAPI/Swagger documentation auto-generated
 - [ ] SDK packages (Python, TypeScript) for programmatic access
 - [ ] Plugin system — community-contributed agents and integrations
 

@@ -264,6 +264,34 @@ export const search = {
     request<SearchResponse>(`/api/search?q=${encodeURIComponent(q)}&entity_types=${entityTypes}&limit=${limit}`),
 };
 
+// --- Notifications ---
+
+export interface Notification {
+  id: string;
+  title: string;
+  body: string;
+  category: 'info' | 'success' | 'warning' | 'error' | 'approval';
+  source: string;
+  is_read: boolean;
+  action_url?: string;
+  created_at: string;
+}
+
+export const notifications = {
+  list: (unreadOnly = false, limit = 50) =>
+    request<Notification[]>(`/api/notifications?unread_only=${unreadOnly}&limit=${limit}`),
+  unreadCount: () => request<{ unread: number }>('/api/notifications/count'),
+  markRead: (id: string) => request<{ read: boolean }>(`/api/notifications/${id}/read`, { method: 'POST' }),
+  markAllRead: () => request<{ read_all: boolean }>('/api/notifications/read-all', { method: 'POST' }),
+};
+
+// --- Export ---
+
+export const dataExport = {
+  jsonUrl: (entities = 'all') => `${API_BASE}/api/export/json?entities=${entities}`,
+  csvUrl: (entityType: string) => `${API_BASE}/api/export/csv/${entityType}`,
+};
+
 // --- Health ---
 
 export interface HealthStatus {
