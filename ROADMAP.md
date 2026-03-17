@@ -6,23 +6,47 @@
 
 ---
 
-## Current State (v0.2)
+## Current State (v0.3)
 
 What's already built:
 
 - **Core data model** — Projects, tasks, ideas, reading list with full CRUD
 - **Agent system** — YAML-defined skills, scheduled execution, Claude Agent SDK
-- **8 agents** — Reddit Scout, Idea Validator, Weekly Prioritizer, Feedback Collector, Daily Check-in, Goal Decomposer, Evening Reflection, Weekly Review
-- **Dashboard** — Real-time Next.js UI with WebSocket updates, 3-column layout
-- **Telegram bot** — Natural language chat + structured commands
-- **MCP server** — Claude Code integration via Model Context Protocol
+- **9 agents** — Reddit Scout, Idea Validator, Weekly Prioritizer, Feedback Collector, Daily Check-in, Goal Decomposer, Evening Reflection, Weekly Review + template
+- **Dashboard** — Light-theme Radix UI dashboard with cards, tooltips, popovers, progress bars, activity heatmap
+- **Telegram bot** — 11 commands + natural language chat with LLM
+- **MCP server** — 17 tools for Claude Code integration
 - **Multi-auth** — API key, OAuth, OpenRouter, Ollama support
 - **Event log** — Full audit trail of every system action
 - **Habits system** — Track daily/weekly habits with streak tracking
-- **Goals & OKRs** — Goals with measurable key results and progress bars
+- **Goals & OKRs** — Goals with measurable key results and Radix progress bars
 - **Journal** — Daily entries with mood, energy, wins, challenges, gratitude
 - **Agent approval queue** — Human-in-the-loop review before agent actions execute
-- **Cross-entity search** — Search across all data types from one endpoint
+- **Agent chaining** — Output of one agent feeds into the next via `chain_to`
+- **Agent dry-run** — Preview actions without executing
+- **Cross-entity search** — Search across all 7 data types + command palette (Cmd+K)
+- **Webhook system** — Inbound (HMAC-verified) + outbound event dispatch + logs
+- **Data export** — JSON (all entities) and CSV (per entity) downloads
+- **Notification center** — In-app bell with unread count, mark read/all
+- **Activity heatmap** — GitHub-style 12-week contribution graph with tooltips
+- **Agent cost tracking** — Per-agent spending dashboard
+
+---
+
+## Progress Summary
+
+| Phase | Done | Total | Progress |
+|-------|------|-------|----------|
+| 1. Foundation Hardening | 3 | 15 | 20% |
+| 2. Intelligence Layer | 3 | 13 | 23% |
+| 3. Personal Productivity | 9 | 23 | 39% |
+| 4. Dashboard 2.0 | 6 | 18 | 33% |
+| 5. Integrations | 4 | 18 | 22% |
+| 6. Multi-Agent Intelligence | 0 | 16 | 0% |
+| 7. Privacy & Scale | 0 | 16 | 0% |
+| 8. Mobile & Desktop | 0 | 10 | 0% |
+| 9. Community | 0 | 16 | 0% |
+| **Total** | **25** | **145** | **17%** |
 
 ---
 
@@ -101,7 +125,7 @@ _Go beyond task management into a full life operating system._
 - [x] Key results with measurable targets and progress tracking
 - [x] Goal decomposition agent — breaks goals into actionable tasks
 - [x] Weekly/monthly goal review agent with progress reports
-- [ ] Goal visualization on dashboard (progress bars, burndown charts)
+- [x] Goal visualization on dashboard (progress bars via Radix UI)
 
 ### 3.3 Journal & Reflection
 - [x] Journal entries table — daily notes, reflections, wins
@@ -138,6 +162,8 @@ _Go beyond task management into a full life operating system._
 _Transform the dashboard from a status board into a powerful daily driver._
 
 ### 4.1 Core UX
+- [x] Radix UI component library with clean light theme
+- [x] Lucide icons throughout (replacing unicode)
 - [ ] Multi-page layout: Dashboard, Projects, Agents, Journal, Settings
 - [ ] Mobile-responsive design (usable on phone)
 - [ ] Dark mode / light mode toggle
@@ -307,6 +333,42 @@ _Build a community around personal AI productivity._
 
 ---
 
+## Recommended Next Sprint
+
+_High-impact features to tackle next, prioritized by user value and feasibility._
+
+### Sprint 5: Polish & Power User Features (Recommended)
+
+These are the highest-leverage items that build on what we have:
+
+1. **Inline task editing** — click to edit text, priority, tags, due dates directly in the dashboard (Phase 4.3)
+2. **Filters and saved views** — filter tasks by status/priority/project, persist view preferences (Phase 4.3)
+3. **Habit analytics** — streak charts, completion rates, weekly trends (Phase 3.1)
+4. **Mobile-responsive design** — make the dashboard usable on phone (Phase 4.1)
+5. **Dark mode toggle** — persist user theme preference (Phase 4.1)
+
+### Sprint 6: Intelligence Boost
+
+These make the agent system meaningfully smarter:
+
+1. **pgvector embeddings** — semantic search instead of ILIKE (Phase 2.1)
+2. **Auto-tagging** — LLM classifies new tasks and ideas automatically (Phase 2.3)
+3. **Conditional triggers** — run agents when DB conditions are met, not just on schedule (Phase 2.2)
+4. **Agent memory** — persistent context across runs so agents remember past decisions (Phase 2.1)
+5. **Agent performance analytics** — track success rates and cost efficiency (Phase 6.3)
+
+### Sprint 7: Integrations & Reach
+
+These connect Mission Control to the outside world:
+
+1. **GitHub integration** — sync issues/PRs, auto-create tasks (Phase 5.2)
+2. **RSS feed ingestion** — auto-populate reading list from subscriptions (Phase 3.5)
+3. **Notes table** — long-form markdown content with full CRUD (Phase 3.5)
+4. **API key authentication** — secure public API access (Phase 5.4)
+5. **Slack or Discord bot** — another input channel beyond Telegram (Phase 5.1)
+
+---
+
 ## Contribution Guide
 
 Want to help build the future of personal AI productivity?
@@ -338,4 +400,4 @@ These principles guide every decision:
 
 ---
 
-*Last updated: 2026-03-17*
+*Last updated: 2026-03-17 · v0.3*
