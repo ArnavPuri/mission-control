@@ -462,3 +462,86 @@ async def test_delete_content(client: AsyncClient):
     assert resp.status_code == 200
     listing = await client.get("/api/mkt-content")
     assert len(listing.json()) == 0
+
+
+# ─── Agent CRUD ──────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_create_agent(client):
+    resp = await client.post("/api/agents", json={
+        "name": "Test Agent",
+        "description": "A test agent",
+        "agent_type": "marketing",
+        "model": "claude-haiku-4-5",
+        "prompt_template": "You are a test agent. {{projects}}",
+        "tools": ["web_search"],
+        "data_reads": ["projects"],
+        "data_writes": ["tasks"],
+        "max_budget_usd": 0.15,
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["name"] == "Test Agent"
+    assert data["slug"] == "test-agent"
+    assert data["skill_file"] is None
+    assert "id" in data
+
+
+@pytest.mark.asyncio
+async def test_create_agent_duplicate_name(client):
+    await client.post("/api/agents", json={
+        "name": "Unique Agent", "agent_type": "ops",
+        "prompt_template": "test", "model": "claude-haiku-4-5",
+    })
+    resp = await client.post("/api/agents", json={
+        "name": "Unique Agent", "agent_type": "ops",
+        "prompt_template": "test2", "model": "claude-haiku-4-5",
+    })
+    assert resp.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_get_agent_detail(client):
+    create = await client.post("/api/agents", json={
+        "name": "Detail Agent", "agent_type": "research",
+        "prompt_template": "Hello {{tasks}}", "model": "claude-haiku-4-5",
+        "data_reads": ["tasks"], "tools": ["web_search"],
+    })
+    agent_id = create.json()["id"]
+    resp = await client.get(f"/api/agents/{agent_id}")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["prompt_template"] == "Hello {{tasks}}"
+    assert data["tools"] == ["web_search"]
+    assert data["data_reads"] == ["tasks"]
+
+
+@pytest.mark.asyncio
+async def test_update_agent(client):
+    create = await client.post("/api/agents", json={
+        "name": "Update Me", "agent_type": "ops",
+        "prompt_template": "original", "model": "claude-haiku-4-5",
+    })
+    agent_id = create.json()["id"]
+    resp = await client.patch(f"/api/agents/{agent_id}", json={
+        "description": "Updated desc",
+        "model": "claude-sonnet-4-6",
+    })
+    assert resp.status_code == 200
+    assert resp.json()["description"] == "Updated desc"
+    assert resp.json()["model"] == "claude-sonnet-4-6"
+
+
+@pytest.mark.asyncio
+async def test_delete_agent_soft(client):
+    create = await client.post("/api/agents", json={
+        "name": "Delete Me", "agent_type": "ops",
+        "prompt_template": "test", "model": "claude-haiku-4-5",
+    })
+    agent_id = create.json()["id"]
+    resp = await client.delete(f"/api/agents/{agent_id}")
+    assert resp.status_code == 200
+    assert resp.json()["disabled"] == True
+    # Agent still exists but is disabled
+    detail = await client.get(f"/api/agents/{agent_id}")
+    assert detail.json()["status"] == "disabled"
