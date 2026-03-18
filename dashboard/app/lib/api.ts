@@ -34,11 +34,30 @@ export interface Project {
   created_at: string;
 }
 
+export interface ProjectHealth {
+  project_id: string;
+  project_name: string;
+  score: number;
+  status: 'healthy' | 'needs_attention' | 'at_risk';
+  metrics: {
+    total_tasks: number;
+    done_tasks: number;
+    overdue_tasks: number;
+    blocked_tasks: number;
+    completion_rate: number;
+    weekly_velocity: number;
+    active_goals: number;
+    avg_goal_progress: number;
+    monthly_activity: number;
+  };
+}
+
 export const projects = {
   list: () => request<Project[]>('/api/projects'),
   create: (data: Partial<Project>) => request<{ id: string }>('/api/projects', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: string, data: Partial<Project>) => request<{ updated: boolean }>(`/api/projects/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (id: string) => request<{ deleted: boolean }>(`/api/projects/${id}`, { method: 'DELETE' }),
+  health: (id: string) => request<ProjectHealth>(`/api/projects/${id}/health`),
 };
 
 // --- Tasks ---

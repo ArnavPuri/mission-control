@@ -146,6 +146,42 @@ function StatusIndicator({ status }: { status: string }) {
 
 // ─── Panels ──────────────────────────────────────────────
 
+function HealthBadge({ projectId }: { projectId: string }) {
+  const [health, setHealth] = useState<api.ProjectHealth | null>(null);
+  useEffect(() => {
+    api.projects.health(projectId).then(setHealth).catch(() => {});
+  }, [projectId]);
+  if (!health) return null;
+  const colors: Record<string, string> = {
+    healthy: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
+    needs_attention: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400',
+    at_risk: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400',
+  };
+  return (
+    <Tooltip.Provider>
+      <Tooltip.Root>
+        <Tooltip.Trigger asChild>
+          <span className={clsx('inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold tabular-nums', colors[health.status])}>
+            {health.score}
+          </span>
+        </Tooltip.Trigger>
+        <Tooltip.Portal>
+          <Tooltip.Content
+            className="bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-[11px] px-3 py-2 rounded-lg shadow-lg max-w-[200px] z-50"
+            sideOffset={5}
+          >
+            <div className="font-medium mb-1">{health.status.replace('_', ' ')}</div>
+            <div>Done: {health.metrics.completion_rate}%</div>
+            <div>Velocity: {health.metrics.weekly_velocity}/wk</div>
+            {health.metrics.overdue_tasks > 0 && <div className="text-red-300 dark:text-red-600">Overdue: {health.metrics.overdue_tasks}</div>}
+            <Tooltip.Arrow className="fill-gray-900 dark:fill-gray-100" />
+          </Tooltip.Content>
+        </Tooltip.Portal>
+      </Tooltip.Root>
+    </Tooltip.Provider>
+  );
+}
+
 function ProjectsPanel({ projects }: { projects: api.Project[] }) {
   if (projects.length === 0) return <EmptyState icon={FolderOpen} message="No projects yet" />;
   return (
@@ -159,6 +195,7 @@ function ProjectsPanel({ projects }: { projects: api.Project[] }) {
           <div className="flex items-center gap-2 mb-1.5">
             <StatusIndicator status={p.status} />
             <span className="text-sm font-semibold text-mc-text dark:text-gray-100 truncate">{p.name}</span>
+            <HealthBadge projectId={p.id} />
           </div>
           <p className="text-xs text-mc-muted dark:text-gray-500 leading-relaxed truncate mb-3">{p.description}</p>
           <div className="flex items-center gap-2">
@@ -1216,6 +1253,108 @@ function StatCard({ label, value, accent }: { label: string; value: string | num
   );
 }
 
+// ─── Quick Capture ───────────────────────────────────────
+
+const CAPTURE_PREFIXES: Record<string, { label: string; Icon: React.ElementType }> = {
+  't:': { label: 'Task', Icon: ListTodo },
+  'i:': { label: 'Idea', Icon: Lightbulb },
+  'r:': { label: 'Reading', Icon: BookOpen },
+  'n:': { label: 'Note', Icon: FileText },
+  'h:': { label: 'Habit', Icon: Flame },
+  'g:': { label: 'Goal', Icon: Target },
+  'j:': { label: 'Journal', Icon: PenLine },
+};
+
+function QuickCapture({ open, onClose, onCapture }: {
+  open: boolean;
+  onClose: () => void;
+  onCapture: (type: string, text: string) => Promise<void>;
+}) {
+  const [input, setInput] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [lastCapture, setLastCapture] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) { setInput(''); setLastCapture(null); setTimeout(() => inputRef.current?.focus(), 50); }
+  }, [open]);
+
+  // Detect type from prefix
+  const detectedPrefix = Object.keys(CAPTURE_PREFIXES).find((p) => input.toLowerCase().startsWith(p));
+  const detected = detectedPrefix ? CAPTURE_PREFIXES[detectedPrefix] : null;
+  const cleanText = detected ? input.slice(detectedPrefix!.length).trim() : input.trim();
+
+  const handleSubmit = async () => {
+    if (!cleanText) return;
+    setSubmitting(true);
+    try {
+      const type = detected ? detectedPrefix!.charAt(0) : 't'; // default to task
+      await onCapture(type, cleanText);
+      const label = detected?.label || 'Task';
+      setLastCapture(`${label} added: ${cleanText.slice(0, 50)}`);
+      setInput('');
+      setTimeout(() => inputRef.current?.focus(), 50);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog.Root open={open} onOpenChange={(v) => !v && onClose()}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 bg-black/20 dark:bg-black/50 backdrop-blur-sm z-50" />
+        <Dialog.Content className="fixed top-[18vh] left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-lg bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-700 rounded-xl shadow-dropdown overflow-hidden z-50">
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-mc-border dark:border-gray-800">
+            <Zap size={16} className="text-mc-accent" />
+            <input
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Quick capture — type t: i: r: n: h: g: j: or just text..."
+              className="flex-1 bg-transparent text-sm text-mc-text dark:text-gray-200 outline-none placeholder:text-mc-dim"
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') onClose();
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); }
+              }}
+            />
+            {submitting && <Loader2 size={14} className="text-mc-dim animate-spin" />}
+            <kbd className="text-[11px] text-mc-dim border border-mc-border dark:border-gray-700 rounded px-1.5 py-0.5 font-mono">c</kbd>
+          </div>
+          <div className="px-4 py-3">
+            {detected ? (
+              <div className="flex items-center gap-2 text-xs text-mc-muted dark:text-gray-400">
+                <detected.Icon size={13} />
+                <span>Creating <strong className="text-mc-text dark:text-gray-200">{detected.label}</strong></span>
+                {cleanText && <span className="text-mc-dim ml-auto">Enter to save</span>}
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2 text-[11px] text-mc-dim">
+                {Object.entries(CAPTURE_PREFIXES).map(([prefix, { label, Icon }]) => (
+                  <button
+                    key={prefix}
+                    onClick={() => { setInput(prefix + ' '); inputRef.current?.focus(); }}
+                    className="flex items-center gap-1 px-2 py-1 rounded-md bg-mc-subtle dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer border-none"
+                  >
+                    <Icon size={11} />
+                    <span>{prefix}</span>
+                    <span className="text-mc-muted">{label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {lastCapture && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400">
+                <Check size={13} />
+                <span>{lastCapture}</span>
+              </div>
+            )}
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
 // ─── Main Dashboard ──────────────────────────────────────
 
 export default function Dashboard() {
@@ -1247,6 +1386,7 @@ export default function Dashboard() {
   const [showJournalInput, setShowJournalInput] = useState(false);
   const [showNoteInput, setShowNoteInput] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [showQuickCapture, setShowQuickCapture] = useState(false);
 
   const router = useRouter();
 
@@ -1296,6 +1436,7 @@ export default function Dashboard() {
       }
 
       // Single-key shortcuts
+      if (e.key === 'c') { e.preventDefault(); setShowQuickCapture(true); return; }
       if (e.key === '?') setShowCommandPalette(true);
     };
     window.addEventListener('keydown', handler);
@@ -1392,6 +1533,20 @@ export default function Dashboard() {
   const deleteJournal = async (id: string) => { await api.journal.delete(id); loadData(); };
   const addNote = async (title: string) => { await api.notes.create({ title }); setShowNoteInput(false); loadData(); };
   const deleteNote = async (id: string) => { await api.notes.delete(id); loadData(); };
+
+  const handleQuickCapture = async (type: string, text: string) => {
+    const handlers: Record<string, (text: string) => Promise<void>> = {
+      t: async (t) => { await api.tasks.create({ text: t }); },
+      i: async (t) => { await api.ideas.create({ text: t }); },
+      r: async (t) => { const isUrl = t.startsWith('http'); await api.reading.create({ title: t, url: isUrl ? t : undefined }); },
+      n: async (t) => { await api.notes.create({ title: t }); },
+      h: async (t) => { await api.habits.create({ name: t }); },
+      g: async (t) => { await api.goals.create({ title: t }); },
+      j: async (t) => { await api.journal.create({ content: t }); },
+    };
+    await (handlers[type] || handlers.t)(text);
+    loadData();
+  };
   const toggleNotePin = async (id: string) => {
     const note = notesList.find((n) => n.id === id); if (!note) return;
     await api.notes.update(id, { is_pinned: !note.is_pinned }); loadData();
@@ -1546,6 +1701,7 @@ export default function Dashboard() {
         </main>
 
         <CommandPalette open={showCommandPalette} onClose={() => setShowCommandPalette(false)} onAction={handleCommandAction} />
+        <QuickCapture open={showQuickCapture} onClose={() => setShowQuickCapture(false)} onCapture={handleQuickCapture} />
       </div>
     </Tooltip.Provider>
   );

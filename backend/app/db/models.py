@@ -637,6 +637,25 @@ class MarketingContent(Base):
     )
 
 
+# ---------- Chat Sessions ----------
+
+class ChatSession(Base):
+    """Persistent chat session for bot conversations."""
+    __tablename__ = "chat_sessions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String(100), nullable=False)  # platform-specific user ID
+    platform = Column(String(50), nullable=False, default="telegram")  # telegram, discord, etc.
+    messages = Column(JSON, default=list)  # list of {role, content, timestamp}
+    last_active = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("idx_chat_sessions_user", "user_id", "platform", unique=True),
+        Index("idx_chat_sessions_active", "last_active"),
+    )
+
+
 # Optional: Embedding column on existing models (only if pgvector is installed)
 # These are added dynamically to avoid hard dependency on pgvector
 if HAS_PGVECTOR and Vector is not None:

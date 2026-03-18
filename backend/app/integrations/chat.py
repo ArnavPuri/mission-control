@@ -108,50 +108,109 @@ CHAT_TOOLS = [
 ]
 
 
-# --- Session Store ---
+# --- Session Store (DB-backed with in-memory cache) ---
 
 class SessionStore:
-    """In-memory session storage for chat conversations, keyed by Telegram user ID."""
+    """Chat session storage backed by the database with in-memory cache.
+
+    Sessions are loaded from DB on first access and written back after changes.
+    Survives backend restarts unlike the previous in-memory-only approach.
+    """
 
     def __init__(self, timeout_minutes: int = 30, max_messages: int = 20):
         self.timeout_minutes = timeout_minutes
         self.max_messages = max_messages
-        self._sessions: dict[int, list[dict]] = {}
+        self._cache: dict[str, list[dict]] = {}
 
-    def add(self, user_id: int, role: str, content: str):
-        """Add a message to the user's session."""
-        if user_id not in self._sessions:
-            self._sessions[user_id] = []
+    def _key(self, user_id: int, platform: str = "telegram") -> str:
+        return f"{platform}:{user_id}"
 
-        self._sessions[user_id].append({
+    async def load(self, user_id: int, platform: str = "telegram"):
+        """Load session from DB into cache if not already loaded."""
+        key = self._key(user_id, platform)
+        if key in self._cache:
+            return
+
+        from app.db.session import async_session
+        from app.db.models import ChatSession
+        async with async_session() as db:
+            result = await db.execute(
+                select(ChatSession).where(
+                    ChatSession.user_id == str(user_id),
+                    ChatSession.platform == platform,
+                )
+            )
+            session = result.scalar_one_or_none()
+            if session and session.messages:
+                self._cache[key] = session.messages
+            else:
+                self._cache[key] = []
+
+    async def add(self, user_id: int, role: str, content: str, platform: str = "telegram"):
+        """Add a message and persist to DB."""
+        await self.load(user_id, platform)
+        key = self._key(user_id, platform)
+
+        self._cache[key].append({
             "role": role,
             "content": content,
             "timestamp": time.time(),
         })
 
-    def get(self, user_id: int) -> list[dict]:
-        """Get active session messages, pruning expired ones."""
-        if user_id not in self._sessions:
-            return []
+        # Prune and save
+        self._prune(key)
+        await self._save(user_id, platform)
 
+    def _prune(self, key: str):
+        """Remove expired messages and enforce max count."""
         cutoff = time.time() - (self.timeout_minutes * 60)
-        # Prune old messages
-        self._sessions[user_id] = [
-            msg for msg in self._sessions[user_id]
+        self._cache[key] = [
+            msg for msg in self._cache[key]
             if msg["timestamp"] > cutoff
         ]
+        if len(self._cache[key]) > self.max_messages:
+            self._cache[key] = self._cache[key][-self.max_messages:]
 
-        # Cap at max messages (keep most recent)
-        if len(self._sessions[user_id]) > self.max_messages:
-            self._sessions[user_id] = self._sessions[user_id][-self.max_messages:]
+    async def _save(self, user_id: int, platform: str = "telegram"):
+        """Persist current session to database."""
+        key = self._key(user_id, platform)
+        messages = self._cache.get(key, [])
 
-        return self._sessions[user_id]
+        from app.db.session import async_session
+        from app.db.models import ChatSession
+        from datetime import datetime, timezone as tz
+        async with async_session() as db:
+            result = await db.execute(
+                select(ChatSession).where(
+                    ChatSession.user_id == str(user_id),
+                    ChatSession.platform == platform,
+                )
+            )
+            session = result.scalar_one_or_none()
+            if session:
+                session.messages = messages
+                session.last_active = datetime.now(tz.utc)
+            else:
+                db.add(ChatSession(
+                    user_id=str(user_id),
+                    platform=platform,
+                    messages=messages,
+                ))
+            await db.commit()
 
-    def get_api_messages(self, user_id: int) -> list[dict]:
+    async def get(self, user_id: int, platform: str = "telegram") -> list[dict]:
+        """Get active session messages."""
+        await self.load(user_id, platform)
+        key = self._key(user_id, platform)
+        self._prune(key)
+        return self._cache.get(key, [])
+
+    async def get_api_messages(self, user_id: int, platform: str = "telegram") -> list[dict]:
         """Get messages formatted for the Anthropic Messages API."""
+        messages = await self.get(user_id, platform)
         return [
             {"role": msg["role"], "content": msg["content"]}
-            for msg in self.get(user_id)
+            for msg in messages
         ]
 
 
@@ -443,14 +502,14 @@ async def handle_chat(user_id: int, user_message: str, db: AsyncSession) -> list
     Falls back to the Agent SDK (plain text, no tools) for OAuth auth.
     """
     # Add user message to session
-    session_store.add(user_id, "user", user_message)
+    await session_store.add(user_id, "user", user_message)
 
     # Build context
     db_context = await build_db_context(db)
     system_prompt = build_system_prompt(db_context)
 
     # Get conversation history
-    messages = session_store.get_api_messages(user_id)
+    messages = await session_store.get_api_messages(user_id)
 
     # Choose execution path based on available auth
     if settings.anthropic_api_key:
@@ -460,7 +519,7 @@ async def handle_chat(user_id: int, user_message: str, db: AsyncSession) -> list
         reply_text = await call_anthropic_via_sdk(messages, system_prompt)
 
     # Store assistant reply in session
-    session_store.add(user_id, "assistant", reply_text)
+    await session_store.add(user_id, "assistant", reply_text)
 
     return split_message(reply_text)
 

@@ -20,6 +20,7 @@ import asyncio
 import json
 import os
 import logging
+import random
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -34,6 +35,7 @@ from app.db.models import (
     AgentMemory,
 )
 from app.api.ws import broadcast
+from app.orchestrator.schemas import validate_agent_output
 
 logger = logging.getLogger(__name__)
 
@@ -277,8 +279,10 @@ class AgentRunner:
             return {"summary": text, "actions": [], "raw": True}
 
     async def _execute_llm(self, prompt: str, agent: AgentConfig) -> dict:
-        """Execute LLM call with provider fallback and timeout enforcement."""
+        """Execute LLM call with provider fallback, retry, and timeout enforcement."""
         timeout_seconds = (agent.config or {}).get("timeout_seconds", 300)
+        max_retries = 3
+        base_delay = 2.0
 
         async def _run():
             provider = settings.llm_provider
@@ -291,13 +295,30 @@ class AgentRunner:
             else:
                 return await self.execute_with_anthropic_api(prompt, agent)
 
-        try:
-            return await asyncio.wait_for(_run(), timeout=timeout_seconds)
-        except asyncio.TimeoutError:
-            raise TimeoutError(
-                f"Agent {agent.name} timed out after {timeout_seconds}s. "
-                f"Increase timeout_seconds in agent config if needed."
-            )
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                return await asyncio.wait_for(_run(), timeout=timeout_seconds)
+            except asyncio.TimeoutError:
+                raise TimeoutError(
+                    f"Agent {agent.name} timed out after {timeout_seconds}s. "
+                    f"Increase timeout_seconds in agent config if needed."
+                )
+            except RuntimeError as e:
+                err_msg = str(e)
+                # Retry on rate limits and server errors
+                if any(keyword in err_msg for keyword in ["rate limit", "overloaded", "HTTP 5", "HTTP 429"]):
+                    last_error = e
+                    delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                    logger.warning(
+                        f"Agent {agent.name} attempt {attempt + 1}/{max_retries} failed: {err_msg}. "
+                        f"Retrying in {delay:.1f}s..."
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    raise
+
+        raise last_error or RuntimeError(f"Agent {agent.name} failed after {max_retries} retries")
 
     async def start_run(self, agent: AgentConfig, trigger: str, db: AsyncSession) -> AgentRun:
         """Start an agent run - creates log entry, executes, writes results."""
@@ -317,8 +338,16 @@ class AgentRunner:
             prompt = self.render_prompt(agent.prompt_template, context)
             run.input_data = {"prompt_length": len(prompt), "context_keys": list(context.keys())}
 
-            # Execute with timeout enforcement
+            # Execute with timeout enforcement and retry
             result = await self._execute_llm(prompt, agent)
+
+            # Validate output
+            validated, validation_warnings = validate_agent_output(result)
+            if validation_warnings:
+                logger.warning(
+                    f"Agent {agent.name} output validation warnings: {validation_warnings}"
+                )
+                result["_validation_warnings"] = validation_warnings
 
             # Update run
             run.status = AgentRunStatus.COMPLETED
@@ -327,9 +356,9 @@ class AgentRunner:
             agent.status = AgentStatus.IDLE
             agent.last_run_at = datetime.now(timezone.utc)
 
-            # Check if agent requires approval
+            # Check if agent requires approval — use validated actions
             requires_approval = agent.config.get("requires_approval", False) if agent.config else False
-            actions = result.get("actions", [])
+            actions = [a.model_dump(exclude_none=True) for a in validated.actions]
 
             if requires_approval and actions:
                 # Queue for approval instead of executing immediately
