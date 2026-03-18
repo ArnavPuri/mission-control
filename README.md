@@ -24,7 +24,7 @@ Mission Control is an open-source personal productivity system powered by AI age
 ### What's included (v0.3)
 
 - **19 database tables** — Projects, tasks, ideas, reading list, habits, goals, journal, notes, and more
-- **9 AI agents** — Reddit Scout, Idea Validator, Weekly Prioritizer, Daily Check-in, Goal Decomposer, Evening Reflection, Weekly Review, and more
+- **10 AI agents** — Daily Standup, Reddit Scout, Idea Validator, Weekly Prioritizer, Daily Check-in, Goal Decomposer, Evening Reflection, Weekly Review, and more
 - **5-page dashboard** — Dashboard, Projects, Agents, Journal, Settings with Kanban board, bulk actions, keyboard shortcuts
 - **4 input channels** — Telegram bot (11 commands + chat), Discord bot, MCP server (17 tools), REST API
 - **Multi-auth** — Anthropic API, OAuth, OpenRouter, Ollama (fully local)
@@ -34,7 +34,7 @@ Mission Control is an open-source personal productivity system powered by AI age
 ```
 ┌──────────────────┐     ┌──────────────┐     ┌──────────────┐
 │  Telegram         │────▶│  Orchestrator │────▶│  Agent Pool   │
-│  Discord          │     │  (scheduler)  │     │  (9 agents)   │
+│  Discord          │     │  (scheduler)  │     │  (10 agents)  │
 │  MCP / Claude Code│     └──────┬───────┘     └──────┬───────┘
 │  REST API         │            │                     │
 └──────────────────┘      ┌─────▼─────────────────────▼──────┐

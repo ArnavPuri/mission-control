@@ -181,6 +181,91 @@ class AgentRunner:
                 for c in result.scalars().all()
             ]
 
+        # Standup context: load all agents' status and recent activity for coordination
+        if "standup" in (agent.data_reads or []):
+            from datetime import timedelta
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=36)
+
+            # All agents and their current status
+            all_agents_result = await db.execute(
+                select(AgentConfig).where(AgentConfig.status != AgentStatus.DISABLED)
+            )
+            all_agents = all_agents_result.scalars().all()
+
+            standup_roster = []
+            for a in all_agents:
+                if a.id == agent.id:
+                    continue  # skip self
+
+                agent_info = {
+                    "name": a.name,
+                    "slug": a.slug,
+                    "description": a.description,
+                    "status": a.status.value,
+                    "model": a.model,
+                    "schedule": f"{a.schedule_type}:{a.schedule_value}" if a.schedule_type else "manual",
+                    "last_run_at": a.last_run_at.isoformat() if a.last_run_at else None,
+                }
+
+                # Last completed run (within 36h window)
+                last_run_result = await db.execute(
+                    select(AgentRun)
+                    .where(
+                        AgentRun.agent_id == a.id,
+                        AgentRun.status == AgentRunStatus.COMPLETED,
+                        AgentRun.completed_at >= cutoff,
+                    )
+                    .order_by(AgentRun.completed_at.desc())
+                    .limit(1)
+                )
+                last_run = last_run_result.scalar_one_or_none()
+                if last_run:
+                    agent_info["last_run"] = {
+                        "completed_at": last_run.completed_at.isoformat() if last_run.completed_at else None,
+                        "summary": (last_run.output_data or {}).get("summary", "")[:300],
+                        "action_count": len((last_run.output_data or {}).get("actions", [])),
+                        "action_types": list(set(
+                            act.get("type", "") for act in (last_run.output_data or {}).get("actions", [])
+                            if isinstance(act, dict)
+                        )),
+                    }
+
+                # Last failed run (within 36h) — surface errors
+                failed_result = await db.execute(
+                    select(AgentRun)
+                    .where(
+                        AgentRun.agent_id == a.id,
+                        AgentRun.status == AgentRunStatus.FAILED,
+                        AgentRun.completed_at >= cutoff,
+                    )
+                    .order_by(AgentRun.completed_at.desc())
+                    .limit(1)
+                )
+                failed_run = failed_result.scalar_one_or_none()
+                if failed_run:
+                    agent_info["last_failure"] = {
+                        "completed_at": failed_run.completed_at.isoformat() if failed_run.completed_at else None,
+                        "error": (failed_run.error or "")[:200],
+                    }
+
+                # Agent's own memory (key insights it has saved)
+                mem_result = await db.execute(
+                    select(AgentMemory)
+                    .where(
+                        AgentMemory.agent_id == a.id,
+                        AgentMemory.memory_type != "system",
+                    )
+                    .order_by(AgentMemory.updated_at.desc())
+                    .limit(5)
+                )
+                agent_memories = mem_result.scalars().all()
+                if agent_memories:
+                    agent_info["memories"] = {m.key: m.value[:200] for m in agent_memories}
+
+                standup_roster.append(agent_info)
+
+            context["standup"] = standup_roster
+
         # Load agent memory (persistent context from previous runs)
         mem_result = await db.execute(
             select(AgentMemory).where(AgentMemory.agent_id == agent.id).order_by(AgentMemory.updated_at.desc())

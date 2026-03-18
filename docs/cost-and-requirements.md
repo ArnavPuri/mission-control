@@ -75,6 +75,7 @@ Every agent has a `max_budget_usd` safety cap (default $0.50, most set $0.05-$0.
 
 | Agent | Model | Schedule | Runs/mo | Cost/run | Monthly |
 |-------|-------|----------|---------|----------|---------|
+| Conductor (daily standup) | Haiku | Daily 7:30 AM | 30 | $0.008 | $0.24 |
 | Sage (daily check-in) | Haiku | Daily 8 AM | 30 | $0.005 | $0.15 |
 | Luna (evening reflection) | Haiku | Daily 9 PM | 30 | $0.005 | $0.15 |
 | Radar (feedback collector) | Haiku | Daily | 30 | $0.013 | $0.39 |
