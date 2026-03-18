@@ -6,9 +6,10 @@ import * as Progress from '@radix-ui/react-progress';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import {
   Zap, Play, Square, Clock, DollarSign, Activity,
-  BarChart3, Loader2, TrendingUp, AlertTriangle,
+  BarChart3, Loader2, TrendingUp, AlertTriangle, Plus, Pencil,
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import Link from 'next/link';
 import { Card, Badge, StatusIndicator, EmptyState } from '../components/shared';
 
 export default function AgentsPage() {
@@ -60,6 +61,9 @@ export default function AgentsPage() {
               <h1 className="text-base font-bold text-mc-text dark:text-gray-100">Agents</h1>
               <span className="text-xs text-mc-dim">{agents.length} configured</span>
             </div>
+            <Link href="/agents/new" className="flex items-center gap-1.5 px-3 py-1.5 bg-mc-accent text-white text-sm rounded-lg hover:bg-blue-700 transition-colors">
+              <Plus size={14} /> Create Agent
+            </Link>
           </div>
         </header>
 
@@ -109,6 +113,13 @@ export default function AgentsPage() {
                     <div className="flex items-center gap-2.5 mb-1.5">
                       <StatusIndicator status={a.status} />
                       <span className="text-sm font-semibold text-mc-text dark:text-gray-100 truncate flex-1">{a.name}</span>
+                      <Link
+                        href={`/agents/${a.id}/edit`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-mc-muted hover:text-mc-text dark:hover:text-gray-300 transition-colors"
+                      >
+                        <Pencil size={14} />
+                      </Link>
                       <button
                         onClick={(e) => { e.stopPropagation(); toggleAgent(a.id, a.status === 'running' ? 'stop' : 'run'); }}
                         className={clsx(
