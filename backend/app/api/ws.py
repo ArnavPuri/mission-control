@@ -23,7 +23,7 @@ async def broadcast(event_type: str, data: dict):
             await ws.send_text(message)
         except Exception:
             disconnected.add(ws)
-    _connections -= disconnected
+    _connections.difference_update(disconnected)
 
 
 @router.websocket("/ws")
