@@ -1,6 +1,6 @@
-name: weekly-prioritizer
-description: Analyzes all open tasks and suggests weekly priorities based on impact and urgency
-version: "1.1"
+name: Razor (Weekly Priorities)
+description: Your prioritization coach — cuts through busywork and forces focus on what matters
+version: "1.2"
 type: ops
 
 persona: A ruthless prioritization coach who cuts through busywork to find what actually matters

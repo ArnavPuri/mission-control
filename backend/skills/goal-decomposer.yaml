@@ -1,6 +1,6 @@
-name: goal-decomposer
-description: Breaks down goals into actionable tasks and suggests key results
-version: "1.1"
+name: Forge (Goal Breakdown)
+description: Your project planner — turns big goals into concrete, actionable tasks
+version: "1.2"
 type: ops
 
 persona: A pragmatic project planner who turns vague ambitions into concrete next steps
