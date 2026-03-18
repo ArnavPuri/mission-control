@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   Radio, Sun, Plus, Save, X, ChevronDown, Eye, EyeOff,
-  Zap, Loader2,
+  Zap, Loader2, Sparkles,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import * as api from '../lib/api';
@@ -211,6 +211,8 @@ export function AgentBuilderForm({
   const [previewPrompt, setPreviewPrompt] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [aiWriting, setAiWriting] = useState(false);
+  const [aiDescription, setAiDescription] = useState('');
 
   const isEdit = !!agentId;
 
@@ -260,6 +262,25 @@ export function AgentBuilderForm({
       }
     }
     return text;
+  };
+
+  const handleAiWrite = async () => {
+    if (!aiDescription.trim()) return;
+    setAiWriting(true);
+    try {
+      const result = await api.agents.expandPrompt({
+        description: aiDescription.trim(),
+        agent_type: form.agent_type,
+        data_reads: form.data_reads,
+        data_writes: form.data_writes,
+      });
+      updateField('prompt_template', result.prompt);
+      setAiDescription('');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'AI prompt generation failed');
+    } finally {
+      setAiWriting(false);
+    }
   };
 
   const handleSave = async () => {
@@ -484,6 +505,41 @@ export function AgentBuilderForm({
           {/* Section 2 — Prompt */}
           <Card className="p-5">
             {sectionTitle('Prompt', 2)}
+
+            {/* AI Write */}
+            <div className="mb-4 p-3 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950/30 dark:to-blue-950/30 border border-purple-200/50 dark:border-purple-800/30 rounded-lg">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Sparkles size={13} className="text-purple-500" />
+                <span className="text-xs font-semibold text-purple-700 dark:text-purple-300">AI Write</span>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={aiDescription}
+                  onChange={(e) => setAiDescription(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && !aiWriting && handleAiWrite()}
+                  placeholder="Describe what you want the agent to do..."
+                  className="flex-1 border border-purple-200 dark:border-purple-800/50 rounded-lg px-3 py-1.5 text-sm text-mc-text dark:text-gray-200 bg-white dark:bg-gray-800 outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-400/10 placeholder:text-mc-dim"
+                />
+                <button
+                  onClick={handleAiWrite}
+                  disabled={aiWriting || !aiDescription.trim()}
+                  className={clsx(
+                    'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white rounded-lg transition-colors cursor-pointer whitespace-nowrap',
+                    aiWriting || !aiDescription.trim()
+                      ? 'bg-purple-400/60 cursor-not-allowed'
+                      : 'bg-purple-600 hover:bg-purple-700',
+                  )}
+                >
+                  {aiWriting ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                  {aiWriting ? 'Writing...' : 'Generate'}
+                </button>
+              </div>
+              <p className="text-[10px] text-purple-500/70 dark:text-purple-400/50 mt-1.5">
+                AI will expand your description into a full prompt template. You can edit the result.
+              </p>
+            </div>
+
             <div className="flex items-center justify-between mb-2">
               <label className={labelClass + ' mb-0'}>Prompt Template</label>
               <button

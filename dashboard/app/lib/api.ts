@@ -150,6 +150,8 @@ export const agents = {
   dryRun: (id: string) => request<Record<string, unknown>>(`/api/agents/${id}/run?dry_run=true`, { method: 'POST' }),
   stop: (id: string) => request<{ status: string }>(`/api/agents/${id}/stop`, { method: 'POST' }),
   runs: (id: string, limit = 20) => request<AgentRun[]>(`/api/agents/${id}/runs?limit=${limit}`),
+  expandPrompt: (data: { description: string; agent_type?: string; data_reads?: string[]; data_writes?: string[] }) =>
+    request<{ prompt: string }>('/api/agents/expand-prompt', { method: 'POST', body: JSON.stringify(data) }),
 };
 
 // --- Habits ---

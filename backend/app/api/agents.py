@@ -13,6 +13,70 @@ from app.api.ws import broadcast
 router = APIRouter()
 
 
+class ExpandPromptRequest(BaseModel):
+    description: str
+    agent_type: str = "general"
+    data_reads: list[str] = []
+    data_writes: list[str] = []
+
+
+@router.post("/expand-prompt")
+async def expand_prompt(data: ExpandPromptRequest):
+    """Use LLM to expand a brief description into a full agent prompt template."""
+    import httpx
+    from app.config import settings
+
+    if not settings.anthropic_api_key and not settings.claude_code_oauth_token:
+        raise HTTPException(status_code=503, detail="No LLM provider configured")
+
+    available_vars = ", ".join(f"{{{{{r}}}}}" for r in data.data_reads) if data.data_reads else "none selected yet"
+    write_targets = ", ".join(data.data_writes) if data.data_writes else "none selected yet"
+
+    system_prompt = f"""You are an expert at writing agent prompt templates for an AI agent system called Mission Control.
+
+Given a brief description of what the user wants their agent to do, write a complete, well-structured prompt template.
+
+Rules:
+- The prompt will be used as a system prompt for a Claude-based AI agent
+- Use {{{{variable_name}}}} syntax for context variables that will be injected at runtime
+- Available context variables: {available_vars}
+- The agent can write to: {write_targets}
+- The agent type is: {data.agent_type}
+- The agent MUST respond with valid JSON containing "summary" (string) and "actions" (array of action objects)
+- Each action should have a "type" field matching what the agent can write to
+- Keep the prompt focused, clear, and under 500 words
+- Do NOT include markdown fences or explanations — output ONLY the prompt template text"""
+
+    headers = {"Content-Type": "application/json", "anthropic-version": "2023-06-01"}
+    if settings.anthropic_api_key:
+        headers["x-api-key"] = settings.anthropic_api_key
+    elif settings.claude_code_oauth_token:
+        headers["Authorization"] = f"Bearer {settings.claude_code_oauth_token}"
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(
+            "https://api.anthropic.com/v1/messages",
+            headers=headers,
+            json={
+                "model": settings.default_model,
+                "max_tokens": 1024,
+                "system": system_prompt,
+                "messages": [{"role": "user", "content": data.description}],
+            },
+        )
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"LLM request failed: {resp.status_code}")
+
+    result = resp.json()
+    text = ""
+    for block in result.get("content", []):
+        if block.get("type") == "text":
+            text += block["text"]
+
+    return {"prompt": text.strip()}
+
+
 def _slugify(name: str) -> str:
     return re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')
 
