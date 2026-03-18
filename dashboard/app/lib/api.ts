@@ -492,6 +492,105 @@ export const feeds = {
   fetch: (id: string) => request<{ imported: number }>(`/api/feeds/${id}/fetch`, { method: 'POST' }),
 };
 
+// --- Workflows ---
+
+export interface WorkflowStep {
+  id: string;
+  agent_id: string;
+  agent_name: string | null;
+  name: string;
+  sort_order: number;
+  depends_on: string[];
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
+  config: Record<string, unknown>;
+  started_at: string | null;
+  completed_at: string | null;
+  run_id: string | null;
+  error: string | null;
+}
+
+export interface Workflow {
+  id: string;
+  name: string;
+  description: string;
+  status: 'draft' | 'active' | 'running' | 'completed' | 'failed' | 'paused';
+  trigger_type: string;
+  trigger_value: string | null;
+  steps: WorkflowStep[];
+  created_at: string;
+  updated_at: string | null;
+}
+
+export const workflows = {
+  list: () => request<Workflow[]>('/api/workflows'),
+  get: (id: string) => request<Workflow>(`/api/workflows/${id}`),
+  create: (data: { name: string; description?: string; steps?: { agent_id: string; name: string; sort_order?: number; depends_on?: string[] }[] }) =>
+    request<Workflow>('/api/workflows', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<Workflow>) =>
+    request<{ updated: boolean }>(`/api/workflows/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  delete: (id: string) => request<{ deleted: boolean }>(`/api/workflows/${id}`, { method: 'DELETE' }),
+  addStep: (workflowId: string, data: { agent_id: string; name: string; sort_order?: number; depends_on?: string[] }) =>
+    request<{ id: string }>(`/api/workflows/${workflowId}/steps`, { method: 'POST', body: JSON.stringify(data) }),
+  removeStep: (workflowId: string, stepId: string) =>
+    request<{ deleted: boolean }>(`/api/workflows/${workflowId}/steps/${stepId}`, { method: 'DELETE' }),
+  run: (id: string) => request<{ id: string; status: string; steps: number }>(`/api/workflows/${id}/run`, { method: 'POST' }),
+};
+
+// --- Smart Priority ---
+
+export interface PrioritySuggestion {
+  suggested_priority: string;
+  confidence: number;
+  scores: Record<string, number>;
+  reasons: string[];
+}
+
+export const smartPriority = {
+  suggest: (text: string) =>
+    request<PrioritySuggestion>('/api/priority/suggest', { method: 'POST', body: JSON.stringify({ text }) }),
+  bulkSuggest: () =>
+    request<{ suggestions: (PrioritySuggestion & { task_id: string; text: string; current_priority: string })[]; total_evaluated: number }>('/api/priority/bulk-suggest', { method: 'POST' }),
+};
+
+// --- Push Notifications ---
+
+export const push = {
+  subscribe: (subscription: { endpoint: string; keys: { p256dh: string; auth: string } }) =>
+    request<{ id: string; subscribed: boolean }>('/api/push/subscribe', { method: 'POST', body: JSON.stringify(subscription) }),
+  unsubscribe: (id: string) =>
+    request<{ unsubscribed: boolean }>(`/api/push/subscribe/${id}`, { method: 'DELETE' }),
+  send: (data: { title: string; body?: string; category?: string }) =>
+    request<{ sent: number }>('/api/push/send', { method: 'POST', body: JSON.stringify(data) }),
+};
+
+// --- Task Reorder ---
+
+export const taskReorder = {
+  reorder: (taskIds: string[]) =>
+    request<{ reordered: number }>('/api/tasks/reorder', { method: 'POST', body: JSON.stringify({ task_ids: taskIds }) }),
+};
+
+// --- Journal Search ---
+
+export interface JournalSearchResult {
+  id: string;
+  content: string;
+  mood?: string;
+  energy?: number;
+  tags: string[];
+  wins: string[];
+  challenges: string[];
+  gratitude: string[];
+  source: string;
+  created_at: string;
+  relevance: number;
+}
+
+export const journalSearch = {
+  search: (q: string, mode: 'text' | 'semantic' = 'semantic', limit = 20) =>
+    request<{ query: string; mode: string; total: number; results: JournalSearchResult[] }>(`/api/journal/search?q=${encodeURIComponent(q)}&mode=${mode}&limit=${limit}`),
+};
+
 // --- Routines ---
 
 export interface RoutineItem {

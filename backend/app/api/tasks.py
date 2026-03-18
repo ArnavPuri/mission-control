@@ -35,7 +35,7 @@ async def list_tasks(
     project_id: UUID | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    query = select(Task).order_by(Task.priority.asc(), Task.created_at.desc())
+    query = select(Task).order_by(Task.sort_order.asc(), Task.priority.asc(), Task.created_at.desc())
     if status:
         query = query.where(Task.status == status)
     if project_id:
@@ -97,3 +97,18 @@ async def delete_task(task_id: UUID, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Task not found")
     await db.delete(task)
     return {"deleted": True}
+
+
+class ReorderRequest(BaseModel):
+    task_ids: list[str]  # ordered list of task IDs
+
+
+@router.post("/reorder")
+async def reorder_tasks(data: ReorderRequest, db: AsyncSession = Depends(get_db)):
+    """Set sort_order for tasks based on the provided order."""
+    for i, task_id in enumerate(data.task_ids):
+        task = await db.get(Task, UUID(task_id))
+        if task:
+            task.sort_order = i
+    await db.flush()
+    return {"reordered": len(data.task_ids)}

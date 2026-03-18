@@ -62,6 +62,11 @@ What's already built:
 - **Calendar view** — Monthly calendar view for tasks with due dates, priority dots, and tooltips
 - **Quick capture** — Global 'c' keyboard shortcut with prefix-based type detection (t: i: r: n: h: g: j:)
 - **Deduplication** — Detect near-duplicate tasks and ideas using text similarity, pre-creation check API
+- **Agent workflows (DAGs)** — Multi-step agent pipelines with dependency resolution and background execution
+- **Smart prioritization** — Keyword + historical pattern analysis for priority suggestions
+- **Drag-and-drop task reordering** — sort_order field with HTML5 drag-and-drop in dashboard
+- **Browser push notifications** — Web Push subscription management with VAPID support
+- **Journal search** — Text and semantic similarity search with relevance scoring and mood filtering
 
 ---
 
@@ -70,15 +75,15 @@ What's already built:
 | Phase | Done | Total | Progress |
 |-------|------|-------|----------|
 | 1. Foundation Hardening | 10 | 15 | 67% |
-| 2. Intelligence Layer | 10 | 13 | 77% |
-| 3. Personal Productivity | 13 | 23 | 57% |
-| 4. Dashboard 2.0 | 17 | 18 | 94% |
+| 2. Intelligence Layer | 12 | 13 | 92% |
+| 3. Personal Productivity | 14 | 23 | 61% |
+| 4. Dashboard 2.0 | 18 | 18 | 100% |
 | 5. Integrations | 7 | 18 | 39% |
 | 6. Multi-Agent Intelligence | 4 | 16 | 25% |
 | 7. Privacy & Scale | 0 | 16 | 0% |
 | 8. Mobile & Desktop | 0 | 10 | 0% |
 | 9. Community | 0 | 16 | 0% |
-| **Total** | **61** | **145** | **42%** |
+| **Total** | **65** | **145** | **45%** |
 
 ---
 
@@ -130,12 +135,12 @@ _Make agents smarter and the system more context-aware._
 - [x] Agent chaining — output of one agent feeds into another
 - [x] Conditional triggers — run agent when specific DB conditions are met
 - [x] Agent-to-agent communication via shared memory scratchpad + daily standup coordination
-- [ ] Multi-step agent workflows (DAGs) with dependency resolution
+- [x] Multi-step agent workflows (DAGs) with dependency resolution
 - [ ] Agent self-evaluation — score own output quality, retry if low confidence
 
 ### 2.3 Context Engine
 - [x] Auto-tag tasks and ideas using LLM classification
-- [ ] Smart prioritization — ML-based priority suggestions from patterns
+- [x] Smart prioritization — ML-based priority suggestions from patterns
 - [x] Project health scoring — aggregate metrics per project
 - [ ] Time-based context — "morning brief" vs "evening review" agent behavior
 - [ ] User pattern learning — adapt agent schedules to user activity
@@ -164,7 +169,7 @@ _Go beyond task management into a full life operating system._
 - [x] Daily reflection agent — prompts end-of-day review, generates insights
 - [x] Weekly summary agent — synthesizes the week's activity into a report
 - [x] Mood/energy tracking with optional daily check-in
-- [ ] Journal search with semantic similarity
+- [x] Journal search with semantic similarity
 
 ### 3.4 Calendar & Time
 - [ ] Calendar integration (Google Calendar, CalDAV)
@@ -200,7 +205,7 @@ _Transform the dashboard from a status board into a powerful daily driver._
 - [x] Mobile-responsive design (usable on phone)
 - [x] Dark mode / light mode toggle with localStorage persistence
 - [x] Keyboard shortcuts for power users (vim-style g+key nav, n+key create, Shift+T theme)
-- [ ] Drag-and-drop task reordering and project assignment
+- [x] Drag-and-drop task reordering and project assignment
 
 ### 4.2 Views & Visualizations
 - [x] Kanban board view for tasks (by status columns, list/board toggle)
@@ -219,7 +224,7 @@ _Transform the dashboard from a status board into a powerful daily driver._
 
 ### 4.4 Notifications & Alerts
 - [x] In-app notification center for agent completions and alerts
-- [ ] Browser push notifications for critical events
+- [x] Browser push notifications for critical events
 - [ ] Daily digest email (optional)
 - [ ] Customizable alert rules (e.g., "notify me when any critical task is created")
 
@@ -442,15 +447,25 @@ All completed:
 4. ~~**Quick capture** — global 'c' shortcut, prefix-based type detection (t: i: r: n: h: g: j:) (Phase 4.3)~~
 5. ~~**Deduplication** — detect near-duplicate tasks and ideas using text similarity, pre-creation check (Phase 2.1)~~
 
-### Sprint 12: Integrations & Automation (Recommended)
+### Sprint 12: Integrations & Automation ✅
+
+All completed:
+
+1. ~~**Multi-step agent workflows (DAGs)** — workflow model with steps, dependency resolution, background execution engine (Phase 2.2)~~
+2. ~~**Smart prioritization** — keyword + historical pattern analysis, single and bulk suggestion APIs (Phase 2.3)~~
+3. ~~**Drag-and-drop task reordering** — sort_order field, reorder API, HTML5 drag handles in dashboard (Phase 4.1)~~
+4. ~~**Browser push notifications** — Web Push subscription management, VAPID support, send API (Phase 4.4)~~
+5. ~~**Journal search with semantic similarity** — text + semantic search modes, relevance scoring, mood filtering (Phase 3.3)~~
+
+### Sprint 13: Advanced Intelligence (Recommended)
 
 Next high-impact features:
 
-1. **Multi-step agent workflows (DAGs)** — dependency resolution between agents (Phase 2.2)
-2. **Smart prioritization** — ML-based priority suggestions from patterns (Phase 2.3)
-3. **Drag-and-drop task reordering** — reorder tasks and assign to projects (Phase 4.1)
-4. **Browser push notifications** — for critical events (Phase 4.4)
-5. **Journal search with semantic similarity** — search journal by meaning (Phase 3.3)
+1. **Agent self-evaluation** — score own output quality, retry if low confidence (Phase 2.2)
+2. **Time-based context** — "morning brief" vs "evening review" agent behavior (Phase 2.3)
+3. **Timeline/Gantt view** — project planning view (Phase 4.2)
+4. **Auto-summarize reading** — summarize articles when marked as read (Phase 3.5)
+5. **Database backup/restore** — `mc backup` and `mc restore` commands (Phase 1.2)
 
 ---
 

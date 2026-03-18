@@ -140,6 +140,7 @@ class Task(Base):
     source = Column(String(50), default="manual")  # manual, telegram, agent
     tags = Column(ARRAY(String), default=list)
     due_date = Column(DateTime(timezone=True), nullable=True)
+    sort_order = Column(Integer, default=0)  # manual ordering for drag-and-drop
     completed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
@@ -639,6 +640,72 @@ class MarketingContent(Base):
         Index("idx_mkt_content_project", "project_id"),
         Index("idx_mkt_content_signal", "signal_id"),
         Index("idx_mkt_content_created", "created_at"),
+    )
+
+
+# ---------- Agent Workflows (DAGs) ----------
+
+class WorkflowStatus(str, PyEnum):
+    DRAFT = "draft"
+    ACTIVE = "active"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    PAUSED = "paused"
+
+
+class AgentWorkflow(Base):
+    """Multi-step agent workflow with dependency resolution (DAG)."""
+    __tablename__ = "agent_workflows"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, default="")
+    status = Column(Enum(WorkflowStatus), default=WorkflowStatus.DRAFT, nullable=False)
+    trigger_type = Column(String(50), default="manual")  # manual, schedule, event
+    trigger_value = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    steps = relationship("WorkflowStep", back_populates="workflow", lazy="selectin", order_by="WorkflowStep.sort_order")
+
+    __table_args__ = (
+        Index("idx_workflows_status", "status"),
+    )
+
+
+class StepStatus(str, PyEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class WorkflowStep(Base):
+    """A single step in a workflow — references an agent and its dependencies."""
+    __tablename__ = "workflow_steps"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workflow_id = Column(UUID(as_uuid=True), ForeignKey("agent_workflows.id", ondelete="CASCADE"), nullable=False)
+    agent_id = Column(UUID(as_uuid=True), ForeignKey("agent_configs.id"), nullable=False)
+    name = Column(String(255), nullable=False)
+    sort_order = Column(Integer, default=0)
+    depends_on = Column(ARRAY(String), default=list)  # list of step IDs this step depends on
+    status = Column(Enum(StepStatus), default=StepStatus.PENDING, nullable=False)
+    config = Column(JSON, default=dict)  # step-specific config overrides
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    run_id = Column(UUID(as_uuid=True), nullable=True)  # reference to the agent_run created
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    workflow = relationship("AgentWorkflow", back_populates="steps")
+    agent = relationship("AgentConfig", foreign_keys=[agent_id])
+
+    __table_args__ = (
+        Index("idx_workflow_steps_workflow", "workflow_id"),
+        Index("idx_workflow_steps_status", "status"),
     )
 
 

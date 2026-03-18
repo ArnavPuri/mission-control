@@ -17,6 +17,7 @@ import {
   Flame, PenLine, Clock, DollarSign, Activity, Shield,
   ExternalLink, CircleDot, Loader2, Sun, Moon, Filter,
   Pencil, Calendar, TrendingUp, BarChart3, FileText, Pin,
+  GripVertical, Sparkles, BellRing, GitBranch,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -400,16 +401,18 @@ function KanbanColumn({ title, tasks, color, onToggle, onUpdate, onDelete }: {
   );
 }
 
-function TasksPanel({ tasks, projects, onToggle, onUpdate, onAdd, showInput, setShowInput, onDelete }: {
+function TasksPanel({ tasks, projects, onToggle, onUpdate, onAdd, showInput, setShowInput, onDelete, onReorder }: {
   tasks: api.Task[]; projects: api.Project[];
   onToggle: (id: string) => void; onUpdate: (id: string, data: Partial<api.Task>) => void;
   onAdd: (text: string) => void;
   showInput: boolean; setShowInput: (v: boolean) => void; onDelete: (id: string) => void;
+  onReorder: (taskIds: string[]) => void;
 }) {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [dragId, setDragId] = useState<string | null>(null);
 
   const filtered = tasks.filter((t) => {
     if (filterStatus !== 'all' && t.status !== filterStatus) return false;
@@ -570,7 +573,28 @@ function TasksPanel({ tasks, projects, onToggle, onUpdate, onAdd, showInput, set
       {viewMode === 'list' ? (
         <div className="flex flex-col gap-0.5">
           {filtered.map((t) => (
-            <div key={t.id} className="flex items-center gap-0.5">
+            <div
+              key={t.id}
+              draggable
+              onDragStart={() => setDragId(t.id)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => {
+                if (dragId && dragId !== t.id) {
+                  const ids = filtered.map((x) => x.id);
+                  const fromIdx = ids.indexOf(dragId);
+                  const toIdx = ids.indexOf(t.id);
+                  if (fromIdx >= 0 && toIdx >= 0) {
+                    ids.splice(fromIdx, 1);
+                    ids.splice(toIdx, 0, dragId);
+                    onReorder(ids);
+                  }
+                }
+                setDragId(null);
+              }}
+              onDragEnd={() => setDragId(null)}
+              className={clsx('flex items-center gap-0.5', dragId === t.id && 'opacity-40')}
+            >
+              <GripVertical size={12} className="text-mc-dim cursor-grab shrink-0 hover:text-mc-muted" />
               <input
                 type="checkbox"
                 checked={selected.has(t.id)}
@@ -1355,6 +1379,65 @@ function QuickCapture({ open, onClose, onCapture }: {
   );
 }
 
+// ─── Journal Search ──────────────────────────────────────
+
+function JournalSearchPanel() {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<api.JournalSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [total, setTotal] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const doSearch = async () => {
+    if (!query.trim()) { setResults([]); setTotal(0); return; }
+    setSearching(true);
+    try {
+      const res = await api.journalSearch.search(query.trim());
+      setResults(res.results);
+      setTotal(res.total);
+    } catch { setResults([]); }
+    setSearching(false);
+  };
+
+  const moodEmoji: Record<string, string> = { great: '😊', good: '🙂', okay: '😐', low: '😔', bad: '😢' };
+
+  return (
+    <div>
+      <div className="flex gap-2 mb-3">
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search journal entries..."
+          onKeyDown={(e) => { if (e.key === 'Enter') doSearch(); }}
+          className="flex-1 border border-mc-border dark:border-gray-700 rounded-lg px-3 py-1.5 text-sm text-mc-text dark:text-gray-200 bg-white dark:bg-gray-800 outline-none focus:border-mc-accent focus:ring-2 focus:ring-mc-accent/10 placeholder:text-mc-dim transition-all"
+        />
+        <button onClick={doSearch} className="px-3 py-1.5 bg-mc-accent text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors cursor-pointer">
+          {searching ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+        </button>
+      </div>
+      {total > 0 && <p className="text-[11px] text-mc-dim mb-2">{total} results found</p>}
+      <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+        {results.map((r) => (
+          <div key={r.id} className="bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-800 rounded-lg px-3 py-2">
+            <div className="flex items-center gap-2 mb-1">
+              {r.mood && <span className="text-xs">{moodEmoji[r.mood] || ''}</span>}
+              <span className="text-[11px] text-mc-dim">
+                {new Date(r.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+              </span>
+              <span className="text-[10px] text-mc-accent font-medium ml-auto">{Math.round(r.relevance * 100)}% match</span>
+            </div>
+            <p className="text-xs text-mc-secondary dark:text-gray-300 line-clamp-2">{r.content.slice(0, 150)}</p>
+          </div>
+        ))}
+      </div>
+      {query && results.length === 0 && !searching && (
+        <p className="text-xs text-mc-dim text-center py-4">No matching entries</p>
+      )}
+    </div>
+  );
+}
+
 // ─── Routines Panel ──────────────────────────────────────
 
 function RoutinesPanel({ routines, onComplete, onAdd, showInput, setShowInput }: {
@@ -1725,6 +1808,7 @@ export default function Dashboard() {
   const deleteJournal = async (id: string) => { await api.journal.delete(id); loadData(); };
   const addNote = async (title: string) => { await api.notes.create({ title }); setShowNoteInput(false); loadData(); };
   const deleteNote = async (id: string) => { await api.notes.delete(id); loadData(); };
+  const reorderTasks = async (taskIds: string[]) => { await api.taskReorder.reorder(taskIds); loadData(); };
 
   const handleQuickCapture = async (type: string, text: string) => {
     const handlers: Record<string, (text: string) => Promise<void>> = {
@@ -1846,6 +1930,7 @@ export default function Dashboard() {
                 <TasksPanel
                   tasks={tasksList} projects={projectsList} onToggle={toggleTask} onUpdate={updateTask}
                   onAdd={addTask} showInput={showTaskInput} setShowInput={setShowTaskInput} onDelete={deleteTask}
+                  onReorder={reorderTasks}
                 />
               </Card>
 
@@ -1868,6 +1953,15 @@ export default function Dashboard() {
                 <Card className="p-4">
                   <SectionHeader icon={PenLine} title="Journal" count={journalList.length} onAdd={() => setShowJournalInput(true)} />
                   <JournalPanel entries={journalList} onAdd={addJournal} showInput={showJournalInput} setShowInput={setShowJournalInput} onDelete={deleteJournal} />
+                  {journalList.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-mc-border dark:border-gray-800">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <Search size={12} className="text-mc-dim" />
+                        <span className="text-[11px] font-medium text-mc-dim">Journal Search</span>
+                      </div>
+                      <JournalSearchPanel />
+                    </div>
+                  )}
                 </Card>
                 <Card className="p-4">
                   <SectionHeader icon={Lightbulb} title="Ideas" count={ideasList.length} onAdd={() => setShowIdeaInput(true)} />
