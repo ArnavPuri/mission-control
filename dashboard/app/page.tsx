@@ -607,6 +607,74 @@ function HabitAnalyticsPanel({ analytics }: { analytics: api.HabitAnalytics | nu
   );
 }
 
+function AgentAnalyticsPanel({ analytics, agents }: { analytics: api.AgentAnalyticsOverview | null; agents: api.Agent[] }) {
+  if (!analytics || analytics.agents.length === 0) {
+    return <EmptyState icon={BarChart3} message="No agent analytics yet" small />;
+  }
+
+  const { totals } = analytics;
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Summary row */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="bg-mc-subtle dark:bg-gray-800 rounded-lg px-3 py-2 text-center">
+          <div className="text-lg font-bold text-mc-text dark:text-gray-100">{totals.total_runs}</div>
+          <div className="text-[11px] text-mc-dim">Total Runs</div>
+        </div>
+        <div className="bg-mc-subtle dark:bg-gray-800 rounded-lg px-3 py-2 text-center">
+          <div className={clsx('text-lg font-bold', totals.overall_success_rate >= 80 ? 'text-emerald-600' : totals.overall_success_rate >= 50 ? 'text-amber-600' : 'text-red-600')}>
+            {Math.round(totals.overall_success_rate)}%
+          </div>
+          <div className="text-[11px] text-mc-dim">Success</div>
+        </div>
+        <div className="bg-mc-subtle dark:bg-gray-800 rounded-lg px-3 py-2 text-center">
+          <div className="text-lg font-bold text-mc-text dark:text-gray-100 font-mono">${totals.total_cost_usd.toFixed(2)}</div>
+          <div className="text-[11px] text-mc-dim">Total Cost</div>
+        </div>
+      </div>
+
+      {/* Per-agent breakdown */}
+      {analytics.agents.map((a) => (
+        <div key={a.agent_id} className="bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-800 rounded-lg px-3 py-2.5">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-xs font-medium text-mc-text dark:text-gray-200 truncate">{a.agent_name}</span>
+            <span className="text-[11px] text-mc-dim font-mono">{a.model}</span>
+          </div>
+          <div className="flex items-center gap-3 text-[11px]">
+            <span className="text-mc-muted">{a.total_runs} runs</span>
+            <span className={clsx(a.success_rate >= 80 ? 'text-emerald-600' : a.success_rate >= 50 ? 'text-amber-600' : 'text-red-500')}>
+              {Math.round(a.success_rate)}% ok
+            </span>
+            <span className={clsx('font-mono', a.total_cost_usd > 0.5 ? 'text-amber-600' : 'text-emerald-600')}>
+              ${a.total_cost_usd.toFixed(3)}
+            </span>
+            {a.avg_duration_seconds > 0 && (
+              <span className="text-mc-dim">{Math.round(a.avg_duration_seconds)}s avg</span>
+            )}
+          </div>
+          {/* Mini cost sparkline */}
+          {Object.keys(a.daily_costs).length > 0 && (
+            <div className="flex items-end gap-px mt-2 h-4">
+              {Object.entries(a.daily_costs).slice(-14).map(([day, cost]) => {
+                const maxCost = Math.max(...Object.values(a.daily_costs), 0.01);
+                const h = Math.max(2, (cost / maxCost) * 16);
+                return (
+                  <div
+                    key={day}
+                    className="flex-1 rounded-t bg-mc-accent/40 dark:bg-blue-500/30"
+                    style={{ height: `${h}px` }}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function GoalsPanel({ goals, onAdd, showInput, setShowInput }: {
   goals: api.Goal[]; onAdd: (title: string) => void;
   showInput: boolean; setShowInput: (v: boolean) => void;
@@ -986,6 +1054,7 @@ export default function Dashboard() {
   const [notificationsList, setNotifications] = useState<api.Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [habitAnalytics, setHabitAnalytics] = useState<api.HabitAnalytics | null>(null);
+  const [agentAnalytics, setAgentAnalytics] = useState<api.AgentAnalyticsOverview | null>(null);
   const [healthStatus, setHealth] = useState<api.HealthStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1019,7 +1088,7 @@ export default function Dashboard() {
 
   const loadData = useCallback(async () => {
     try {
-      const [p, a, t, i, r, h, hab, g, j, ap, notifs, unread, hAnalytics] = await Promise.all([
+      const [p, a, t, i, r, h, hab, g, j, ap, notifs, unread, hAnalytics, aAnalytics] = await Promise.all([
         api.projects.list(),
         api.agents.list(),
         api.tasks.list(),
@@ -1033,10 +1102,12 @@ export default function Dashboard() {
         api.notifications.list().catch(() => []),
         api.notifications.unreadCount().catch(() => ({ unread: 0 })),
         api.habits.analytics().catch(() => null),
+        api.agentAnalytics.overview().catch(() => null),
       ]);
       setProjects(p); setAgents(a); setTasks(t); setIdeas(i); setReading(r); setHealth(h);
       setHabits(hab); setGoals(g); setJournal(j); setApprovals(ap);
       setNotifications(notifs); setUnreadCount(unread.unread); setHabitAnalytics(hAnalytics);
+      setAgentAnalytics(aAnalytics);
       setError(null);
     } catch (e: any) {
       setError(e.message || 'Failed to connect to backend');
@@ -1238,27 +1309,10 @@ export default function Dashboard() {
                 <ActivityHeatmap tasks={tasksList} journal={journalList} />
               </Card>
 
-              {agentsList.length > 0 && (
-                <Card className="p-4">
-                  <SectionHeader icon={DollarSign} title="Agent Costs" count={agentsList.length} />
-                  <div className="grid grid-cols-2 gap-2">
-                    {agentsList.map((a) => {
-                      const totalCost = a.recent_runs.reduce((sum, r) => sum + (r.cost_usd || 0), 0);
-                      return (
-                        <div key={a.id} className="bg-mc-subtle dark:bg-gray-800 rounded-lg px-3 py-2.5">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs text-mc-secondary dark:text-gray-300 truncate font-medium">{a.name}</span>
-                            <span className={clsx('text-xs font-bold font-mono', totalCost > 0.1 ? 'text-amber-600' : 'text-emerald-600')}>
-                              ${totalCost.toFixed(3)}
-                            </span>
-                          </div>
-                          <div className="text-[11px] text-mc-dim mt-0.5">{a.recent_runs.length} runs · {a.model}</div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </Card>
-              )}
+              <Card className="p-4">
+                <SectionHeader icon={BarChart3} title="Agent Analytics" count={agentsList.length} />
+                <AgentAnalyticsPanel analytics={agentAnalytics} agents={agentsList} />
+              </Card>
             </div>
           </div>
         </main>

@@ -63,6 +63,17 @@ async def create_task(data: TaskCreate, db: AsyncSession = Depends(get_db)):
     task = Task(**data.model_dump())
     db.add(task)
     await db.flush()
+
+    # Evaluate conditional triggers
+    try:
+        from app.api.triggers import evaluate_triggers
+        await evaluate_triggers("task", "created", {
+            "text": task.text, "priority": task.priority.value, "status": task.status.value,
+            "tags": task.tags or [], "source": task.source,
+        }, db)
+    except Exception:
+        pass  # triggers are best-effort
+
     return {"id": str(task.id), "text": task.text}
 
 

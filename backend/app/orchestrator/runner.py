@@ -31,6 +31,7 @@ from app.db.models import (
     AgentConfig, AgentRun, AgentStatus, AgentRunStatus,
     Project, Task, Idea, ReadingItem, EventLog, TaskStatus,
     Habit, Goal, JournalEntry, AgentApproval, ApprovalStatus,
+    AgentMemory,
 )
 from app.api.ws import broadcast
 
@@ -99,6 +100,14 @@ class AgentRunner:
                  "created_at": j.created_at.isoformat()}
                 for j in result.scalars().all()
             ]
+
+        # Load agent memory (persistent context from previous runs)
+        mem_result = await db.execute(
+            select(AgentMemory).where(AgentMemory.agent_id == agent.id).order_by(AgentMemory.updated_at.desc())
+        )
+        memories = mem_result.scalars().all()
+        if memories:
+            context["memory"] = {m.key: m.value for m in memories}
 
         # Include project-specific context if agent is bound to a project
         if agent.project_id:
@@ -426,6 +435,26 @@ class AgentRunner:
                 )
                 db.add(entry)
                 await broadcast("journal.created", {"source": f"agent:{agent.slug}"})
+
+            elif action_type == "save_memory":
+                # Agents can persist memory entries for future runs
+                key = action.get("key")
+                value = action.get("value")
+                if key and value:
+                    existing = await db.execute(
+                        select(AgentMemory).where(
+                            AgentMemory.agent_id == agent.id,
+                            AgentMemory.key == key,
+                        )
+                    )
+                    mem = existing.scalar_one_or_none()
+                    if mem:
+                        mem.value = str(value)
+                    else:
+                        db.add(AgentMemory(
+                            agent_id=agent.id, key=key, value=str(value),
+                            memory_type=action.get("memory_type", "general"),
+                        ))
 
             elif action_type == "create_goal" and "goals" in (agent.data_writes or []):
                 goal = Goal(

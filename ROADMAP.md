@@ -30,6 +30,11 @@ What's already built:
 - **Notification center** — In-app bell with unread count, mark read/all
 - **Activity heatmap** — GitHub-style 12-week contribution graph with tooltips
 - **Agent cost tracking** — Per-agent spending dashboard
+- **Agent memory** — Persistent key-value context across agent runs
+- **Conditional triggers** — Event-driven agent execution on DB conditions
+- **Agent analytics** — Success rates, cost efficiency, daily cost sparklines
+- **Auto-tagging** — LLM-based classification for tasks and ideas
+- **pgvector support** — Optional embedding columns for semantic search
 
 ---
 
@@ -38,15 +43,15 @@ What's already built:
 | Phase | Done | Total | Progress |
 |-------|------|-------|----------|
 | 1. Foundation Hardening | 3 | 15 | 20% |
-| 2. Intelligence Layer | 3 | 13 | 23% |
+| 2. Intelligence Layer | 7 | 13 | 54% |
 | 3. Personal Productivity | 10 | 23 | 43% |
 | 4. Dashboard 2.0 | 10 | 18 | 56% |
 | 5. Integrations | 4 | 18 | 22% |
-| 6. Multi-Agent Intelligence | 0 | 16 | 0% |
+| 6. Multi-Agent Intelligence | 2 | 16 | 13% |
 | 7. Privacy & Scale | 0 | 16 | 0% |
 | 8. Mobile & Desktop | 0 | 10 | 0% |
 | 9. Community | 0 | 16 | 0% |
-| **Total** | **30** | **145** | **21%** |
+| **Total** | **36** | **145** | **25%** |
 
 ---
 
@@ -88,21 +93,21 @@ _Make what exists rock-solid and easy to set up._
 _Make agents smarter and the system more context-aware._
 
 ### 2.1 Semantic Search & Memory
-- [ ] pgvector embeddings on tasks, ideas, and reading items
+- [x] pgvector embeddings on tasks, ideas, and journal entries (optional, guarded import)
 - [x] Semantic search API (`/api/search?q=...`) across all entities
 - [x] Dashboard search bar with instant results
-- [ ] Agent memory — long-term context that persists across runs
+- [x] Agent memory — long-term context that persists across runs (key-value store per agent)
 - [ ] Deduplication: detect near-duplicate tasks and ideas before creating them
 
 ### 2.2 Smarter Agents
 - [x] Agent chaining — output of one agent feeds into another
-- [ ] Conditional triggers — run agent when specific DB conditions are met
+- [x] Conditional triggers — run agent when specific DB conditions are met
 - [ ] Agent-to-agent communication via shared context
 - [ ] Multi-step agent workflows (DAGs) with dependency resolution
 - [ ] Agent self-evaluation — score own output quality, retry if low confidence
 
 ### 2.3 Context Engine
-- [ ] Auto-tag tasks and ideas using LLM classification
+- [x] Auto-tag tasks and ideas using LLM classification
 - [ ] Smart prioritization — ML-based priority suggestions from patterns
 - [ ] Project health scoring — aggregate metrics per project
 - [ ] Time-based context — "morning brief" vs "evening review" agent behavior
@@ -251,8 +256,8 @@ _Build a team of specialized AI agents that collaborate._
 
 ### 6.3 Agent Orchestration
 - [ ] Pipeline builder — visual editor for multi-agent workflows
-- [ ] Event-driven triggers (not just schedules)
-- [ ] Agent performance analytics — success rate, cost efficiency, action quality
+- [x] Event-driven triggers (not just schedules)
+- [x] Agent performance analytics — success rate, cost efficiency, action quality
 - [ ] A/B testing for agent prompts — compare prompt variants
 - [ ] Agent budget management dashboard with alerts
 
@@ -337,25 +342,25 @@ _Build a community around personal AI productivity._
 
 _High-impact features to tackle next, prioritized by user value and feasibility._
 
-### Sprint 5: Polish & Power User Features (Recommended)
+### Sprint 5: Polish & Power User Features ✅
 
-These are the highest-leverage items that build on what we have:
+All completed:
 
-1. **Inline task editing** — click to edit text, priority, tags, due dates directly in the dashboard (Phase 4.3)
-2. **Filters and saved views** — filter tasks by status/priority/project, persist view preferences (Phase 4.3)
-3. **Habit analytics** — streak charts, completion rates, weekly trends (Phase 3.1)
-4. **Mobile-responsive design** — make the dashboard usable on phone (Phase 4.1)
-5. **Dark mode toggle** — persist user theme preference (Phase 4.1)
+1. ~~**Inline task editing** — double-click to edit text, priority dropdown via Radix (Phase 4.3)~~
+2. ~~**Filters and saved views** — status/priority dropdowns with Radix DropdownMenu (Phase 4.3)~~
+3. ~~**Habit analytics** — weekly bar charts, completion rates, streak tracking (Phase 3.1)~~
+4. ~~**Mobile-responsive design** — responsive grid layout, touch-friendly (Phase 4.1)~~
+5. ~~**Dark mode toggle** — Tailwind class strategy, localStorage persistence (Phase 4.1)~~
 
-### Sprint 6: Intelligence Boost
+### Sprint 6: Intelligence Boost ✅
 
-These make the agent system meaningfully smarter:
+All completed:
 
-1. **pgvector embeddings** — semantic search instead of ILIKE (Phase 2.1)
-2. **Auto-tagging** — LLM classifies new tasks and ideas automatically (Phase 2.3)
-3. **Conditional triggers** — run agents when DB conditions are met, not just on schedule (Phase 2.2)
-4. **Agent memory** — persistent context across runs so agents remember past decisions (Phase 2.1)
-5. **Agent performance analytics** — track success rates and cost efficiency (Phase 6.3)
+1. ~~**pgvector embeddings** — optional embedding columns on Task, Idea, JournalEntry (Phase 2.1)~~
+2. ~~**Auto-tagging** — LLM classifies tasks/ideas via Haiku, single + batch endpoints (Phase 2.3)~~
+3. ~~**Conditional triggers** — event-driven agent execution with JSON condition matching (Phase 2.2)~~
+4. ~~**Agent memory** — persistent key-value store per agent, loaded in context, saveable via actions (Phase 2.1)~~
+5. ~~**Agent performance analytics** — success rates, cost, duration, daily sparklines on dashboard (Phase 6.3)~~
 
 ### Sprint 7: Integrations & Reach
 
@@ -400,4 +405,4 @@ These principles guide every decision:
 
 ---
 
-*Last updated: 2026-03-17 · v0.3*
+*Last updated: 2026-03-18 · v0.3*

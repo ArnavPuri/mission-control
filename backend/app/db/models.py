@@ -17,6 +17,13 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.orm import DeclarativeBase, relationship
 
+try:
+    from pgvector.sqlalchemy import Vector
+    HAS_PGVECTOR = True
+except ImportError:
+    HAS_PGVECTOR = False
+    Vector = None
+
 
 class Base(DeclarativeBase):
     pass
@@ -356,3 +363,58 @@ class AgentApproval(Base):
         Index("idx_approvals_status", "status"),
         Index("idx_approvals_agent", "agent_id"),
     )
+
+
+class AgentMemory(Base):
+    """Persistent memory entries for agents across runs."""
+    __tablename__ = "agent_memories"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    agent_id = Column(UUID(as_uuid=True), ForeignKey("agent_configs.id", ondelete="CASCADE"), nullable=False)
+    key = Column(String(255), nullable=False)
+    value = Column(Text, nullable=False)
+    memory_type = Column(String(50), default="general")  # general, preference, fact, decision
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    agent = relationship("AgentConfig", foreign_keys=[agent_id])
+
+    __table_args__ = (
+        Index("idx_agent_memory_agent", "agent_id"),
+        Index("idx_agent_memory_key", "agent_id", "key", unique=True),
+    )
+
+
+class AgentTrigger(Base):
+    """Conditional triggers that run agents when DB conditions are met."""
+    __tablename__ = "agent_triggers"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    agent_id = Column(UUID(as_uuid=True), ForeignKey("agent_configs.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, default="")
+    is_active = Column(Boolean, default=True)
+
+    # Condition specification
+    entity_type = Column(String(50), nullable=False)  # task, idea, goal, habit, journal
+    event = Column(String(50), nullable=False)  # created, updated, status_changed, completed
+    condition = Column(JSON, nullable=True)  # {"field": "priority", "op": "eq", "value": "critical"}
+
+    last_triggered_at = Column(DateTime(timezone=True), nullable=True)
+    trigger_count = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    agent = relationship("AgentConfig", foreign_keys=[agent_id])
+
+    __table_args__ = (
+        Index("idx_agent_triggers_agent", "agent_id"),
+        Index("idx_agent_triggers_active", "is_active"),
+    )
+
+
+# Optional: Embedding column on existing models (only if pgvector is installed)
+# These are added dynamically to avoid hard dependency on pgvector
+if HAS_PGVECTOR and Vector is not None:
+    Task.embedding = Column(Vector(1536), nullable=True)
+    Idea.embedding = Column(Vector(1536), nullable=True)
+    JournalEntry.embedding = Column(Vector(1536), nullable=True)

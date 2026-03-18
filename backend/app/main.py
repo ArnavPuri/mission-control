@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.db.session import init_db
-from app.api import projects, tasks, ideas, reading, agents, ws, health, habits, goals, journal, approvals, search, webhooks, export, notifications
+from app.api import projects, tasks, ideas, reading, agents, ws, health, habits, goals, journal, approvals, search, webhooks, export, notifications, agent_memory, triggers, agent_analytics, autotag
 from app.orchestrator.scheduler import Scheduler
 from app.integrations.telegram import start_telegram_bot
 from app.agents.skill_loader import sync_skills_to_db
@@ -74,4 +74,8 @@ app.include_router(search.router, prefix="/api/search", tags=["search"])
 app.include_router(webhooks.router, prefix="/api/webhooks", tags=["webhooks"])
 app.include_router(export.router, prefix="/api/export", tags=["export"])
 app.include_router(notifications.router, prefix="/api/notifications", tags=["notifications"])
+app.include_router(agent_memory.router, prefix="/api/agents", tags=["agent-memory"])
+app.include_router(triggers.router, prefix="/api/triggers", tags=["triggers"])
+app.include_router(agent_analytics.router, prefix="/api/analytics/agents", tags=["analytics"])
+app.include_router(autotag.router, prefix="/api/autotag", tags=["autotag"])
 app.include_router(ws.router, tags=["websocket"])

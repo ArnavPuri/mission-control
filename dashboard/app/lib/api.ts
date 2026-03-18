@@ -300,6 +300,72 @@ export const notifications = {
   markAllRead: () => request<{ read_all: boolean }>('/api/notifications/read-all', { method: 'POST' }),
 };
 
+// --- Agent Analytics ---
+
+export interface AgentAnalyticsOverview {
+  days: number;
+  agents: {
+    agent_id: string;
+    agent_name: string;
+    agent_slug: string;
+    model: string;
+    total_runs: number;
+    completed: number;
+    failed: number;
+    success_rate: number;
+    total_cost_usd: number;
+    total_tokens: number;
+    avg_cost_per_run: number;
+    avg_duration_seconds: number;
+    daily_costs: Record<string, number>;
+    last_run_at: string | null;
+  }[];
+  totals: {
+    total_agents: number;
+    total_runs: number;
+    total_completed: number;
+    total_failed: number;
+    overall_success_rate: number;
+    total_cost_usd: number;
+  };
+}
+
+export const agentAnalytics = {
+  overview: (days = 30) => request<AgentAnalyticsOverview>(`/api/analytics/agents/overview?days=${days}`),
+};
+
+// --- Triggers ---
+
+export interface AgentTrigger {
+  id: string;
+  agent_id: string;
+  agent_name: string | null;
+  name: string;
+  description: string;
+  is_active: boolean;
+  entity_type: string;
+  event: string;
+  condition: Record<string, string> | null;
+  last_triggered_at: string | null;
+  trigger_count: number;
+  created_at: string;
+}
+
+export const triggers = {
+  list: () => request<AgentTrigger[]>('/api/triggers'),
+  create: (data: Partial<AgentTrigger>) => request<{ id: string }>('/api/triggers', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<AgentTrigger>) => request<{ updated: boolean }>(`/api/triggers/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  delete: (id: string) => request<{ deleted: boolean }>(`/api/triggers/${id}`, { method: 'DELETE' }),
+};
+
+// --- Auto-tag ---
+
+export const autotag = {
+  task: (id: string) => request<{ tags: string[] }>(`/api/autotag/task/${id}`, { method: 'POST' }),
+  idea: (id: string) => request<{ tags: string[] }>(`/api/autotag/idea/${id}`, { method: 'POST' }),
+  batch: (entityType: string, limit = 10) => request<{ tagged: number }>(`/api/autotag/batch?entity_type=${entityType}&limit=${limit}`, { method: 'POST' }),
+};
+
 // --- Export ---
 
 export const dataExport = {
