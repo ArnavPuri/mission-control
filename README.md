@@ -21,25 +21,27 @@ Mission Control is an open-source personal productivity system powered by AI age
 
 **Built with:** Python/FastAPI · Next.js · PostgreSQL + pgvector · Claude Agent SDK
 
-### What's included (v0.3)
+### What's included (v0.4)
 
-- **19 database tables** — Projects, tasks, ideas, reading list, habits, goals, journal, notes, and more
+- **25 database tables** — Projects, tasks, ideas, reading list, habits, goals, journal, notes, routines, workflows, and more
 - **10 AI agents** — Daily Standup, Reddit Scout, Idea Validator, Weekly Prioritizer, Daily Check-in, Goal Decomposer, Evening Reflection, Weekly Review, and more
-- **5-page dashboard** — Dashboard, Projects, Agents, Journal, Settings with Kanban board, bulk actions, keyboard shortcuts
+- **5-page dashboard** — Dashboard, Projects, Agents, Journal, Settings with Kanban board, calendar view, drag-and-drop, bulk actions, keyboard shortcuts
 - **4 input channels** — Telegram bot (11 commands + chat), Discord bot, MCP server (17 tools), REST API
 - **Multi-auth** — Anthropic API, OAuth, OpenRouter, Ollama (fully local)
-- **Agent intelligence** — Memory, chaining, conditional triggers, approval queue, auto-tagging, analytics
+- **Agent intelligence** — Memory, chaining, workflow DAGs, conditional triggers, approval queue, auto-tagging, smart prioritization, analytics
+- **Productivity suite** — Routines builder, calendar view, quick capture, deduplication, journal search
 - **Full test suites** — 14 backend (pytest) + 21 frontend (Vitest) tests
 
 ```
 ┌──────────────────┐     ┌──────────────┐     ┌──────────────┐
 │  Telegram         │────▶│  Orchestrator │────▶│  Agent Pool   │
 │  Discord          │     │  (scheduler)  │     │  (10 agents)  │
-│  MCP / Claude Code│     └──────┬───────┘     └──────┬───────┘
-│  REST API         │            │                     │
+│  MCP / Claude Code│     │  + Workflows  │     │  + DAGs       │
+│  REST API         │     └──────┬───────┘     └──────┬───────┘
+│  Push Notifs      │            │                     │
 └──────────────────┘      ┌─────▼─────────────────────▼──────┐
                           │       PostgreSQL + pgvector       │
-                          │  19 tables · event log · vectors  │
+                          │  25 tables · event log · vectors  │
                           └──────────────┬──────────────────┘
                                          │
                                   ┌──────▼──────┐
@@ -165,13 +167,13 @@ The Next.js dashboard includes 5 pages:
 
 | Page | Features |
 |------|----------|
-| **Dashboard** | Task list + Kanban board, ideas, reading, habits, goals, activity heatmap, agent status |
-| **Projects** | Project list with per-project dashboards (tasks, goals, agents, notes) |
-| **Agents** | Agent overview, per-agent detail with schedule, cost charts, recent runs |
-| **Journal** | Timeline grouped by date, mood tracking, wins/challenges/gratitude |
-| **Settings** | System status, API key management, GitHub repos, RSS feeds |
+| **Dashboard** | Tasks (drag-and-drop + Kanban), ideas, reading, habits, routines, goals, calendar view, activity heatmap, agent analytics, journal with search |
+| **Projects** | Project list with health scores, per-project dashboards (tasks, goals, agents, notes) |
+| **Agents** | Agent overview, per-agent detail with schedule, cost charts, recent runs, workflow DAGs |
+| **Journal** | Timeline grouped by date, mood tracking, wins/challenges/gratitude, semantic search |
+| **Settings** | System status, API key management, GitHub repos, RSS feeds, push notifications |
 
-**Power user features:** Vim-style keyboard shortcuts (`g+d/p/a/j/s` nav, `n+t/i/o` create), command palette (`Cmd+K`), bulk task actions, dark/light mode.
+**Power user features:** Vim-style keyboard shortcuts (`g+d/p/a/j/s` nav, `n+t/i/o` create), command palette (`Cmd+K`), quick capture (`c`), bulk task actions, drag-and-drop reordering, dark/light mode.
 
 ---
 
@@ -204,21 +206,21 @@ cd backend && alembic revision --autogenerate -m "description"
 mission-control/
 ├── docker-compose.yml
 ├── .env.example
-├── ROADMAP.md                   # Full roadmap (51/145 features, 35%)
+├── ROADMAP.md                   # Full roadmap (65/145 features, 45%)
 ├── CONTRIBUTING.md              # How to contribute
 ├── backend/
 │   ├── pyproject.toml
 │   ├── alembic.ini
 │   ├── app/
-│   │   ├── main.py              # FastAPI application
+│   │   ├── main.py              # FastAPI application (30 routers)
 │   │   ├── config.py            # Settings + multi-auth
 │   │   ├── db/
-│   │   │   ├── models.py        # 19 SQLAlchemy models
+│   │   │   ├── models.py        # 25 SQLAlchemy models
 │   │   │   ├── session.py       # DB connection
 │   │   │   ├── seed.py          # Example data for new installs
-│   │   │   └── migrations/      # Alembic migrations
-│   │   ├── api/                 # REST endpoints (12 routers)
-│   │   ├── orchestrator/        # Agent execution + scheduling
+│   │   │   └── migrations/      # Alembic migrations (6 versions)
+│   │   ├── api/                 # REST endpoints (30 routers)
+│   │   ├── orchestrator/        # Agent execution + scheduling + workflows
 │   │   ├── agents/              # YAML skill loader
 │   │   └── integrations/        # Telegram, Discord, MCP
 │   ├── skills/                  # Agent YAML definitions
@@ -241,14 +243,14 @@ mission-control/
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for the full roadmap. Current progress: **56/145 features (39%)**.
+See [ROADMAP.md](ROADMAP.md) for the full roadmap. Current progress: **65/145 features (45%)**.
 
 | Phase | Progress |
 |-------|----------|
 | Foundation Hardening | 67% |
-| Intelligence Layer | 62% |
-| Personal Productivity | 52% |
-| Dashboard 2.0 | 83% |
+| Intelligence Layer | 92% |
+| Personal Productivity | 61% |
+| Dashboard 2.0 | **100%** |
 | Integrations | 39% |
 | Multi-Agent Intelligence | 25% |
 | Privacy & Scale | 0% |
