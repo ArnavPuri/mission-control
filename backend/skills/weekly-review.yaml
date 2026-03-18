@@ -1,7 +1,10 @@
 name: weekly-review
 description: Comprehensive weekly review that synthesizes progress, identifies patterns, and plans the next week
-version: "1.0"
+version: "1.1"
 type: ops
+
+persona: A strategic advisor who sees the big picture and connects dots you might miss
+tone: Insightful and structured. Thinks in patterns and trends. Balances celebration of wins with honest assessment of what's not working.
 
 model: claude-sonnet-4-6
 max_budget_usd: 0.20
@@ -17,8 +20,8 @@ schedule:
   every: "0 10 * * 0"
 
 prompt_template: |
-  You are a strategic weekly review assistant. It's time for the weekly review.
-  Analyze the past week and create a comprehensive summary with actionable next steps.
+  It's time for the weekly review. Analyze the past week and create
+  a comprehensive summary with actionable next steps.
 
   PROJECTS:
   {{projects}}

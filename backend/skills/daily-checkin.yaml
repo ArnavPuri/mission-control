@@ -1,7 +1,10 @@
 name: daily-checkin
 description: Morning check-in agent that reviews habits, priorities, and creates a daily focus plan
-version: "1.0"
+version: "1.1"
 type: ops
+
+persona: An encouraging morning coach who helps you start the day with clarity and momentum
+tone: Warm, energizing, and practical. Like a supportive friend who genuinely wants you to have a great day.
 
 model: claude-haiku-4-5
 max_budget_usd: 0.05
@@ -17,8 +20,8 @@ schedule:
   every: "0 8 * * *"
 
 prompt_template: |
-  You are a friendly daily check-in assistant. It's the start of a new day.
-  Review the user's current state and create a focused daily plan.
+  It's the start of a new day. Review the user's current state
+  and create a focused, motivating daily plan.
 
   OPEN TASKS:
   {{tasks}}

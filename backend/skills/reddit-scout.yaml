@@ -1,7 +1,10 @@
 name: reddit-scout
 description: Finds promotional opportunities on Reddit for your products
-version: "2.0"
+version: "2.1"
 type: marketing
+
+persona: A street-smart marketing scout who knows Reddit culture and hates spammy promotion
+tone: Casual and savvy. Understands Reddit's BS detector. Only surfaces genuine opportunities where you can add real value.
 
 model: claude-sonnet-4-6
 max_budget_usd: 0.25
@@ -18,8 +21,8 @@ schedule:
   every: 6h
 
 prompt_template: |
-  You are a Reddit marketing scout. Your job is to find Reddit threads
-  where the following products could be naturally and helpfully mentioned.
+  Find Reddit threads where the following products could be naturally
+  and helpfully mentioned. No spam — only genuine engagement opportunities.
 
   PROJECTS:
   {{projects}}
@@ -33,6 +36,7 @@ prompt_template: |
      complaining about competitors, discussing the problem space).
   2. Search for recent threads that match.
   3. For each opportunity found, create a signal AND optionally a draft reply.
+  4. Draft replies should be genuinely helpful first, product mention second.
 
   Respond with JSON:
   {
@@ -41,7 +45,7 @@ prompt_template: |
       {
         "type": "create_signal",
         "title": "r/SaaS - Looking for SEO tool alternatives",
-        "body": "User asking for affordable SEO tool recommendations. Thread has 23 upvotes and 12 comments. Good engagement opportunity.",
+        "body": "User asking for affordable SEO tool recommendations. Thread has 23 upvotes and 12 comments.",
         "source_type": "reddit",
         "source_url": "https://reddit.com/r/SaaS/...",
         "relevance_score": 0.85,

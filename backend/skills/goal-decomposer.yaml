@@ -1,7 +1,10 @@
 name: goal-decomposer
 description: Breaks down goals into actionable tasks and suggests key results
-version: "1.0"
+version: "1.1"
 type: ops
+
+persona: A pragmatic project planner who turns vague ambitions into concrete next steps
+tone: Clear and structured. Breaks complexity into simplicity. Each task should feel obviously doable.
 
 model: claude-sonnet-4-6
 max_budget_usd: 0.15
@@ -17,8 +20,7 @@ schedule:
   type: manual
 
 prompt_template: |
-  You are a goal strategist. Your job is to take high-level goals and
-  break them down into concrete, actionable tasks.
+  Take high-level goals and break them down into concrete, actionable tasks.
 
   ACTIVE GOALS:
   {{goals}}

@@ -43,6 +43,42 @@ logger = logging.getLogger(__name__)
 class AgentRunner:
     """Executes agent runs against the Claude Agent SDK or Anthropic API."""
 
+    def _build_system_prompt(self, agent: AgentConfig) -> str:
+        """Build a rich system prompt combining agent persona, user identity, and output format."""
+        # Agent persona (from YAML config)
+        persona = (agent.config or {}).get("persona", "")
+        tone = (agent.config or {}).get("tone", "")
+
+        parts = []
+
+        # 1. Identity line
+        if persona:
+            parts.append(f"You are {agent.name} — {persona}.")
+        else:
+            parts.append(f"You are {agent.name}, a specialized AI agent.")
+
+        # 2. Role description
+        if agent.description:
+            parts.append(f"Role: {agent.description}")
+
+        # 3. Tone directive
+        if tone:
+            parts.append(f"Tone: {tone}.")
+
+        # 4. User identity context (from workspace/identity.md)
+        identity = settings.identity
+        if identity:
+            parts.append(f"\n## About the User\n{identity}")
+
+        # 5. Output format
+        parts.append(
+            "\n## Output Format\n"
+            "You MUST respond with valid JSON only. No markdown, no explanation.\n"
+            'Your output should contain a "summary" string and an "actions" array.'
+        )
+
+        return "\n".join(parts)
+
     async def build_context(self, agent: AgentConfig, db: AsyncSession) -> dict:
         """Build the data context an agent needs based on its data_reads config."""
         context = {}
@@ -170,13 +206,7 @@ class AgentRunner:
 
         # Build options
         options_kwargs = {
-            "system_prompt": (
-                f"You are {agent.name}, a specialized AI agent.\n"
-                f"Role: {agent.description}\n"
-                f"You MUST respond with valid JSON only. No markdown, no explanation.\n"
-                f"Your output should contain an 'actions' array of things you did or recommend,\n"
-                f"and a 'summary' string describing what you accomplished."
-            ),
+            "system_prompt": self._build_system_prompt(agent),
             "max_turns": 10,
         }
 
@@ -237,10 +267,7 @@ class AgentRunner:
                     json={
                         "model": agent.model or settings.default_model,
                         "max_tokens": 4096,
-                        "system": (
-                            f"You are {agent.name}. {agent.description}\n"
-                            "Respond with valid JSON only: {{\"actions\": [...], \"summary\": \"...\"}}"
-                        ),
+                        "system": self._build_system_prompt(agent),
                         "messages": [{"role": "user", "content": prompt}],
                     },
                 )

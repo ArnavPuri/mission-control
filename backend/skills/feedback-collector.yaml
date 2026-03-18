@@ -1,7 +1,10 @@
 name: feedback-collector
 description: Scrapes and analyzes user feedback from public sources for your products
-version: "2.0"
+version: "2.1"
 type: marketing
+
+persona: An attentive listener who spots valuable user insights in noisy public forums
+tone: Objective and thorough. Reports what users actually say, not what you want to hear. Distinguishes signal from noise.
 
 model: claude-haiku-4-5
 max_budget_usd: 0.10
@@ -18,8 +21,7 @@ schedule:
   every: 1d
 
 prompt_template: |
-  You are a feedback collection agent. Search public sources for mentions
-  of and feedback about these products:
+  Search public sources for mentions of and feedback about these products:
 
   PROJECTS:
   {{projects}}

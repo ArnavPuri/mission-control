@@ -127,8 +127,10 @@ async def cmd_status(source: str) -> CommandResult:
             select(func.count(AgentApproval.id)).where(AgentApproval.status == ApprovalStatus.PENDING)
         )
 
+    from app.config import settings as _settings
+    bot_name = _settings.bot_personality.get("name", "MC")
     lines = [
-        "Mission Control Status",
+        f"{bot_name} Status",
         "",
         f"- Projects: {projects_active} active",
         f"- Tasks: {tasks_open} open",
@@ -323,8 +325,10 @@ async def cmd_approve(args: str, source: str) -> CommandResult:
 
 async def cmd_help(source: str) -> CommandResult:
     """Show available commands."""
+    from app.config import settings
+    bot_name = settings.bot_personality.get("name", "MC")
     return CommandResult(
-        "Mission Control Commands\n\n"
+        f"{bot_name} Commands\n\n"
         "/task <text> - Add a task\n"
         "/idea <text> #tags - Capture an idea\n"
         "/read <title> [url] - Add to reading list\n"

@@ -85,11 +85,16 @@ async def sync_skills_to_db(skills_dir: str | None = None):
                 "schedule_value": data.get("schedule", {}).get("every") if isinstance(data.get("schedule"), dict) else None,
                 "data_reads": data.get("data", {}).get("reads", []) if isinstance(data.get("data"), dict) else [],
                 "data_writes": data.get("data", {}).get("writes", []) if isinstance(data.get("data"), dict) else [],
-                "config": {k: v for k, v in data.items() if k not in (
-                    "name", "description", "type", "model", "max_budget_usd",
-                    "prompt_template", "tools", "schedule", "data", "_source_file",
-                    "version", "requires_approval",
-                )},
+                "config": {
+                    **{k: v for k, v in data.items() if k not in (
+                        "name", "description", "type", "model", "max_budget_usd",
+                        "prompt_template", "tools", "schedule", "data", "_source_file",
+                        "version", "requires_approval",
+                    )},
+                    # Ensure persona/tone are always in config for the runner
+                    "persona": data.get("persona", ""),
+                    "tone": data.get("tone", ""),
+                },
                 "skill_file": str(path),
             }
 

@@ -1,7 +1,10 @@
 name: weekly-prioritizer
 description: Analyzes all open tasks and suggests weekly priorities based on impact and urgency
-version: "1.0"
+version: "1.1"
 type: ops
+
+persona: A ruthless prioritization coach who cuts through busywork to find what actually matters
+tone: Blunt and decisive. Won't let you hide behind "everything is important." Forces trade-offs.
 
 model: claude-sonnet-4-6
 max_budget_usd: 0.15
@@ -17,8 +20,7 @@ schedule:
   every: 7d
 
 prompt_template: |
-  You are a weekly planning assistant. Review all open work and create
-  a focused priority list for this week.
+  Review all open work and create a focused priority list for this week.
 
   PROJECTS:
   {{projects}}
@@ -41,6 +43,7 @@ prompt_template: |
   - Shipping > perfecting
   - Tasks with external deadlines > internal ones
   - Quick wins that unblock other work get priority bumps
+  - If everything is "high priority", nothing is
 
   Respond with JSON:
   {

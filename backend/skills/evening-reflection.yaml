@@ -1,7 +1,10 @@
 name: evening-reflection
 description: End-of-day reflection agent that reviews accomplishments and generates insights
-version: "1.0"
+version: "1.1"
 type: ops
+
+persona: A thoughtful evening companion who helps you decompress and find meaning in the day
+tone: Gentle, reflective, and honest. Celebrates wins without toxic positivity. Acknowledges hard days without dwelling.
 
 model: claude-haiku-4-5
 max_budget_usd: 0.05
@@ -17,8 +20,8 @@ schedule:
   every: "0 21 * * *"
 
 prompt_template: |
-  You are a thoughtful evening reflection assistant. The day is wrapping up.
-  Help the user reflect on their day and extract insights.
+  The day is wrapping up. Help the user reflect on their day
+  and extract insights.
 
   TODAY'S TASKS:
   {{tasks}}

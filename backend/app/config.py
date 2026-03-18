@@ -7,6 +7,8 @@ Supports multiple LLM auth methods:
   3. OPENROUTER_API_KEY / OLLAMA_BASE_URL (alternative providers)
 """
 
+import re
+from pathlib import Path
 from pydantic_settings import BaseSettings
 from pydantic import Field
 from enum import Enum
@@ -50,6 +52,10 @@ class Settings(BaseSettings):
     # --- GitHub ---
     github_token: str | None = None  # for API access (optional, enhances sync)
 
+    # --- Identity ---
+    bot_name: str = "MC"
+    identity_file: str = "workspace/identity.md"
+
     # --- Paths ---
     agent_workdir: str = "/app/workdir"
     skills_dir: str = "skills"
@@ -86,6 +92,34 @@ class Settings(BaseSettings):
         if not self.telegram_allowed_users:
             return []
         return [int(uid.strip()) for uid in self.telegram_allowed_users.split(",") if uid.strip()]
+
+
+    @property
+    def identity(self) -> str:
+        """Load user identity from workspace/identity.md."""
+        for search_path in [self.identity_file, f"../{self.identity_file}"]:
+            path = Path(search_path)
+            if path.exists():
+                return path.read_text().strip()
+        return ""
+
+    @property
+    def bot_personality(self) -> dict:
+        """Extract bot personality fields from identity file."""
+        text = self.identity
+        if not text:
+            return {"name": self.bot_name, "tone": "", "style": ""}
+
+        result = {"name": self.bot_name, "tone": "", "style": ""}
+        for line in text.split("\n"):
+            line = line.strip()
+            if line.lower().startswith("name:"):
+                result["name"] = line.split(":", 1)[1].strip()
+            elif line.lower().startswith("tone:"):
+                result["tone"] = line.split(":", 1)[1].strip()
+            elif line.lower().startswith("style:"):
+                result["style"] = line.split(":", 1)[1].strip()
+        return result
 
 
 settings = Settings()

@@ -13,6 +13,14 @@ description: What this agent does in one sentence
 version: "1.0"
 type: general  # marketing, research, content, ops, general
 
+# --- Identity & Persona ---
+# These shape how the agent thinks and communicates.
+# persona: Who this agent IS (role, personality, expertise)
+# tone: How it communicates (warm, analytical, blunt, encouraging)
+# If omitted, the agent gets a neutral default persona.
+persona: A helpful assistant that provides clear, actionable advice
+tone: professional and concise
+
 # --- LLM Config ---
 model: claude-haiku-4-5  # claude-haiku-4-5 (cheap/fast) or claude-sonnet-4-6 (smart)
 max_budget_usd: 0.10     # max cost per run
@@ -30,7 +38,8 @@ data:
 
 # --- Schedule ---
 # type: interval | cron | manual
-# every: "4h", "30m", "1d" (for interval type)
+# every: "4h", "30m", "1d" (for interval)
+#        "0 9 * * *" (for cron — 9am daily)
 schedule:
   type: manual
 
@@ -41,9 +50,11 @@ schedule:
 #   {{ideas}}    - JSON array of ideas
 #   {{reading}}  - JSON array of unread items
 #   {{project}}  - JSON object of bound project (if project_id is set)
+#
+# NOTE: The agent's persona, user identity, and output format are
+# injected automatically by the runner. Your prompt_template should
+# focus on the TASK and DATA, not on identity setup.
 prompt_template: |
-  You are a helpful agent.
-
   Here are the current projects:
   {{projects}}
 

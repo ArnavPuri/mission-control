@@ -24,24 +24,25 @@ logger = logging.getLogger(__name__)
 
 SOURCE = "telegram"
 
-# Telegram markdown formatting for status
+# Telegram markdown formatting for section headers
 _TG_STATUS_ICONS = {
-    "Mission Control Status": "📊 *Mission Control Status*",
-    "Projects": "📋 *Projects*",
-    "Habits": "↻ *Habits*",
-    "Goals": "◎ *Goals*",
-    "Journal": "✎ *Journal*",
-    "Pending Approvals": "⏳ *Pending Approvals*",
-    "Mission Control Commands": "🎯 *Mission Control Commands*",
+    "Status": "📊",
+    "Projects": "📋",
+    "Habits": "↻",
+    "Goals": "◎",
+    "Journal": "✎",
+    "Pending Approvals": "⏳",
+    "Commands": "🎯",
 }
 
 
 def _format_reply(text: str) -> tuple[str, str | None]:
     """Add Telegram-specific emoji/markdown formatting to plain command output."""
-    # Add icons for section headers
-    for plain, rich in _TG_STATUS_ICONS.items():
-        if text.startswith(plain):
-            text = text.replace(plain, rich, 1)
+    # Add icons for section headers (match partial — "MC Status" matches "Status")
+    first_line = text.split("\n")[0]
+    for keyword, icon in _TG_STATUS_ICONS.items():
+        if keyword in first_line:
+            text = text.replace(first_line, f"{icon} *{first_line}*", 1)
             return text, "Markdown"
 
     # Action confirmations

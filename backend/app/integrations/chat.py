@@ -224,10 +224,28 @@ session_store = SessionStore(
 # --- System Prompt ---
 
 def build_system_prompt(db_context: dict) -> str:
-    """Build the system prompt for the chat assistant."""
-    return f"""You are Mission Control, a personal AI assistant.
-You help manage projects, tasks, ideas, and a reading list.
+    """Build the system prompt for the chat assistant using configurable identity."""
+    personality = settings.bot_personality
+    bot_name = personality.get("name", "MC")
+    tone = personality.get("tone", "")
+    style = personality.get("style", "")
 
+    # Build identity section
+    identity_section = ""
+    identity = settings.identity
+    if identity:
+        # Extract the "About Me" section for concise context
+        identity_section = f"\n## About the User\n{identity}\n"
+
+    tone_section = ""
+    if tone:
+        tone_section = f"\nPersonality: {tone}"
+    if style:
+        tone_section += f"\nStyle: {style}"
+
+    return f"""You are {bot_name}, a personal AI command center assistant.
+You help manage projects, tasks, ideas, habits, goals, and more.{tone_section}
+{identity_section}
 ## Current Data
 
 ### Projects
@@ -249,7 +267,7 @@ You help manage projects, tasks, ideas, and a reading list.
 - Act immediately on clear intents and confirm what you did
 - Ask for clarification on ambiguous requests
 - Always confirm before destructive actions (marking tasks done, changing priorities)
-- Keep replies concise — this is Telegram, not email
+- Keep replies concise — this is a chat, not an email
 - When listing items, use compact formatting
 - Match tasks by text content, not by ID
 - Check agent status before triggering (don't start already-running agents)"""
