@@ -57,6 +57,11 @@ What's already built:
 - **Seed data** — Example projects, tasks, habits, goals, journal, notes for new installations
 - **Agent timeout** — Configurable per-agent timeout enforcement via asyncio.wait_for
 - **LLM error handling** — Graceful handling of auth, rate limit, overload, network, and timeout errors
+- **Routine builder** — Morning/evening routines as checklists with items, completions, and dashboard panel
+- **Project health scoring** — Aggregate metrics per project with color-coded health badges on dashboard
+- **Calendar view** — Monthly calendar view for tasks with due dates, priority dots, and tooltips
+- **Quick capture** — Global 'c' keyboard shortcut with prefix-based type detection (t: i: r: n: h: g: j:)
+- **Deduplication** — Detect near-duplicate tasks and ideas using text similarity, pre-creation check API
 
 ---
 
@@ -65,15 +70,15 @@ What's already built:
 | Phase | Done | Total | Progress |
 |-------|------|-------|----------|
 | 1. Foundation Hardening | 10 | 15 | 67% |
-| 2. Intelligence Layer | 8 | 13 | 62% |
-| 3. Personal Productivity | 12 | 23 | 52% |
-| 4. Dashboard 2.0 | 15 | 18 | 83% |
+| 2. Intelligence Layer | 10 | 13 | 77% |
+| 3. Personal Productivity | 13 | 23 | 57% |
+| 4. Dashboard 2.0 | 17 | 18 | 94% |
 | 5. Integrations | 7 | 18 | 39% |
 | 6. Multi-Agent Intelligence | 4 | 16 | 25% |
 | 7. Privacy & Scale | 0 | 16 | 0% |
 | 8. Mobile & Desktop | 0 | 10 | 0% |
 | 9. Community | 0 | 16 | 0% |
-| **Total** | **56** | **145** | **39%** |
+| **Total** | **61** | **145** | **42%** |
 
 ---
 
@@ -119,7 +124,7 @@ _Make agents smarter and the system more context-aware._
 - [x] Semantic search API (`/api/search?q=...`) across all entities
 - [x] Dashboard search bar with instant results
 - [x] Agent memory — long-term context that persists across runs (key-value store per agent)
-- [ ] Deduplication: detect near-duplicate tasks and ideas before creating them
+- [x] Deduplication: detect near-duplicate tasks and ideas before creating them
 
 ### 2.2 Smarter Agents
 - [x] Agent chaining — output of one agent feeds into another
@@ -131,7 +136,7 @@ _Make agents smarter and the system more context-aware._
 ### 2.3 Context Engine
 - [x] Auto-tag tasks and ideas using LLM classification
 - [ ] Smart prioritization — ML-based priority suggestions from patterns
-- [ ] Project health scoring — aggregate metrics per project
+- [x] Project health scoring — aggregate metrics per project
 - [ ] Time-based context — "morning brief" vs "evening review" agent behavior
 - [ ] User pattern learning — adapt agent schedules to user activity
 
@@ -144,7 +149,7 @@ _Go beyond task management into a full life operating system._
 ### 3.1 Habits & Routines
 - [x] Habits table — recurring behaviors with streak tracking
 - [x] Daily check-in agent — asks about habit completion, logs streaks
-- [ ] Routine builder — morning/evening routines as checklists
+- [x] Routine builder — morning/evening routines as checklists
 - [x] Habit analytics — streaks, completion rates, weekly bar charts, trends
 
 ### 3.2 Goals & OKRs
@@ -199,7 +204,7 @@ _Transform the dashboard from a status board into a powerful daily driver._
 
 ### 4.2 Views & Visualizations
 - [x] Kanban board view for tasks (by status columns, list/board toggle)
-- [ ] Calendar view for tasks with due dates
+- [x] Calendar view for tasks with due dates
 - [ ] Timeline/Gantt view for project planning
 - [x] Agent cost dashboard — spending per agent, per day, cumulative
 - [x] Activity heatmap (GitHub-style contribution graph)
@@ -208,7 +213,7 @@ _Transform the dashboard from a status board into a powerful daily driver._
 ### 4.3 Interactivity
 - [x] Inline task editing (double-click to edit text, click priority dot to change)
 - [x] Bulk actions — select multiple tasks, bulk update status/priority, bulk delete
-- [ ] Quick capture — global keyboard shortcut to add task/idea/reading
+- [x] Quick capture — global keyboard shortcut to add task/idea/reading
 - [x] Filters and saved views (filter tasks by status and priority with Radix dropdowns)
 - [x] Command palette (Cmd+K) for fast navigation and actions
 
@@ -427,15 +432,25 @@ All completed:
 7. ~~**Competitor monitoring agent** — Radar tracks competitor mentions and market signals (Phase 6.2)~~
 8. ~~**Cost & requirements doc** — hardware specs, hosting options, per-agent API cost breakdown~~
 
-### Sprint 11: Productivity & Intelligence (Recommended)
+### Sprint 11: Productivity & Intelligence ✅
+
+All completed:
+
+1. ~~**Routine builder** — morning/evening routines as checklists with daily completion tracking (Phase 3.1)~~
+2. ~~**Project health scoring** — aggregate metrics per project with color-coded health badges (Phase 2.3)~~
+3. ~~**Calendar view** — monthly calendar showing tasks with due dates, priority dots, tooltips (Phase 4.2)~~
+4. ~~**Quick capture** — global 'c' shortcut, prefix-based type detection (t: i: r: n: h: g: j:) (Phase 4.3)~~
+5. ~~**Deduplication** — detect near-duplicate tasks and ideas using text similarity, pre-creation check (Phase 2.1)~~
+
+### Sprint 12: Integrations & Automation (Recommended)
 
 Next high-impact features:
 
-1. **Routine builder** — morning/evening routines as checklists (Phase 3.1)
-2. **Project health scoring** — aggregate metrics per project (Phase 2.3)
-3. **Calendar view** — tasks with due dates on a calendar (Phase 4.2)
-4. **Quick capture** — global keyboard shortcut to add task/idea/reading (Phase 4.3)
-5. **Deduplication** — detect near-duplicate tasks and ideas (Phase 2.1)
+1. **Multi-step agent workflows (DAGs)** — dependency resolution between agents (Phase 2.2)
+2. **Smart prioritization** — ML-based priority suggestions from patterns (Phase 2.3)
+3. **Drag-and-drop task reordering** — reorder tasks and assign to projects (Phase 4.1)
+4. **Browser push notifications** — for critical events (Phase 4.4)
+5. **Journal search with semantic similarity** — search journal by meaning (Phase 3.3)
 
 ---
 
@@ -470,4 +485,4 @@ These principles guide every decision:
 
 ---
 
-*Last updated: 2026-03-18 · v0.3*
+*Last updated: 2026-03-18 · v0.4*

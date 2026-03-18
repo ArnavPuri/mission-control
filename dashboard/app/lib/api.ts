@@ -492,6 +492,79 @@ export const feeds = {
   fetch: (id: string) => request<{ imported: number }>(`/api/feeds/${id}/fetch`, { method: 'POST' }),
 };
 
+// --- Routines ---
+
+export interface RoutineItem {
+  id: string;
+  text: string;
+  sort_order: number;
+  duration_minutes?: number;
+}
+
+export interface Routine {
+  id: string;
+  name: string;
+  description: string;
+  routine_type: 'morning' | 'evening' | 'custom';
+  is_active: boolean;
+  days: string[];
+  items: RoutineItem[];
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface RoutineCompletion {
+  id: string;
+  completed_items: string[];
+  total_items: number;
+  completed_at: string;
+}
+
+export const routines = {
+  list: (activeOnly = true, routineType?: string) => {
+    const qs = new URLSearchParams({ active_only: String(activeOnly) });
+    if (routineType) qs.set('routine_type', routineType);
+    return request<Routine[]>(`/api/routines?${qs}`);
+  },
+  get: (id: string) => request<Routine>(`/api/routines/${id}`),
+  create: (data: Partial<Routine> & { items?: { text: string; sort_order?: number; duration_minutes?: number }[] }) =>
+    request<Routine>('/api/routines', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<Routine>) =>
+    request<{ updated: boolean }>(`/api/routines/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  delete: (id: string) => request<{ deleted: boolean }>(`/api/routines/${id}`, { method: 'DELETE' }),
+  addItem: (routineId: string, data: { text: string; sort_order?: number; duration_minutes?: number }) =>
+    request<{ id: string }>(`/api/routines/${routineId}/items`, { method: 'POST', body: JSON.stringify(data) }),
+  updateItem: (routineId: string, itemId: string, data: Partial<RoutineItem>) =>
+    request<{ updated: boolean }>(`/api/routines/${routineId}/items/${itemId}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteItem: (routineId: string, itemId: string) =>
+    request<{ deleted: boolean }>(`/api/routines/${routineId}/items/${itemId}`, { method: 'DELETE' }),
+  complete: (routineId: string, completedItems: string[]) =>
+    request<{ id: string; completed: number; total: number }>(`/api/routines/${routineId}/complete`, { method: 'POST', body: JSON.stringify({ completed_items: completedItems }) }),
+  completions: (routineId: string, limit = 30) =>
+    request<RoutineCompletion[]>(`/api/routines/${routineId}/completions?limit=${limit}`),
+};
+
+// --- Deduplication ---
+
+export interface DuplicateMatch {
+  id: string;
+  text: string;
+  similarity: number;
+  entity_type: string;
+}
+
+export interface DuplicateGroup {
+  items: { id: string; text: string; status?: string; score?: number; created_at: string }[];
+  similarity: number;
+}
+
+export const dedup = {
+  tasks: (threshold = 0.7) => request<{ entity_type: string; threshold: number; groups: DuplicateGroup[] }>(`/api/dedup/tasks?threshold=${threshold}`),
+  ideas: (threshold = 0.7) => request<{ entity_type: string; threshold: number; groups: DuplicateGroup[] }>(`/api/dedup/ideas?threshold=${threshold}`),
+  check: (text: string, entityType = 'task') =>
+    request<{ text: string; is_duplicate: boolean; matches: DuplicateMatch[] }>('/api/dedup/check', { method: 'POST', body: JSON.stringify({ text, entity_type: entityType }) }),
+};
+
 // --- Export ---
 
 export const dataExport = {

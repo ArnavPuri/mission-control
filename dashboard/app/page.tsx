@@ -1355,6 +1355,195 @@ function QuickCapture({ open, onClose, onCapture }: {
   );
 }
 
+// ─── Routines Panel ──────────────────────────────────────
+
+function RoutinesPanel({ routines, onComplete, onAdd, showInput, setShowInput }: {
+  routines: api.Routine[]; onComplete: (routineId: string, completedItems: string[]) => void;
+  onAdd: (name: string) => void; showInput: boolean; setShowInput: (v: boolean) => void;
+}) {
+  const [checked, setChecked] = useState<Record<string, Set<string>>>({});
+
+  const toggle = (routineId: string, itemId: string) => {
+    setChecked((prev) => {
+      const next = { ...prev };
+      const set = new Set(prev[routineId] || []);
+      if (set.has(itemId)) set.delete(itemId); else set.add(itemId);
+      next[routineId] = set;
+      return next;
+    });
+  };
+
+  const typeIcons: Record<string, string> = { morning: '🌅', evening: '🌙', custom: '📋' };
+
+  return (
+    <div>
+      {showInput && <InlineInput placeholder="Routine name..." onSubmit={onAdd} onCancel={() => setShowInput(false)} />}
+      <div className="flex flex-col gap-3">
+        {routines.map((r) => {
+          const completedSet = checked[r.id] || new Set();
+          const allDone = r.items.length > 0 && completedSet.size === r.items.length;
+          const estMinutes = r.items.reduce((sum, it) => sum + (it.duration_minutes || 0), 0);
+          return (
+            <div key={r.id} className="bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-800 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">{typeIcons[r.routine_type] || '📋'}</span>
+                  <span className="text-sm font-semibold text-mc-text dark:text-gray-100">{r.name}</span>
+                  <Badge variant={r.routine_type === 'morning' ? 'warning' : r.routine_type === 'evening' ? 'purple' : 'default'}>
+                    {r.routine_type}
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-2">
+                  {estMinutes > 0 && (
+                    <span className="text-[11px] text-mc-dim flex items-center gap-1">
+                      <Clock size={10} /> {estMinutes}m
+                    </span>
+                  )}
+                  <span className="text-[11px] text-mc-dim">{completedSet.size}/{r.items.length}</span>
+                </div>
+              </div>
+              {r.items.length > 0 && (
+                <div className="flex flex-col gap-1">
+                  {r.items.map((item) => {
+                    const isDone = completedSet.has(item.id);
+                    return (
+                      <div key={item.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-mc-subtle dark:hover:bg-gray-800 transition-colors">
+                        <Checkbox.Root
+                          checked={isDone}
+                          onCheckedChange={() => toggle(r.id, item.id)}
+                          className={clsx(
+                            'w-[16px] h-[16px] rounded border-2 flex items-center justify-center transition-all cursor-pointer shrink-0',
+                            isDone ? 'bg-emerald-500 border-emerald-500' : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 hover:border-emerald-400',
+                          )}
+                        >
+                          <Checkbox.Indicator>
+                            <Check size={10} className="text-white" strokeWidth={3} />
+                          </Checkbox.Indicator>
+                        </Checkbox.Root>
+                        <span className={clsx('text-sm flex-1', isDone ? 'text-mc-dim line-through' : 'text-mc-secondary dark:text-gray-300')}>
+                          {item.text}
+                        </span>
+                        {item.duration_minutes && (
+                          <span className="text-[10px] text-mc-dim">{item.duration_minutes}m</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {allDone && r.items.length > 0 && (
+                <button
+                  onClick={() => { onComplete(r.id, Array.from(completedSet)); setChecked((prev) => ({ ...prev, [r.id]: new Set() })); }}
+                  className="mt-2 w-full py-1.5 rounded-lg text-xs font-medium bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 transition-colors cursor-pointer"
+                >
+                  <Check size={12} className="inline mr-1" /> Complete Routine
+                </button>
+              )}
+              {r.items.length === 0 && (
+                <p className="text-xs text-mc-dim text-center py-3">No items yet — add steps via API</p>
+              )}
+            </div>
+          );
+        })}
+        {routines.length === 0 && !showInput && <EmptyState icon={Clock} message="No routines yet" small />}
+      </div>
+    </div>
+  );
+}
+
+// ─── Calendar View ───────────────────────────────────────
+
+function CalendarView({ tasks }: { tasks: api.Task[] }) {
+  const today = new Date();
+  const [viewMonth, setViewMonth] = useState(today.getMonth());
+  const [viewYear, setViewYear] = useState(today.getFullYear());
+
+  const tasksWithDue = tasks.filter((t) => t.due_date);
+
+  const firstDay = new Date(viewYear, viewMonth, 1);
+  const lastDay = new Date(viewYear, viewMonth + 1, 0);
+  const startPad = firstDay.getDay(); // 0=Sun
+  const totalDays = lastDay.getDate();
+
+  const cells: { day: number; tasks: api.Task[] }[] = [];
+  // Padding for days before month starts
+  for (let i = 0; i < startPad; i++) cells.push({ day: 0, tasks: [] });
+  for (let d = 1; d <= totalDays; d++) {
+    const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const dayTasks = tasksWithDue.filter((t) => t.due_date!.startsWith(dateStr));
+    cells.push({ day: d, tasks: dayTasks });
+  }
+
+  const prevMonth = () => {
+    if (viewMonth === 0) { setViewMonth(11); setViewYear(viewYear - 1); }
+    else setViewMonth(viewMonth - 1);
+  };
+  const nextMonth = () => {
+    if (viewMonth === 11) { setViewMonth(0); setViewYear(viewYear + 1); }
+    else setViewMonth(viewMonth + 1);
+  };
+
+  const monthName = new Date(viewYear, viewMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const priorityColors: Record<string, string> = { critical: 'bg-red-500', high: 'bg-orange-400', medium: 'bg-blue-400', low: 'bg-gray-300' };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <button onClick={prevMonth} className="px-2 py-1 rounded text-xs text-mc-muted hover:bg-mc-subtle dark:hover:bg-gray-800 cursor-pointer bg-transparent border-none transition-colors">&lt;</button>
+        <span className="text-sm font-semibold text-mc-text dark:text-gray-100">{monthName}</span>
+        <button onClick={nextMonth} className="px-2 py-1 rounded text-xs text-mc-muted hover:bg-mc-subtle dark:hover:bg-gray-800 cursor-pointer bg-transparent border-none transition-colors">&gt;</button>
+      </div>
+      <div className="grid grid-cols-7 gap-px text-center">
+        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
+          <div key={d} className="text-[10px] text-mc-dim font-medium py-1">{d}</div>
+        ))}
+        {cells.map((cell, idx) => {
+          if (cell.day === 0) return <div key={`pad-${idx}`} />;
+          const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(cell.day).padStart(2, '0')}`;
+          const isToday = dateStr === todayStr;
+          const hasTasks = cell.tasks.length > 0;
+          return (
+            <Tooltip.Root key={idx}>
+              <Tooltip.Trigger asChild>
+                <div className={clsx(
+                  'relative rounded-lg py-1.5 text-xs transition-colors',
+                  isToday ? 'bg-mc-accent text-white font-bold' : hasTasks ? 'bg-blue-50 dark:bg-blue-950 text-mc-text dark:text-gray-200 font-medium' : 'text-mc-secondary dark:text-gray-400 hover:bg-mc-subtle dark:hover:bg-gray-800',
+                )}>
+                  {cell.day}
+                  {hasTasks && (
+                    <div className="flex justify-center gap-0.5 mt-0.5">
+                      {cell.tasks.slice(0, 3).map((t) => (
+                        <span key={t.id} className={clsx('w-1 h-1 rounded-full', priorityColors[t.priority] || 'bg-gray-300')} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </Tooltip.Trigger>
+              {hasTasks && (
+                <Tooltip.Portal>
+                  <Tooltip.Content className="bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-[11px] px-3 py-2 rounded-lg shadow-lg max-w-[220px] z-50" sideOffset={5}>
+                    {cell.tasks.map((t) => (
+                      <div key={t.id} className="flex items-center gap-1.5 py-0.5">
+                        <span className={clsx('w-1.5 h-1.5 rounded-full shrink-0', priorityColors[t.priority])} />
+                        <span className="truncate">{t.text}</span>
+                      </div>
+                    ))}
+                    <Tooltip.Arrow className="fill-gray-900 dark:fill-gray-100" />
+                  </Tooltip.Content>
+                </Tooltip.Portal>
+              )}
+            </Tooltip.Root>
+          );
+        })}
+      </div>
+      {tasksWithDue.length === 0 && (
+        <p className="text-xs text-mc-dim text-center mt-4">No tasks with due dates</p>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Dashboard ──────────────────────────────────────
 
 export default function Dashboard() {
@@ -1373,6 +1562,7 @@ export default function Dashboard() {
   const [habitAnalytics, setHabitAnalytics] = useState<api.HabitAnalytics | null>(null);
   const [notesList, setNotes] = useState<api.Note[]>([]);
   const [agentAnalytics, setAgentAnalytics] = useState<api.AgentAnalyticsOverview | null>(null);
+  const [routinesList, setRoutines] = useState<api.Routine[]>([]);
   const [healthStatus, setHealth] = useState<api.HealthStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1385,6 +1575,7 @@ export default function Dashboard() {
   const [showGoalInput, setShowGoalInput] = useState(false);
   const [showJournalInput, setShowJournalInput] = useState(false);
   const [showNoteInput, setShowNoteInput] = useState(false);
+  const [showRoutineInput, setShowRoutineInput] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showQuickCapture, setShowQuickCapture] = useState(false);
 
@@ -1455,7 +1646,7 @@ export default function Dashboard() {
 
   const loadData = useCallback(async () => {
     try {
-      const [p, a, t, i, r, h, hab, g, j, ap, notifs, unread, hAnalytics, aAnalytics, n] = await Promise.all([
+      const [p, a, t, i, r, h, hab, g, j, ap, notifs, unread, hAnalytics, aAnalytics, n, rout] = await Promise.all([
         api.projects.list(),
         api.agents.list(),
         api.tasks.list(),
@@ -1471,11 +1662,12 @@ export default function Dashboard() {
         api.habits.analytics().catch(() => null),
         api.agentAnalytics.overview().catch(() => null),
         api.notes.list().catch(() => []),
+        api.routines.list().catch(() => []),
       ]);
       setProjects(p); setAgents(a); setTasks(t); setIdeas(i); setReading(r); setHealth(h);
       setHabits(hab); setGoals(g); setJournal(j); setApprovals(ap);
       setNotifications(notifs); setUnreadCount(unread.unread); setHabitAnalytics(hAnalytics);
-      setAgentAnalytics(aAnalytics); setNotes(n);
+      setAgentAnalytics(aAnalytics); setNotes(n); setRoutines(rout);
       setError(null);
     } catch (e: any) {
       setError(e.message || 'Failed to connect to backend');
@@ -1547,6 +1739,14 @@ export default function Dashboard() {
     await (handlers[type] || handlers.t)(text);
     loadData();
   };
+  const addRoutine = async (name: string) => {
+    await api.routines.create({ name, routine_type: 'custom' });
+    setShowRoutineInput(false); loadData();
+  };
+  const completeRoutine = async (routineId: string, completedItems: string[]) => {
+    await api.routines.complete(routineId, completedItems); loadData();
+  };
+
   const toggleNotePin = async (id: string) => {
     const note = notesList.find((n) => n.id === id); if (!note) return;
     await api.notes.update(id, { is_pinned: !note.is_pinned }); loadData();
@@ -1651,6 +1851,10 @@ export default function Dashboard() {
 
               <div className="flex flex-col gap-4 sm:gap-6">
                 <Card className="p-4">
+                  <SectionHeader icon={Clock} title="Routines" count={routinesList.length} onAdd={() => setShowRoutineInput(true)} />
+                  <RoutinesPanel routines={routinesList} onComplete={completeRoutine} onAdd={addRoutine} showInput={showRoutineInput} setShowInput={setShowRoutineInput} />
+                </Card>
+                <Card className="p-4">
                   <SectionHeader icon={Flame} title="Habits" count={habitsList.length} onAdd={() => setShowHabitInput(true)} />
                   <HabitsPanel habits={habitsList} onToggle={toggleHabit} onAdd={addHabit} showInput={showHabitInput} setShowInput={setShowHabitInput} />
                 </Card>
@@ -1680,8 +1884,13 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Bottom Row: Analytics + Activity + Costs */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+            {/* Bottom Row: Calendar + Analytics + Activity + Costs */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+              <Card className="p-4">
+                <SectionHeader icon={Calendar} title="Calendar" count={tasksList.filter((t) => t.due_date).length} />
+                <CalendarView tasks={tasksList} />
+              </Card>
+
               <Card className="p-4">
                 <SectionHeader icon={TrendingUp} title="Habit Analytics" count={habitsList.length} />
                 <HabitAnalyticsPanel analytics={habitAnalytics} />

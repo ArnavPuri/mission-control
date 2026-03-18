@@ -642,6 +642,69 @@ class MarketingContent(Base):
     )
 
 
+# ---------- Routines ----------
+
+class RoutineType(str, PyEnum):
+    MORNING = "morning"
+    EVENING = "evening"
+    CUSTOM = "custom"
+
+
+class Routine(Base):
+    """Repeatable routine (morning/evening) with ordered checklist items."""
+    __tablename__ = "routines"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, default="")
+    routine_type = Column(Enum(RoutineType), default=RoutineType.CUSTOM, nullable=False)
+    is_active = Column(Boolean, default=True)
+    days = Column(ARRAY(String), default=lambda: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"])
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    items = relationship("RoutineItem", back_populates="routine", lazy="selectin", order_by="RoutineItem.sort_order")
+
+    __table_args__ = (
+        Index("idx_routines_type", "routine_type"),
+        Index("idx_routines_active", "is_active"),
+    )
+
+
+class RoutineItem(Base):
+    """Individual step in a routine checklist."""
+    __tablename__ = "routine_items"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    routine_id = Column(UUID(as_uuid=True), ForeignKey("routines.id", ondelete="CASCADE"), nullable=False)
+    text = Column(String(500), nullable=False)
+    sort_order = Column(Integer, default=0)
+    duration_minutes = Column(Integer, nullable=True)  # estimated time
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    routine = relationship("Routine", back_populates="items")
+
+    __table_args__ = (
+        Index("idx_routine_items_routine", "routine_id"),
+    )
+
+
+class RoutineCompletion(Base):
+    """Daily completion log for a routine — tracks which items were checked off."""
+    __tablename__ = "routine_completions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    routine_id = Column(UUID(as_uuid=True), ForeignKey("routines.id", ondelete="CASCADE"), nullable=False)
+    completed_items = Column(ARRAY(String), default=list)  # list of item IDs completed
+    total_items = Column(Integer, default=0)
+    completed_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("idx_routine_completions_routine", "routine_id"),
+        Index("idx_routine_completions_date", "completed_at"),
+    )
+
+
 # ---------- Chat Sessions ----------
 
 class ChatSession(Base):
