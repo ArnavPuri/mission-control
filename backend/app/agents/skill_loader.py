@@ -12,6 +12,7 @@ On startup, the loader:
 """
 
 import logging
+import re
 from pathlib import Path
 
 import yaml
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 def slugify(name: str) -> str:
     """Convert agent name to filesystem-safe slug."""
-    return name.lower().replace(" ", "-").replace("_", "-")
+    return re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')
 
 
 def load_skill_file(path: Path) -> dict | None:
@@ -101,5 +102,7 @@ async def sync_skills_to_db(skills_dir: str | None = None):
                 db.add(agent)
                 logger.info(f"Created agent: {name}")
 
+        # Note: Only YAML-managed agents (skill_file IS NOT NULL) are synced.
+        # Agents created via the UI (skill_file = NULL) are never touched by the loader.
         await db.commit()
     logger.info(f"Skill sync complete: {len(loaded_slugs)} agents loaded")
