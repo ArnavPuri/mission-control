@@ -101,6 +101,35 @@ class AgentRunner:
                 for j in result.scalars().all()
             ]
 
+        if "marketing_signals" in (agent.data_reads or []):
+            from app.db.models import MarketingSignal, SignalStatus
+            result = await db.execute(
+                select(MarketingSignal)
+                .where(MarketingSignal.status == SignalStatus.NEW)
+                .order_by(MarketingSignal.created_at.desc())
+                .limit(50)
+            )
+            context["marketing_signals"] = [
+                {"id": str(s.id), "title": s.title, "body": s.body[:200],
+                 "source_type": s.source_type, "source_url": s.source_url,
+                 "relevance_score": s.relevance_score, "signal_type": s.signal_type}
+                for s in result.scalars().all()
+            ]
+
+        if "marketing_content" in (agent.data_reads or []):
+            from app.db.models import MarketingContent, ContentStatus
+            result = await db.execute(
+                select(MarketingContent)
+                .where(MarketingContent.status == ContentStatus.DRAFT)
+                .order_by(MarketingContent.created_at.desc())
+                .limit(20)
+            )
+            context["marketing_content"] = [
+                {"id": str(c.id), "title": c.title, "body": c.body[:500],
+                 "channel": c.channel, "status": c.status.value}
+                for c in result.scalars().all()
+            ]
+
         # Load agent memory (persistent context from previous runs)
         mem_result = await db.execute(
             select(AgentMemory).where(AgentMemory.agent_id == agent.id).order_by(AgentMemory.updated_at.desc())
@@ -515,3 +544,48 @@ class AgentRunner:
                 )
                 db.add(goal)
                 await broadcast("goal.created", {"title": goal.title})
+
+            elif action_type == "create_signal" and "marketing_signals" in (agent.data_writes or []):
+                from app.db.models import MarketingSignal
+                signal = MarketingSignal(
+                    title=action.get("title", "Untitled signal"),
+                    body=action.get("body", ""),
+                    source=f"agent:{agent.slug}",
+                    source_type=action.get("source_type", "other"),
+                    source_url=action.get("source_url"),
+                    relevance_score=min(max(action.get("relevance_score", 0.5), 0.0), 1.0),
+                    signal_type=action.get("signal_type", "opportunity"),
+                    channel_metadata=action.get("channel_metadata", {}),
+                    project_id=agent.project_id,
+                    agent_id=agent.id,
+                    tags=action.get("tags", []),
+                )
+                db.add(signal)
+                await db.flush()
+                db.add(EventLog(
+                    event_type="signal.created", entity_type="signal",
+                    entity_id=signal.id, source=f"agent:{agent.slug}",
+                    data={"title": signal.title, "signal_type": signal.signal_type},
+                ))
+                await broadcast("signal.created", {"id": str(signal.id), "title": signal.title, "source": signal.source})
+
+            elif action_type == "create_content" and "marketing_content" in (agent.data_writes or []):
+                from app.db.models import MarketingContent
+                content = MarketingContent(
+                    title=action.get("title", "Untitled content"),
+                    body=action.get("body", ""),
+                    channel=action.get("channel", "other"),
+                    source=f"agent:{agent.slug}",
+                    signal_id=UUID(action["signal_id"]) if action.get("signal_id") else None,
+                    project_id=agent.project_id,
+                    agent_id=agent.id,
+                    tags=action.get("tags", []),
+                )
+                db.add(content)
+                await db.flush()
+                db.add(EventLog(
+                    event_type="content.created", entity_type="content",
+                    entity_id=content.id, source=f"agent:{agent.slug}",
+                    data={"title": content.title, "channel": content.channel},
+                ))
+                await broadcast("content.created", {"id": str(content.id), "title": content.title, "source": content.source})
