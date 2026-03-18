@@ -12,7 +12,7 @@ What's already built:
 
 - **Core data model** — Projects, tasks, ideas, reading list with full CRUD
 - **Agent system** — YAML-defined skills, scheduled execution, Claude Agent SDK
-- **9 agents** — Reddit Scout, Idea Validator, Weekly Prioritizer, Feedback Collector, Daily Check-in, Goal Decomposer, Evening Reflection, Weekly Review + template
+- **10 agents** — Daily Standup, Reddit Scout, Idea Validator, Weekly Prioritizer, Feedback Collector, Daily Check-in, Goal Decomposer, Evening Reflection, Weekly Review, Content Drafter + template
 - **Dashboard** — Light-theme Radix UI dashboard with cards, tooltips, popovers, progress bars, activity heatmap
 - **Telegram bot** — 11 commands + natural language chat with LLM
 - **MCP server** — 17 tools for Claude Code integration
@@ -23,6 +23,12 @@ What's already built:
 - **Journal** — Daily entries with mood, energy, wins, challenges, gratitude
 - **Agent approval queue** — Human-in-the-loop review before agent actions execute
 - **Agent chaining** — Output of one agent feeds into the next via `chain_to`
+- **Agent learning loop** — Run retrospective, post-run insights, action stats tracked automatically
+- **Daily standup** — Conductor agent coordinates all agents via shared memory briefings
+- **Shared scratchpad** — Cross-agent communication via shared memory (agent_id=NULL)
+- **Output validation** — Pydantic schemas validate agent JSON before writing to DB
+- **LLM retry logic** — Exponential backoff with jitter for rate limits and server errors
+- **Cost & requirements doc** — Hardware specs, hosting options, per-agent API cost breakdown
 - **Agent dry-run** — Preview actions without executing
 - **Cross-entity search** — Search across all 7 data types + command palette (Cmd+K)
 - **Webhook system** — Inbound (HMAC-verified) + outbound event dispatch + logs
@@ -58,16 +64,16 @@ What's already built:
 
 | Phase | Done | Total | Progress |
 |-------|------|-------|----------|
-| 1. Foundation Hardening | 8 | 15 | 53% |
-| 2. Intelligence Layer | 7 | 13 | 54% |
+| 1. Foundation Hardening | 10 | 15 | 67% |
+| 2. Intelligence Layer | 8 | 13 | 62% |
 | 3. Personal Productivity | 12 | 23 | 52% |
 | 4. Dashboard 2.0 | 15 | 18 | 83% |
 | 5. Integrations | 7 | 18 | 39% |
-| 6. Multi-Agent Intelligence | 2 | 16 | 13% |
+| 6. Multi-Agent Intelligence | 4 | 16 | 25% |
 | 7. Privacy & Scale | 0 | 16 | 0% |
 | 8. Mobile & Desktop | 0 | 10 | 0% |
 | 9. Community | 0 | 16 | 0% |
-| **Total** | **51** | **145** | **35%** |
+| **Total** | **56** | **145** | **39%** |
 
 ---
 
@@ -97,9 +103,9 @@ _Make what exists rock-solid and easy to set up._
 
 ### 1.4 Agent Robustness
 - [x] Agent approval queue — human-in-the-loop before actions execute
-- [ ] Retry logic with exponential backoff for transient LLM failures
+- [x] Retry logic with exponential backoff for transient LLM failures
 - [x] Agent timeout enforcement — configurable per-agent timeout with asyncio.wait_for
-- [ ] Output validation — reject malformed agent responses gracefully
+- [x] Output validation — Pydantic schemas reject malformed agent responses gracefully
 - [ ] Agent versioning — track skill file changes over time
 
 ---
@@ -118,7 +124,7 @@ _Make agents smarter and the system more context-aware._
 ### 2.2 Smarter Agents
 - [x] Agent chaining — output of one agent feeds into another
 - [x] Conditional triggers — run agent when specific DB conditions are met
-- [ ] Agent-to-agent communication via shared context
+- [x] Agent-to-agent communication via shared memory scratchpad + daily standup coordination
 - [ ] Multi-step agent workflows (DAGs) with dependency resolution
 - [ ] Agent self-evaluation — score own output quality, retry if low confidence
 
@@ -264,8 +270,8 @@ _Build a team of specialized AI agents that collaborate._
 ### 6.2 Advanced Agent Capabilities
 - [ ] Web browsing agent — research topics and summarize findings
 - [ ] Code review agent — review PRs and suggest improvements
-- [ ] Content creation agent — draft blog posts, tweets, newsletters
-- [ ] Competitor monitoring agent — track competitor changes and news
+- [x] Content creation agent — Echo drafts content from high-relevance marketing signals
+- [x] Competitor monitoring agent — Radar tracks competitor mentions and market signals
 - [ ] Opportunity scout agent — find freelance gigs, speaking opportunities
 - [ ] Learning path agent — curate learning resources for a skill
 - [ ] Health check-in agent — daily wellness prompts and tracking
@@ -408,7 +414,20 @@ All completed:
 4. ~~**Agent timeout enforcement** — configurable timeout_seconds per agent via asyncio.wait_for (Phase 1.4)~~
 5. ~~**Graceful error handling** — auth, rate limit, overload, network, timeout errors with user-friendly messages (Phase 1.3)~~
 
-### Sprint 10: Productivity & Intelligence (Recommended)
+### Sprint 10: Agent Intelligence & Coordination ✅
+
+All completed:
+
+1. ~~**Agent learning loop** — run retrospective (last 5 runs in context), post-run insights (run count, action stats, last summary auto-saved to memory) (Phase 2.2)~~
+2. ~~**Shared scratchpad** — cross-agent communication via shared memory, event-driven triggers (Phase 2.2)~~
+3. ~~**Daily standup agent** — Conductor coordinates all agents every morning via shared memory briefings (Phase 2.2)~~
+4. ~~**Output validation** — Pydantic schemas validate agent JSON, drop malformed actions with warnings (Phase 1.4)~~
+5. ~~**Retry with backoff** — exponential backoff + jitter for rate limits and server errors (Phase 1.4)~~
+6. ~~**Content drafter agent** — Echo auto-drafts content from high-relevance marketing signals (Phase 6.2)~~
+7. ~~**Competitor monitoring agent** — Radar tracks competitor mentions and market signals (Phase 6.2)~~
+8. ~~**Cost & requirements doc** — hardware specs, hosting options, per-agent API cost breakdown~~
+
+### Sprint 11: Productivity & Intelligence (Recommended)
 
 Next high-impact features:
 

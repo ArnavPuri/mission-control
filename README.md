@@ -241,16 +241,16 @@ mission-control/
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for the full roadmap. Current progress: **51/145 features (35%)**.
+See [ROADMAP.md](ROADMAP.md) for the full roadmap. Current progress: **56/145 features (39%)**.
 
 | Phase | Progress |
 |-------|----------|
-| Foundation Hardening | 53% |
-| Intelligence Layer | 54% |
+| Foundation Hardening | 67% |
+| Intelligence Layer | 62% |
 | Personal Productivity | 52% |
 | Dashboard 2.0 | 83% |
 | Integrations | 39% |
-| Multi-Agent Intelligence | 13% |
+| Multi-Agent Intelligence | 25% |
 | Privacy & Scale | 0% |
 | Mobile & Desktop | 0% |
 | Community | 0% |
