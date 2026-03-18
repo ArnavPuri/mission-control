@@ -13,7 +13,7 @@ services:
     ports:
       - "${DB_PORT:-5432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U missionctl"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-missionctl} -d ${POSTGRES_DB:-missioncontrol}"]
       interval: 5s
       timeout: 3s
       retries: 5
