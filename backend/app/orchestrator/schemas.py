@@ -58,7 +58,8 @@ class AgentAction(BaseModel):
     def validate_action_type(cls, v: str) -> str:
         allowed = {
             "create_task", "create_idea", "update_task", "add_reading",
-            "create_journal", "save_memory", "create_goal", "create_note",
+            "create_journal", "save_memory", "save_shared_memory",
+            "create_goal", "create_note",
             "create_signal", "create_content",
         }
         if v not in allowed:

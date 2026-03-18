@@ -70,7 +70,20 @@ class AgentRunner:
         if identity:
             parts.append(f"\n## About the User\n{identity}")
 
-        # 5. Output format
+        # 5. Memory & learning instructions
+        parts.append(
+            "\n## Memory & Learning\n"
+            "You have persistent memory that survives between runs. Use it.\n"
+            '- Your context includes "past_runs" showing your last 5 runs (summaries, actions, dates).\n'
+            '- Your "memory" dict contains things you saved previously. Reference it.\n'
+            '- Your "shared_memory" dict contains notes from other agents. Read it for cross-agent context.\n'
+            "- To remember something for next time, include a save_memory action.\n"
+            "- To share context with other agents, include a save_shared_memory action.\n"
+            "- Avoid repeating the same actions from recent runs. Check past_runs first.\n"
+            "- If you notice a pattern (e.g., you keep creating similar tasks), save an insight to memory."
+        )
+
+        # 6. Output format
         parts.append(
             "\n## Output Format\n"
             "You MUST respond with valid JSON only. No markdown, no explanation.\n"
@@ -183,6 +196,32 @@ class AgentRunner:
         shared_memories = shared_result.scalars().all()
         if shared_memories:
             context["shared_memory"] = {m.key: m.value for m in shared_memories}
+
+        # Load run history (last 5 completed runs for self-awareness)
+        run_history = await db.execute(
+            select(AgentRun)
+            .where(
+                AgentRun.agent_id == agent.id,
+                AgentRun.status == AgentRunStatus.COMPLETED,
+            )
+            .order_by(AgentRun.completed_at.desc())
+            .limit(5)
+        )
+        past_runs = run_history.scalars().all()
+        if past_runs:
+            context["past_runs"] = [
+                {
+                    "run_date": r.completed_at.isoformat() if r.completed_at else None,
+                    "trigger": r.trigger,
+                    "summary": (r.output_data or {}).get("summary", "")[:300],
+                    "action_count": len((r.output_data or {}).get("actions", [])),
+                    "action_types": list(set(
+                        a.get("type", "") for a in (r.output_data or {}).get("actions", [])
+                        if isinstance(a, dict)
+                    )),
+                }
+                for r in past_runs
+            ]
 
         # Include project-specific context if agent is bound to a project
         if agent.project_id:
@@ -434,6 +473,9 @@ class AgentRunner:
             except Exception:
                 pass  # notifications are best-effort
 
+            # Post-run learning: extract and persist run insights to agent memory
+            await self._post_run_learn(agent, run, result, db)
+
             # Agent chaining: if this agent has a "chain_to" config, trigger the next agent
             chain_to = agent.config.get("chain_to") if agent.config else None
             if chain_to:
@@ -514,6 +556,83 @@ class AgentRunner:
                 ))
             await self.start_run(next_agent, trigger=f"chain:{trigger}", db=db)
             await db.commit()
+
+    async def _post_run_learn(self, agent: AgentConfig, run: AgentRun, result: dict, db: AsyncSession):
+        """Extract insights from a completed run and persist to agent memory.
+
+        Tracks: run count, last summary, action patterns, and running stats.
+        This gives agents self-awareness of their own performance over time.
+        """
+        try:
+            actions = result.get("actions", [])
+            action_types = [a.get("type", "") for a in actions if isinstance(a, dict)]
+
+            # 1. Increment run counter
+            counter_result = await db.execute(
+                select(AgentMemory).where(
+                    AgentMemory.agent_id == agent.id,
+                    AgentMemory.key == "_run_count",
+                )
+            )
+            counter = counter_result.scalar_one_or_none()
+            run_count = int(counter.value) + 1 if counter else 1
+            if counter:
+                counter.value = str(run_count)
+            else:
+                db.add(AgentMemory(
+                    agent_id=agent.id, key="_run_count",
+                    value=str(run_count), memory_type="system",
+                ))
+
+            # 2. Save last run summary for quick recall
+            last_summary = result.get("summary", "")[:500]
+            if last_summary:
+                existing = await db.execute(
+                    select(AgentMemory).where(
+                        AgentMemory.agent_id == agent.id,
+                        AgentMemory.key == "_last_run_summary",
+                    )
+                )
+                mem = existing.scalar_one_or_none()
+                if mem:
+                    mem.value = last_summary
+                else:
+                    db.add(AgentMemory(
+                        agent_id=agent.id, key="_last_run_summary",
+                        value=last_summary, memory_type="system",
+                    ))
+
+            # 3. Track action pattern stats (what action types this agent typically produces)
+            if action_types:
+                stats_result = await db.execute(
+                    select(AgentMemory).where(
+                        AgentMemory.agent_id == agent.id,
+                        AgentMemory.key == "_action_stats",
+                    )
+                )
+                stats_mem = stats_result.scalar_one_or_none()
+                try:
+                    stats = json.loads(stats_mem.value) if stats_mem else {}
+                except (json.JSONDecodeError, AttributeError):
+                    stats = {}
+
+                for at in action_types:
+                    stats[at] = stats.get(at, 0) + 1
+                stats["_total_actions"] = stats.get("_total_actions", 0) + len(action_types)
+                stats["_total_runs"] = run_count
+
+                stats_json = json.dumps(stats)
+                if stats_mem:
+                    stats_mem.value = stats_json
+                else:
+                    db.add(AgentMemory(
+                        agent_id=agent.id, key="_action_stats",
+                        value=stats_json, memory_type="system",
+                    ))
+
+            await db.flush()
+        except Exception as e:
+            logger.debug(f"Post-run learning failed for {agent.name}: {e}")
 
     async def _fire_trigger(self, entity_type: str, event: str, entity_data: dict, db: AsyncSession):
         """Fire event-driven triggers (best-effort)."""
