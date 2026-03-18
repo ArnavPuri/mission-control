@@ -198,21 +198,43 @@ class AgentRunner:
         if settings.anthropic_api_key:
             headers["x-api-key"] = settings.anthropic_api_key
 
-        async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers=headers,
-                json={
-                    "model": agent.model or settings.default_model,
-                    "max_tokens": 4096,
-                    "system": (
-                        f"You are {agent.name}. {agent.description}\n"
-                        "Respond with valid JSON only: {{\"actions\": [...], \"summary\": \"...\"}}"
-                    ),
-                    "messages": [{"role": "user", "content": prompt}],
-                },
-            )
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                resp = await client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers=headers,
+                    json={
+                        "model": agent.model or settings.default_model,
+                        "max_tokens": 4096,
+                        "system": (
+                            f"You are {agent.name}. {agent.description}\n"
+                            "Respond with valid JSON only: {{\"actions\": [...], \"summary\": \"...\"}}"
+                        ),
+                        "messages": [{"role": "user", "content": prompt}],
+                    },
+                )
+
+            if resp.status_code == 401:
+                raise RuntimeError("LLM authentication failed. Check your ANTHROPIC_API_KEY.")
+            if resp.status_code == 429:
+                raise RuntimeError("LLM rate limit exceeded. Try again later or reduce agent frequency.")
+            if resp.status_code == 529:
+                raise RuntimeError("Anthropic API is overloaded. Try again in a few minutes.")
+            if resp.status_code >= 500:
+                raise RuntimeError(f"LLM provider error (HTTP {resp.status_code}). The API may be experiencing issues.")
+            if resp.status_code >= 400:
+                raise RuntimeError(f"LLM request failed (HTTP {resp.status_code}): {resp.text[:200]}")
+
             data = resp.json()
+        except httpx.ConnectError:
+            raise RuntimeError("Cannot connect to LLM provider. Check your network and API configuration.")
+        except httpx.TimeoutException:
+            raise RuntimeError("LLM request timed out. The model may be overloaded.")
+
+        # Check for API-level errors
+        if "error" in data:
+            err_msg = data["error"].get("message", str(data["error"]))
+            raise RuntimeError(f"LLM API error: {err_msg}")
 
         text = ""
         for block in data.get("content", []):
@@ -224,6 +246,29 @@ class AgentRunner:
             return json.loads(cleaned)
         except json.JSONDecodeError:
             return {"summary": text, "actions": [], "raw": True}
+
+    async def _execute_llm(self, prompt: str, agent: AgentConfig) -> dict:
+        """Execute LLM call with provider fallback and timeout enforcement."""
+        timeout_seconds = (agent.config or {}).get("timeout_seconds", 300)
+
+        async def _run():
+            provider = settings.llm_provider
+            if provider in (LLMProvider.ANTHROPIC_API, LLMProvider.ANTHROPIC_OAUTH):
+                try:
+                    return await self.execute_with_agent_sdk(prompt, agent)
+                except Exception as sdk_err:
+                    logger.warning(f"Agent SDK failed, falling back to API: {sdk_err}")
+                    return await self.execute_with_anthropic_api(prompt, agent)
+            else:
+                return await self.execute_with_anthropic_api(prompt, agent)
+
+        try:
+            return await asyncio.wait_for(_run(), timeout=timeout_seconds)
+        except asyncio.TimeoutError:
+            raise TimeoutError(
+                f"Agent {agent.name} timed out after {timeout_seconds}s. "
+                f"Increase timeout_seconds in agent config if needed."
+            )
 
     async def start_run(self, agent: AgentConfig, trigger: str, db: AsyncSession) -> AgentRun:
         """Start an agent run - creates log entry, executes, writes results."""
@@ -243,16 +288,8 @@ class AgentRunner:
             prompt = self.render_prompt(agent.prompt_template, context)
             run.input_data = {"prompt_length": len(prompt), "context_keys": list(context.keys())}
 
-            # Execute based on provider
-            provider = settings.llm_provider
-            if provider in (LLMProvider.ANTHROPIC_API, LLMProvider.ANTHROPIC_OAUTH):
-                try:
-                    result = await self.execute_with_agent_sdk(prompt, agent)
-                except Exception as sdk_err:
-                    logger.warning(f"Agent SDK failed, falling back to API: {sdk_err}")
-                    result = await self.execute_with_anthropic_api(prompt, agent)
-            else:
-                result = await self.execute_with_anthropic_api(prompt, agent)
+            # Execute with timeout enforcement
+            result = await self._execute_llm(prompt, agent)
 
             # Update run
             run.status = AgentRunStatus.COMPLETED

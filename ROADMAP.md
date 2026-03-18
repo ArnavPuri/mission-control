@@ -45,6 +45,12 @@ What's already built:
 - **Bulk actions** — Multi-select tasks with bulk status, priority, delete
 - **Keyboard shortcuts** — Vim-style two-key combos (g+key nav, n+key create)
 - **Project dashboards** — Dedicated per-project view with all linked entities
+- **Backend test suite** — 14 pytest async tests with SQLite in-memory, covering all CRUD endpoints
+- **Dashboard test suite** — 21 Vitest tests for shared components and API client
+- **Alembic migrations** — Async migration pipeline with initial schema (19 tables)
+- **Seed data** — Example projects, tasks, habits, goals, journal, notes for new installations
+- **Agent timeout** — Configurable per-agent timeout enforcement via asyncio.wait_for
+- **LLM error handling** — Graceful handling of auth, rate limit, overload, network, and timeout errors
 
 ---
 
@@ -52,7 +58,7 @@ What's already built:
 
 | Phase | Done | Total | Progress |
 |-------|------|-------|----------|
-| 1. Foundation Hardening | 3 | 15 | 20% |
+| 1. Foundation Hardening | 8 | 15 | 53% |
 | 2. Intelligence Layer | 7 | 13 | 54% |
 | 3. Personal Productivity | 12 | 23 | 52% |
 | 4. Dashboard 2.0 | 15 | 18 | 83% |
@@ -61,7 +67,7 @@ What's already built:
 | 7. Privacy & Scale | 0 | 16 | 0% |
 | 8. Mobile & Desktop | 0 | 10 | 0% |
 | 9. Community | 0 | 16 | 0% |
-| **Total** | **46** | **145** | **32%** |
+| **Total** | **51** | **145** | **35%** |
 
 ---
 
@@ -77,22 +83,22 @@ _Make what exists rock-solid and easy to set up._
 - [ ] SQLite mode for zero-config local development (no Postgres required)
 
 ### 1.2 Database & Migrations
-- [ ] Alembic migration pipeline (currently uses auto-create on startup)
-- [ ] Seed data with example projects, tasks, and ideas for new users
+- [x] Alembic migration pipeline with async PostgreSQL support
+- [x] Seed data with example projects, tasks, habits, goals, journal, notes for new users
 - [ ] Database backup/restore commands (`mc backup`, `mc restore`)
 - [x] Data export to JSON/CSV for portability
 
 ### 1.3 Testing & Reliability
-- [ ] Backend test suite (pytest) with CI pipeline
-- [ ] Dashboard test suite (Vitest + React Testing Library)
+- [x] Backend test suite (pytest) — 14 async tests covering all CRUD endpoints, SQLite in-memory
+- [x] Dashboard test suite (Vitest + React Testing Library) — 21 tests for components and API client
 - [x] Agent dry-run mode (preview actions without executing)
 - [ ] Health check improvements: detailed diagnostics per component
-- [ ] Graceful error handling for all LLM provider failures
+- [x] Graceful error handling for all LLM provider failures (auth, rate limit, timeout, network)
 
 ### 1.4 Agent Robustness
 - [x] Agent approval queue — human-in-the-loop before actions execute
 - [ ] Retry logic with exponential backoff for transient LLM failures
-- [ ] Agent timeout enforcement (kill stuck runs)
+- [x] Agent timeout enforcement — configurable per-agent timeout with asyncio.wait_for
 - [ ] Output validation — reject malformed agent responses gracefully
 - [ ] Agent versioning — track skill file changes over time
 
@@ -392,15 +398,25 @@ All completed:
 4. ~~**Keyboard shortcuts** — vim-style g+key nav, n+key create, Shift+T theme, ? help (Phase 4.1)~~
 5. ~~**Project dashboards** — dedicated per-project view with tasks, goals, agents, notes (Phase 4.2)~~
 
-### Sprint 9: Foundation & Testing (Recommended)
+### Sprint 9: Foundation & Testing ✅
 
-Make it production-ready:
+All completed:
 
-1. **Test suites** — pytest for backend + Vitest for dashboard (Phase 1.3)
-2. **Alembic migrations** — proper migration pipeline instead of auto-create (Phase 1.2)
-3. **Seed data** — example projects, tasks, agents for new users (Phase 1.2)
-4. **Agent timeout enforcement** — kill stuck runs (Phase 1.4)
-5. **Graceful error handling** — all LLM provider failures handled (Phase 1.3)
+1. ~~**Test suites** — pytest (14 tests, SQLite in-memory) + Vitest (21 tests, mock fetch/WS) (Phase 1.3)~~
+2. ~~**Alembic migrations** — async env.py, initial migration with all 19 tables (Phase 1.2)~~
+3. ~~**Seed data** — 3 projects, 7 tasks, 4 ideas, 3 reading, 4 habits, 2 goals, 1 journal, 2 notes (Phase 1.2)~~
+4. ~~**Agent timeout enforcement** — configurable timeout_seconds per agent via asyncio.wait_for (Phase 1.4)~~
+5. ~~**Graceful error handling** — auth, rate limit, overload, network, timeout errors with user-friendly messages (Phase 1.3)~~
+
+### Sprint 10: Productivity & Intelligence (Recommended)
+
+Next high-impact features:
+
+1. **Routine builder** — morning/evening routines as checklists (Phase 3.1)
+2. **Project health scoring** — aggregate metrics per project (Phase 2.3)
+3. **Calendar view** — tasks with due dates on a calendar (Phase 4.2)
+4. **Quick capture** — global keyboard shortcut to add task/idea/reading (Phase 4.3)
+5. **Deduplication** — detect near-duplicate tasks and ideas (Phase 2.1)
 
 ---
 
