@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { clsx } from 'clsx';
 import {
   LayoutDashboard, FolderOpen, Zap, PenLine, Settings, Keyboard,
-  Sun, Moon,
+  Sun, Moon, Megaphone,
 } from 'lucide-react';
 import { useTheme, type Theme } from './shared';
 import * as Tooltip from '@radix-ui/react-tooltip';
@@ -14,6 +14,7 @@ import { useState } from 'react';
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, shortcut: 'g d' },
   { href: '/projects', label: 'Projects', icon: FolderOpen, shortcut: 'g p' },
+  { href: '/marketing', label: 'Marketing', icon: Megaphone, shortcut: 'g m' },
   { href: '/agents', label: 'Agents', icon: Zap, shortcut: 'g a' },
   { href: '/journal', label: 'Journal', icon: PenLine, shortcut: 'g j' },
   { href: '/settings', label: 'Settings', icon: Settings, shortcut: 'g s' },
@@ -137,7 +138,7 @@ export function MobileNav() {
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-mc-border dark:border-gray-800 flex items-center justify-around py-2 z-40 md:hidden">
-      {navItems.slice(0, 4).map((item) => {
+      {navItems.map((item) => {
         const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
         return (
           <Link
