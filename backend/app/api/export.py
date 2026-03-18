@@ -17,6 +17,7 @@ from app.db.models import (
     Project, Task, Idea, ReadingItem, Habit, Goal, KeyResult,
     JournalEntry, AgentConfig, AgentRun, EventLog,
 )
+from app.api.api_keys import require_scope
 
 router = APIRouter()
 
@@ -127,7 +128,7 @@ EXPORTERS = {
 }
 
 
-@router.get("/json")
+@router.get("/json", dependencies=[Depends(require_scope("read"))])
 async def export_json(
     entities: str = Query("all", description="Comma-separated: projects,tasks,ideas,reading,habits,goals,journal"),
     db: AsyncSession = Depends(get_db),
@@ -145,7 +146,7 @@ async def export_json(
     return data
 
 
-@router.get("/csv/{entity_type}")
+@router.get("/csv/{entity_type}", dependencies=[Depends(require_scope("read"))])
 async def export_csv(entity_type: str, db: AsyncSession = Depends(get_db)):
     """Export a specific entity type as CSV."""
     if entity_type not in EXPORTERS:

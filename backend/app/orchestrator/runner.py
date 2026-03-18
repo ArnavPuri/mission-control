@@ -402,10 +402,23 @@ class AgentRunner:
             next_agent = await db.get(AgentConfig, next_agent_id)
             if not next_agent or next_agent.status == AgentStatus.RUNNING:
                 return
-            # Inject previous result into the agent's context
-            if next_agent.config is None:
-                next_agent.config = {}
-            next_agent.config["_chain_input"] = previous_result
+            # Store chain input as agent memory (transient, not in config)
+            from app.db.models import AgentMemory
+            existing = await db.execute(
+                select(AgentMemory).where(
+                    AgentMemory.agent_id == next_agent.id,
+                    AgentMemory.key == "_chain_input",
+                )
+            )
+            mem = existing.scalar_one_or_none()
+            chain_data = json.dumps(previous_result)[:2000]  # limit size
+            if mem:
+                mem.value = chain_data
+            else:
+                db.add(AgentMemory(
+                    agent_id=next_agent.id, key="_chain_input",
+                    value=chain_data, memory_type="chain",
+                ))
             await self.start_run(next_agent, trigger=f"chain:{trigger}", db=db)
             await db.commit()
 

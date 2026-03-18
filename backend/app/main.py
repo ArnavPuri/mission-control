@@ -6,6 +6,7 @@ Real-time updates via WebSocket for the dashboard.
 """
 
 import asyncio
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -59,9 +60,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+_cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Lock down in production
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

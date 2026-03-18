@@ -491,6 +491,71 @@ class GitHubRepo(Base):
     )
 
 
+# ---------- Webhooks ----------
+
+class WebhookConfig(Base):
+    """Webhook configuration for inbound and outbound hooks."""
+    __tablename__ = "webhook_configs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    direction = Column(String(10), nullable=False)  # "inbound" or "outbound"
+    url = Column(String(2048), nullable=True)  # target URL for outbound
+    secret = Column(String(255), nullable=True)  # shared secret for verification
+    events = Column(JSON, default=list)  # list of event types to trigger on
+    headers = Column(JSON, default=dict)  # custom headers for outbound
+    is_active = Column(Boolean, default=True)
+    last_triggered_at = Column(DateTime(timezone=True), nullable=True)
+    trigger_count = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("idx_webhooks_direction", "direction"),
+        Index("idx_webhooks_active", "is_active"),
+    )
+
+
+class WebhookLog(Base):
+    """Log of webhook deliveries."""
+    __tablename__ = "webhook_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    webhook_id = Column(UUID(as_uuid=True), nullable=False)
+    direction = Column(String(10), nullable=False)
+    event_type = Column(String(100), nullable=False)
+    payload = Column(JSON, default=dict)
+    status_code = Column(String(10), nullable=True)
+    response_body = Column(Text, nullable=True)
+    success = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("idx_webhook_logs_webhook", "webhook_id"),
+    )
+
+
+# ---------- Notifications ----------
+
+class Notification(Base):
+    """In-app notification for the dashboard."""
+    __tablename__ = "notifications"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title = Column(String(500), nullable=False)
+    body = Column(Text, default="")
+    category = Column(String(50), default="info")  # info, success, warning, error, approval
+    source = Column(String(100), default="system")  # agent:<name>, system, webhook:<name>
+    is_read = Column(Boolean, default=False)
+    action_url = Column(String(500), nullable=True)  # optional deep link
+    data = Column(JSON, default=dict)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("idx_notifications_read", "is_read"),
+        Index("idx_notifications_created", "created_at"),
+    )
+
+
 # Optional: Embedding column on existing models (only if pgvector is installed)
 # These are added dynamically to avoid hard dependency on pgvector
 if HAS_PGVECTOR and Vector is not None:

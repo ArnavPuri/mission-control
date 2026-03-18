@@ -478,20 +478,29 @@ export const health = {
 
 export function connectWebSocket(onMessage: (event: { type: string; data: any }) => void): WebSocket | null {
   const wsUrl = API_BASE.replace(/^http/, 'ws') + '/ws';
-  try {
-    const ws = new WebSocket(wsUrl);
-    ws.onmessage = (e) => {
-      try {
-        const parsed = JSON.parse(e.data);
-        onMessage(parsed);
-      } catch {}
-    };
-    ws.onclose = () => {
-      // Auto-reconnect after 3s
-      setTimeout(() => connectWebSocket(onMessage), 3000);
-    };
-    return ws;
-  } catch {
-    return null;
-  }
+  const maxRetries = 10;
+  let retryCount = 0;
+  const connect = (): WebSocket | null => {
+    try {
+      const ws = new WebSocket(wsUrl);
+      ws.onopen = () => { retryCount = 0; };
+      ws.onmessage = (e) => {
+        try {
+          const parsed = JSON.parse(e.data);
+          onMessage(parsed);
+        } catch {}
+      };
+      ws.onclose = () => {
+        if (retryCount < maxRetries) {
+          const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
+          retryCount++;
+          setTimeout(connect, delay);
+        }
+      };
+      return ws;
+    } catch {
+      return null;
+    }
+  };
+  return connect();
 }

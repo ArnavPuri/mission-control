@@ -18,65 +18,11 @@ import logging
 import httpx
 
 from app.db.session import get_db
-from app.db.models import EventLog
+from app.db.models import EventLog, WebhookConfig, WebhookLog
 from app.api.ws import broadcast
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-# ─── In-memory webhook config (persisted via DB in production) ───
-
-# For MVP, store webhook configs in the event_log and a simple table.
-# We'll use the existing JSON column pattern.
-
-from app.db.models import Base, Column, String, Text, Boolean, DateTime, JSON, Index
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
-from sqlalchemy.orm import DeclarativeBase
-import uuid as _uuid
-
-
-# We'll register the model but use a lightweight approach
-# Webhook configs are stored as JSON in a dedicated table
-
-class WebhookConfig(Base):
-    """Webhook configuration for inbound and outbound hooks."""
-    __tablename__ = "webhook_configs"
-
-    id = Column(PG_UUID(as_uuid=True), primary_key=True, default=_uuid.uuid4)
-    name = Column(String(255), nullable=False)
-    direction = Column(String(10), nullable=False)  # "inbound" or "outbound"
-    url = Column(String(2048), nullable=True)  # target URL for outbound
-    secret = Column(String(255), nullable=True)  # shared secret for verification
-    events = Column(JSON, default=list)  # list of event types to trigger on
-    headers = Column(JSON, default=dict)  # custom headers for outbound
-    is_active = Column(Boolean, default=True)
-    last_triggered_at = Column(DateTime(timezone=True), nullable=True)
-    trigger_count = Column(String(50), default="0")
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-
-    __table_args__ = (
-        Index("idx_webhooks_direction", "direction"),
-        Index("idx_webhooks_active", "is_active"),
-    )
-
-
-class WebhookLog(Base):
-    """Log of webhook deliveries."""
-    __tablename__ = "webhook_logs"
-
-    id = Column(PG_UUID(as_uuid=True), primary_key=True, default=_uuid.uuid4)
-    webhook_id = Column(PG_UUID(as_uuid=True), nullable=False)
-    direction = Column(String(10), nullable=False)
-    event_type = Column(String(100), nullable=False)
-    payload = Column(JSON, default=dict)
-    status_code = Column(String(10), nullable=True)
-    response_body = Column(Text, nullable=True)
-    success = Column(Boolean, default=False)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-
-    __table_args__ = (
-        Index("idx_webhook_logs_webhook", "webhook_id"),
-    )
 
 
 # ─── Schemas ───
@@ -240,7 +186,7 @@ async def receive_webhook(webhook_id: UUID, request: Request, db: AsyncSession =
 
     # Update webhook stats
     hook.last_triggered_at = datetime.now(timezone.utc)
-    hook.trigger_count = str(int(hook.trigger_count or "0") + 1)
+    hook.trigger_count = (hook.trigger_count or 0) + 1
 
     # Create event log entry
     event = EventLog(
@@ -316,7 +262,7 @@ async def dispatch_outbound_webhooks(event_type: str, data: dict, db: AsyncSessi
             db.add(log)
 
             hook.last_triggered_at = datetime.now(timezone.utc)
-            hook.trigger_count = str(int(hook.trigger_count or "0") + 1)
+            hook.trigger_count = (hook.trigger_count or 0) + 1
 
         except Exception as e:
             logger.error(f"Outbound webhook {hook.name} failed: {e}")

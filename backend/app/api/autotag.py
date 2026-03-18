@@ -4,7 +4,7 @@ import json
 import logging
 import httpx
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -48,6 +48,11 @@ async def _classify_text(text: str) -> dict:
                 "messages": [{"role": "user", "content": AUTOTAG_PROMPT.format(text=text[:500])}],
             },
         )
+        if resp.status_code != 200:
+            raise HTTPException(
+                status_code=502,
+                detail=f"LLM API returned {resp.status_code}: {resp.text[:200]}",
+            )
         data = resp.json()
 
     response_text = ""
@@ -95,7 +100,7 @@ async def autotag_idea(idea_id: UUID, db: AsyncSession = Depends(get_db)):
 @router.post("/batch")
 async def autotag_batch(
     entity_type: str = "tasks",
-    limit: int = 10,
+    limit: int = Query(default=10, le=25),
     db: AsyncSession = Depends(get_db),
 ):
     """Auto-tag multiple untagged items."""

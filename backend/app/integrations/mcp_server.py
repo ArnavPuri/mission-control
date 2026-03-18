@@ -21,6 +21,7 @@ Usage in claude_desktop_config.json:
 
 import asyncio
 import json
+import os
 import sys
 from datetime import datetime, timezone
 
@@ -242,7 +243,7 @@ async def execute_tool(name: str, args: dict) -> dict:
     """Execute an MCP tool against the Mission Control API."""
     import httpx
 
-    api_base = "http://localhost:8000/api"
+    api_base = os.environ.get("MC_API_BASE", "http://localhost:8000/api")
 
     async with httpx.AsyncClient(timeout=30) as client:
         if name == "mc_list_tasks":

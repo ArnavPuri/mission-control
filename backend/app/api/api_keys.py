@@ -74,7 +74,7 @@ def require_scope(scope: str):
     return checker
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(require_scope("admin"))])
 async def list_api_keys(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(ApiKey).order_by(ApiKey.created_at.desc()))
     keys = result.scalars().all()
@@ -93,7 +93,7 @@ async def list_api_keys(db: AsyncSession = Depends(get_db)):
     ]
 
 
-@router.post("")
+@router.post("", dependencies=[Depends(require_scope("admin"))])
 async def create_api_key(data: ApiKeyCreate, db: AsyncSession = Depends(get_db)):
     raw_key = _generate_key()
     key_hash = _hash_key(raw_key)
@@ -123,7 +123,7 @@ async def create_api_key(data: ApiKeyCreate, db: AsyncSession = Depends(get_db))
     }
 
 
-@router.patch("/{key_id}")
+@router.patch("/{key_id}", dependencies=[Depends(require_scope("admin"))])
 async def update_api_key(key_id: UUID, data: ApiKeyUpdate, db: AsyncSession = Depends(get_db)):
     record = await db.get(ApiKey, key_id)
     if not record:
@@ -134,7 +134,7 @@ async def update_api_key(key_id: UUID, data: ApiKeyUpdate, db: AsyncSession = De
     return {"id": str(record.id), "updated": True}
 
 
-@router.delete("/{key_id}")
+@router.delete("/{key_id}", dependencies=[Depends(require_scope("admin"))])
 async def revoke_api_key(key_id: UUID, db: AsyncSession = Depends(get_db)):
     record = await db.get(ApiKey, key_id)
     if not record:

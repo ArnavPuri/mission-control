@@ -6,37 +6,14 @@ from agent completions, approval requests, system events, etc.
 """
 
 from uuid import UUID
-from datetime import datetime, timezone
 from fastapi import APIRouter, Depends
 from sqlalchemy import select, desc, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.db.models import Base, Column, String, Text, Boolean, DateTime, JSON, Index
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
-import uuid as _uuid
+from app.db.models import Notification
 
 router = APIRouter()
-
-
-class Notification(Base):
-    """In-app notification for the dashboard."""
-    __tablename__ = "notifications"
-
-    id = Column(PG_UUID(as_uuid=True), primary_key=True, default=_uuid.uuid4)
-    title = Column(String(500), nullable=False)
-    body = Column(Text, default="")
-    category = Column(String(50), default="info")  # info, success, warning, error, approval
-    source = Column(String(100), default="system")  # agent:<name>, system, webhook:<name>
-    is_read = Column(Boolean, default=False)
-    action_url = Column(String(500), nullable=True)  # optional deep link
-    data = Column(JSON, default=dict)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-
-    __table_args__ = (
-        Index("idx_notifications_read", "is_read"),
-        Index("idx_notifications_created", "created_at"),
-    )
 
 
 @router.get("")

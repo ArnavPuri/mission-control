@@ -317,8 +317,60 @@ def upgrade() -> None:
     )
     op.create_index("idx_github_repos_owner_repo", "github_repos", ["owner", "repo"], unique=True)
 
+    # --- Webhook Configs ---
+    op.create_table(
+        "webhook_configs",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True),
+        sa.Column("name", sa.String(255), nullable=False),
+        sa.Column("direction", sa.String(10), nullable=False),
+        sa.Column("url", sa.String(2048), nullable=True),
+        sa.Column("secret", sa.String(255), nullable=True),
+        sa.Column("events", sa.JSON, server_default="[]"),
+        sa.Column("headers", sa.JSON, server_default="{}"),
+        sa.Column("is_active", sa.Boolean, server_default="true"),
+        sa.Column("last_triggered_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("trigger_count", sa.Integer, server_default="0"),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+    op.create_index("idx_webhooks_direction", "webhook_configs", ["direction"])
+    op.create_index("idx_webhooks_active", "webhook_configs", ["is_active"])
+
+    # --- Webhook Logs ---
+    op.create_table(
+        "webhook_logs",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True),
+        sa.Column("webhook_id", UUID(as_uuid=True), nullable=False),
+        sa.Column("direction", sa.String(10), nullable=False),
+        sa.Column("event_type", sa.String(100), nullable=False),
+        sa.Column("payload", sa.JSON, server_default="{}"),
+        sa.Column("status_code", sa.String(10), nullable=True),
+        sa.Column("response_body", sa.Text, nullable=True),
+        sa.Column("success", sa.Boolean, server_default="false"),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+    op.create_index("idx_webhook_logs_webhook", "webhook_logs", ["webhook_id"])
+
+    # --- Notifications ---
+    op.create_table(
+        "notifications",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True),
+        sa.Column("title", sa.String(500), nullable=False),
+        sa.Column("body", sa.Text, server_default=""),
+        sa.Column("category", sa.String(50), server_default="info"),
+        sa.Column("source", sa.String(100), server_default="system"),
+        sa.Column("is_read", sa.Boolean, server_default="false"),
+        sa.Column("action_url", sa.String(500), nullable=True),
+        sa.Column("data", sa.JSON, server_default="{}"),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+    op.create_index("idx_notifications_read", "notifications", ["is_read"])
+    op.create_index("idx_notifications_created", "notifications", ["created_at"])
+
 
 def downgrade() -> None:
+    op.drop_table("notifications")
+    op.drop_table("webhook_logs")
+    op.drop_table("webhook_configs")
     op.drop_table("github_repos")
     op.drop_table("rss_feeds")
     op.drop_table("api_keys")
