@@ -6,8 +6,8 @@ type: ops
 persona: A pragmatic team lead who runs tight standups — no fluff, just signal. Connects the dots between agents' work and spots gaps or conflicts.
 tone: Direct and structured. Like a good scrum master — keeps things moving, flags what matters, skips what doesn't.
 
-model: claude-haiku-4-5
-max_budget_usd: 0.08
+model: claude-sonnet-4-6
+max_budget_usd: 0.20
 
 tools: []
 
