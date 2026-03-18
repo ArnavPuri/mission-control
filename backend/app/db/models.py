@@ -94,6 +94,20 @@ class MoodLevel(str, PyEnum):
     BAD = "bad"
 
 
+class SignalStatus(str, PyEnum):
+    NEW = "new"
+    REVIEWED = "reviewed"
+    ACTED_ON = "acted_on"
+    DISMISSED = "dismissed"
+
+
+class ContentStatus(str, PyEnum):
+    DRAFT = "draft"
+    APPROVED = "approved"
+    POSTED = "posted"
+    ARCHIVED = "archived"
+
+
 # ---------- Models ----------
 
 class Project(Base):
@@ -553,6 +567,73 @@ class Notification(Base):
     __table_args__ = (
         Index("idx_notifications_read", "is_read"),
         Index("idx_notifications_created", "created_at"),
+    )
+
+
+# ---------- Marketing ----------
+
+class MarketingSignal(Base):
+    """Market intelligence discovered by agents or added manually."""
+    __tablename__ = "marketing_signals"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title = Column(String(500), nullable=False)
+    body = Column(Text, default="")
+    source = Column(String(50), default="manual")
+    source_type = Column(String(50), nullable=False)
+    source_url = Column(String(2048), nullable=True)
+    relevance_score = Column(Float, default=0.5)
+    signal_type = Column(String(50), nullable=False)
+    status = Column(Enum(SignalStatus), default=SignalStatus.NEW, nullable=False)
+    channel_metadata = Column(JSON, default=dict)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=True)
+    agent_id = Column(UUID(as_uuid=True), ForeignKey("agent_configs.id"), nullable=True)
+    tags = Column(ARRAY(String), default=list)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    project = relationship("Project", foreign_keys=[project_id])
+    agent = relationship("AgentConfig", foreign_keys=[agent_id])
+
+    __table_args__ = (
+        Index("idx_mkt_signals_status", "status"),
+        Index("idx_mkt_signals_source_type", "source_type"),
+        Index("idx_mkt_signals_signal_type", "signal_type"),
+        Index("idx_mkt_signals_project", "project_id"),
+        Index("idx_mkt_signals_created", "created_at"),
+    )
+
+
+class MarketingContent(Base):
+    """Content drafts for marketing channels."""
+    __tablename__ = "marketing_content"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title = Column(String(500), nullable=False)
+    body = Column(Text, nullable=False)
+    channel = Column(String(50), nullable=False)
+    status = Column(Enum(ContentStatus), default=ContentStatus.DRAFT, nullable=False)
+    source = Column(String(50), default="manual")
+    signal_id = Column(UUID(as_uuid=True), ForeignKey("marketing_signals.id"), nullable=True)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=True)
+    agent_id = Column(UUID(as_uuid=True), ForeignKey("agent_configs.id"), nullable=True)
+    posted_url = Column(String(2048), nullable=True)
+    posted_at = Column(DateTime(timezone=True), nullable=True)
+    notes = Column(Text, nullable=True)
+    tags = Column(ARRAY(String), default=list)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    signal = relationship("MarketingSignal", foreign_keys=[signal_id])
+    project = relationship("Project", foreign_keys=[project_id])
+    agent = relationship("AgentConfig", foreign_keys=[agent_id])
+
+    __table_args__ = (
+        Index("idx_mkt_content_status", "status"),
+        Index("idx_mkt_content_channel", "channel"),
+        Index("idx_mkt_content_project", "project_id"),
+        Index("idx_mkt_content_signal", "signal_id"),
+        Index("idx_mkt_content_created", "created_at"),
     )
 
 
