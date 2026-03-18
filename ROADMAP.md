@@ -40,6 +40,11 @@ What's already built:
 - **GitHub integration** — Repo linking, webhook receiver, issue/PR sync, auto-task creation
 - **RSS feeds** — Subscribe to feeds, auto-import to reading list via feedparser
 - **Discord bot** — Full command set mirroring Telegram (tasks, ideas, notes, status, agents)
+- **Multi-page dashboard** — Sidebar nav with 5 pages: Dashboard, Projects, Agents, Journal, Settings
+- **Kanban board** — Task board view with status columns + list/board toggle
+- **Bulk actions** — Multi-select tasks with bulk status, priority, delete
+- **Keyboard shortcuts** — Vim-style two-key combos (g+key nav, n+key create)
+- **Project dashboards** — Dedicated per-project view with all linked entities
 
 ---
 
@@ -50,13 +55,13 @@ What's already built:
 | 1. Foundation Hardening | 3 | 15 | 20% |
 | 2. Intelligence Layer | 7 | 13 | 54% |
 | 3. Personal Productivity | 12 | 23 | 52% |
-| 4. Dashboard 2.0 | 10 | 18 | 56% |
+| 4. Dashboard 2.0 | 15 | 18 | 83% |
 | 5. Integrations | 7 | 18 | 39% |
 | 6. Multi-Agent Intelligence | 2 | 16 | 13% |
 | 7. Privacy & Scale | 0 | 16 | 0% |
 | 8. Mobile & Desktop | 0 | 10 | 0% |
 | 9. Community | 0 | 16 | 0% |
-| **Total** | **41** | **145** | **28%** |
+| **Total** | **46** | **145** | **32%** |
 
 ---
 
@@ -174,23 +179,23 @@ _Transform the dashboard from a status board into a powerful daily driver._
 ### 4.1 Core UX
 - [x] Radix UI component library with clean light theme
 - [x] Lucide icons throughout (replacing unicode)
-- [ ] Multi-page layout: Dashboard, Projects, Agents, Journal, Settings
+- [x] Multi-page layout: Dashboard, Projects, Agents, Journal, Settings (sidebar nav)
 - [x] Mobile-responsive design (usable on phone)
 - [x] Dark mode / light mode toggle with localStorage persistence
-- [ ] Keyboard shortcuts for power users (vim-style navigation)
+- [x] Keyboard shortcuts for power users (vim-style g+key nav, n+key create, Shift+T theme)
 - [ ] Drag-and-drop task reordering and project assignment
 
 ### 4.2 Views & Visualizations
-- [ ] Kanban board view for tasks (by status columns)
+- [x] Kanban board view for tasks (by status columns, list/board toggle)
 - [ ] Calendar view for tasks with due dates
 - [ ] Timeline/Gantt view for project planning
 - [x] Agent cost dashboard — spending per agent, per day, cumulative
 - [x] Activity heatmap (GitHub-style contribution graph)
-- [ ] Project dashboards — dedicated view per project with all related items
+- [x] Project dashboards — dedicated view per project with tasks, goals, agents, notes
 
 ### 4.3 Interactivity
 - [x] Inline task editing (double-click to edit text, click priority dot to change)
-- [ ] Bulk actions — select multiple tasks, bulk update status/priority
+- [x] Bulk actions — select multiple tasks, bulk update status/priority, bulk delete
 - [ ] Quick capture — global keyboard shortcut to add task/idea/reading
 - [x] Filters and saved views (filter tasks by status and priority with Radix dropdowns)
 - [x] Command palette (Cmd+K) for fast navigation and actions
@@ -377,15 +382,25 @@ All completed:
 4. ~~**API key authentication** — scoped keys with SHA-256 hashing (Phase 5.4)~~
 5. ~~**Discord bot** — full command set mirroring Telegram (Phase 5.1)~~
 
-### Sprint 8: Dashboard Power-Up (Recommended)
+### Sprint 8: Dashboard Power-Up ✅
 
-Level up the dashboard for daily driver use:
+All completed:
 
-1. **Multi-page layout** — separate pages for Dashboard, Projects, Agents, Journal, Settings (Phase 4.1)
-2. **Kanban board** — drag-and-drop task view by status columns (Phase 4.2)
-3. **Bulk actions** — select multiple tasks, bulk update status/priority/tags (Phase 4.3)
-4. **Keyboard shortcuts** — vim-style navigation for power users (Phase 4.1)
-5. **Project dashboards** — dedicated view per project with all related items (Phase 4.2)
+1. ~~**Multi-page layout** — sidebar nav with Dashboard, Projects, Agents, Journal, Settings pages (Phase 4.1)~~
+2. ~~**Kanban board** — task board view by status columns with list/board toggle (Phase 4.2)~~
+3. ~~**Bulk actions** — multi-select tasks, bulk status/priority update, bulk delete (Phase 4.3)~~
+4. ~~**Keyboard shortcuts** — vim-style g+key nav, n+key create, Shift+T theme, ? help (Phase 4.1)~~
+5. ~~**Project dashboards** — dedicated per-project view with tasks, goals, agents, notes (Phase 4.2)~~
+
+### Sprint 9: Foundation & Testing (Recommended)
+
+Make it production-ready:
+
+1. **Test suites** — pytest for backend + Vitest for dashboard (Phase 1.3)
+2. **Alembic migrations** — proper migration pipeline instead of auto-create (Phase 1.2)
+3. **Seed data** — example projects, tasks, agents for new users (Phase 1.2)
+4. **Agent timeout enforcement** — kill stuck runs (Phase 1.4)
+5. **Graceful error handling** — all LLM provider failures handled (Phase 1.3)
 
 ---
 

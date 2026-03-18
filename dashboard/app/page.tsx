@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import * as api from './lib/api';
 import * as Checkbox from '@radix-ui/react-checkbox';
 import * as Progress from '@radix-ui/react-progress';
@@ -330,6 +331,38 @@ function EditableTaskRow({ task, onToggle, onUpdate, onDelete }: {
   );
 }
 
+function KanbanColumn({ title, tasks, color, onToggle, onUpdate, onDelete }: {
+  title: string; tasks: api.Task[]; color: string;
+  onToggle: (id: string) => void; onUpdate: (id: string, data: Partial<api.Task>) => void; onDelete: (id: string) => void;
+}) {
+  return (
+    <div className="flex-1 min-w-[140px]">
+      <div className="flex items-center gap-2 mb-2 px-1">
+        <span className={clsx('w-2 h-2 rounded-full', color)} />
+        <span className="text-[11px] font-semibold text-mc-dim uppercase tracking-wide">{title}</span>
+        <span className="text-[10px] text-mc-dim">{tasks.length}</span>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {tasks.map((t) => {
+          const prioColor: Record<string, string> = { critical: 'border-l-red-500', high: 'border-l-amber-500', medium: 'border-l-blue-400', low: 'border-l-gray-300' };
+          return (
+            <div
+              key={t.id}
+              className={clsx('bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-800 rounded-lg px-2.5 py-2 hover:shadow-card-hover transition-all border-l-2', prioColor[t.priority] || 'border-l-gray-300')}
+            >
+              <span className="text-xs text-mc-text dark:text-gray-200 line-clamp-2 leading-relaxed">{t.text}</span>
+              <div className="flex items-center gap-1 mt-1.5">
+                <Badge>{t.priority}</Badge>
+                {t.tags?.slice(0, 1).map((tag) => <Badge key={tag} variant="blue">{tag}</Badge>)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function TasksPanel({ tasks, projects, onToggle, onUpdate, onAdd, showInput, setShowInput, onDelete }: {
   tasks: api.Task[]; projects: api.Project[];
   onToggle: (id: string) => void; onUpdate: (id: string, data: Partial<api.Task>) => void;
@@ -338,6 +371,8 @@ function TasksPanel({ tasks, projects, onToggle, onUpdate, onAdd, showInput, set
 }) {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterPriority, setFilterPriority] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const filtered = tasks.filter((t) => {
     if (filterStatus !== 'all' && t.status !== filterStatus) return false;
@@ -345,8 +380,31 @@ function TasksPanel({ tasks, projects, onToggle, onUpdate, onAdd, showInput, set
     return true;
   });
 
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const bulkUpdateStatus = (status: string) => {
+    selected.forEach((id) => onUpdate(id, { status } as Partial<api.Task>));
+    setSelected(new Set());
+  };
+
+  const bulkUpdatePriority = (priority: string) => {
+    selected.forEach((id) => onUpdate(id, { priority } as Partial<api.Task>));
+    setSelected(new Set());
+  };
+
+  const bulkDelete = () => {
+    selected.forEach((id) => onDelete(id));
+    setSelected(new Set());
+  };
+
   const filterBar = (
-    <div className="flex gap-1.5 mb-3">
+    <div className="flex items-center gap-1.5 mb-3 flex-wrap">
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
           <button className={clsx(
@@ -411,6 +469,58 @@ function TasksPanel({ tasks, projects, onToggle, onUpdate, onAdd, showInput, set
           Clear
         </button>
       )}
+
+      <div className="ml-auto flex items-center gap-0.5 bg-gray-100 dark:bg-gray-800 rounded-md p-0.5">
+        <button
+          onClick={() => setViewMode('list')}
+          className={clsx('px-2 py-1 rounded text-[11px] font-medium cursor-pointer border-none transition-colors', viewMode === 'list' ? 'bg-white dark:bg-gray-700 text-mc-text dark:text-gray-200 shadow-sm' : 'bg-transparent text-mc-dim')}
+        >
+          List
+        </button>
+        <button
+          onClick={() => setViewMode('kanban')}
+          className={clsx('px-2 py-1 rounded text-[11px] font-medium cursor-pointer border-none transition-colors', viewMode === 'kanban' ? 'bg-white dark:bg-gray-700 text-mc-text dark:text-gray-200 shadow-sm' : 'bg-transparent text-mc-dim')}
+        >
+          Board
+        </button>
+      </div>
+    </div>
+  );
+
+  // Bulk action bar
+  const bulkBar = selected.size > 0 && (
+    <div className="flex items-center gap-2 mb-2 px-2 py-1.5 bg-mc-accent-light dark:bg-blue-950 rounded-lg border border-mc-accent/20">
+      <span className="text-xs font-medium text-mc-accent">{selected.size} selected</span>
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>
+          <button className="text-[11px] text-mc-accent hover:underline cursor-pointer bg-transparent border-none">Set status</button>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content className="bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-700 rounded-lg shadow-dropdown p-1 z-50" sideOffset={5}>
+            {['todo', 'in_progress', 'blocked', 'done'].map((s) => (
+              <DropdownMenu.Item key={s} onSelect={() => bulkUpdateStatus(s)} className="px-2.5 py-1.5 rounded text-xs cursor-pointer outline-none hover:bg-mc-subtle dark:hover:bg-gray-800 capitalize text-mc-secondary dark:text-gray-300">
+                {s.replace('_', ' ')}
+              </DropdownMenu.Item>
+            ))}
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>
+          <button className="text-[11px] text-mc-accent hover:underline cursor-pointer bg-transparent border-none">Set priority</button>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content className="bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-700 rounded-lg shadow-dropdown p-1 z-50" sideOffset={5}>
+            {['critical', 'high', 'medium', 'low'].map((p) => (
+              <DropdownMenu.Item key={p} onSelect={() => bulkUpdatePriority(p)} className="px-2.5 py-1.5 rounded text-xs cursor-pointer outline-none hover:bg-mc-subtle dark:hover:bg-gray-800 capitalize text-mc-secondary dark:text-gray-300">
+                {p}
+              </DropdownMenu.Item>
+            ))}
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
+      <button onClick={bulkDelete} className="text-[11px] text-red-500 hover:underline cursor-pointer bg-transparent border-none">Delete</button>
+      <button onClick={() => setSelected(new Set())} className="text-[11px] text-mc-dim hover:underline cursor-pointer bg-transparent border-none ml-auto">Clear</button>
     </div>
   );
 
@@ -418,21 +528,53 @@ function TasksPanel({ tasks, projects, onToggle, onUpdate, onAdd, showInput, set
     <div>
       {showInput && <InlineInput placeholder="What needs to be done?" onSubmit={onAdd} onCancel={() => setShowInput(false)} />}
       {tasks.length > 3 && filterBar}
-      <div className="flex flex-col gap-0.5">
-        {filtered.map((t) => (
-          <EditableTaskRow
-            key={t.id}
-            task={t}
-            onToggle={() => onToggle(t.id)}
-            onUpdate={(data) => onUpdate(t.id, data)}
-            onDelete={() => onDelete(t.id)}
-          />
-        ))}
-        {filtered.length === 0 && tasks.length > 0 && (
-          <div className="text-xs text-mc-dim text-center py-4">No tasks match filters</div>
-        )}
-        {tasks.length === 0 && !showInput && <EmptyState icon={ListTodo} message="All clear!" small />}
-      </div>
+      {bulkBar}
+
+      {viewMode === 'list' ? (
+        <div className="flex flex-col gap-0.5">
+          {filtered.map((t) => (
+            <div key={t.id} className="flex items-center gap-0.5">
+              <input
+                type="checkbox"
+                checked={selected.has(t.id)}
+                onChange={() => toggleSelect(t.id)}
+                className="w-3.5 h-3.5 rounded border-mc-border accent-mc-accent cursor-pointer shrink-0"
+              />
+              <div className="flex-1 min-w-0">
+                <EditableTaskRow
+                  task={t}
+                  onToggle={() => onToggle(t.id)}
+                  onUpdate={(data) => onUpdate(t.id, data)}
+                  onDelete={() => onDelete(t.id)}
+                />
+              </div>
+            </div>
+          ))}
+          {filtered.length === 0 && tasks.length > 0 && (
+            <div className="text-xs text-mc-dim text-center py-4">No tasks match filters</div>
+          )}
+          {tasks.length === 0 && !showInput && <EmptyState icon={ListTodo} message="All clear!" small />}
+        </div>
+      ) : (
+        <div className="flex gap-3 overflow-x-auto pb-2">
+          {([
+            { key: 'todo', title: 'To Do', color: 'bg-gray-400' },
+            { key: 'in_progress', title: 'In Progress', color: 'bg-blue-500' },
+            { key: 'blocked', title: 'Blocked', color: 'bg-red-500' },
+            { key: 'done', title: 'Done', color: 'bg-emerald-500' },
+          ] as const).map((col) => (
+            <KanbanColumn
+              key={col.key}
+              title={col.title}
+              color={col.color}
+              tasks={filtered.filter((t) => t.status === col.key)}
+              onToggle={onToggle}
+              onUpdate={onUpdate}
+              onDelete={onDelete}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1106,13 +1248,59 @@ export default function Dashboard() {
   const [showNoteInput, setShowNoteInput] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
 
+  const router = useRouter();
+
+  // Vim-style keyboard shortcuts: g+key for navigation, n+key for creation
   useEffect(() => {
+    let pendingPrefix: string | null = null;
+    let prefixTimeout: ReturnType<typeof setTimeout> | null = null;
+
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setShowCommandPalette((v) => !v); }
+      // Don't trigger in inputs
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      // Cmd+K for command palette
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setShowCommandPalette((v) => !v); return; }
+
+      // Shift+T for theme toggle
+      if (e.shiftKey && e.key === 'T') { e.preventDefault(); setTheme(theme === 'light' ? 'dark' : 'light'); return; }
+
+      // Two-key combos: g+<key> for go, n+<key> for new
+      if (pendingPrefix) {
+        const combo = pendingPrefix + e.key.toLowerCase();
+        pendingPrefix = null;
+        if (prefixTimeout) clearTimeout(prefixTimeout);
+
+        switch (combo) {
+          case 'gd': router.push('/'); return;
+          case 'gp': router.push('/projects'); return;
+          case 'ga': router.push('/agents'); return;
+          case 'gj': router.push('/journal'); return;
+          case 'gs': router.push('/settings'); return;
+          case 'nt': e.preventDefault(); setShowTaskInput(true); return;
+          case 'ni': e.preventDefault(); setShowIdeaInput(true); return;
+          case 'no': e.preventDefault(); setShowNoteInput(true); return;
+          case 'nr': e.preventDefault(); setShowReadingInput(true); return;
+          case 'nh': e.preventDefault(); setShowHabitInput(true); return;
+          case 'ng': e.preventDefault(); setShowGoalInput(true); return;
+          case 'nj': e.preventDefault(); setShowJournalInput(true); return;
+        }
+        return;
+      }
+
+      if (e.key === 'g' || e.key === 'n') {
+        pendingPrefix = e.key;
+        prefixTimeout = setTimeout(() => { pendingPrefix = null; }, 500);
+        return;
+      }
+
+      // Single-key shortcuts
+      if (e.key === '?') setShowCommandPalette(true);
     };
     window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
+    return () => { window.removeEventListener('keydown', handler); if (prefixTimeout) clearTimeout(prefixTimeout); };
+  }, [theme, setTheme, router]);
 
   const handleCommandAction = (action: string, _value: string) => {
     const map: Record<string, (v: boolean) => void> = {
@@ -1235,14 +1423,11 @@ export default function Dashboard() {
   return (
     <Tooltip.Provider delayDuration={200}>
       <div className="min-h-screen bg-mc-bg dark:bg-gray-950 transition-colors">
-        {/* Header */}
-        <header className="px-4 sm:px-6 lg:px-8 py-3 bg-white dark:bg-gray-900 border-b border-mc-border dark:border-gray-800 sticky top-0 z-40">
+        {/* Top Bar */}
+        <header className="px-4 sm:px-6 lg:px-8 py-3 bg-white dark:bg-gray-900 border-b border-mc-border dark:border-gray-800 sticky top-0 z-30">
           <div className="max-w-[1600px] mx-auto flex items-center justify-between">
             <div className="flex items-center gap-2 sm:gap-4">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-mc-accent" />
-                <h1 className="text-sm sm:text-base font-bold text-mc-text dark:text-gray-100 tracking-tight">Mission Control</h1>
-              </div>
+              <h1 className="text-sm sm:text-base font-bold text-mc-text dark:text-gray-100 tracking-tight">Dashboard</h1>
               <span className="text-[11px] text-mc-dim font-medium bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded hidden sm:block">v0.3</span>
               <ConnectionBar health={healthStatus} />
             </div>
@@ -1260,12 +1445,6 @@ export default function Dashboard() {
                 notifications={notificationsList} unreadCount={unreadCount}
                 onMarkRead={markNotifRead} onMarkAllRead={markAllNotifsRead}
               />
-              <button
-                onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-                className="w-9 h-9 rounded-lg border border-mc-border dark:border-gray-700 bg-white dark:bg-gray-800 text-mc-muted dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all flex items-center justify-center cursor-pointer"
-              >
-                {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
-              </button>
               {error && <span className="text-xs text-mc-red font-medium hidden sm:block">{error}</span>}
             </div>
           </div>
