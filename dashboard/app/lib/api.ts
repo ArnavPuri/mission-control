@@ -128,9 +128,26 @@ export interface Agent {
   recent_runs: AgentRun[];
 }
 
+export interface AgentDetail extends Agent {
+  max_budget_usd: number;
+  prompt_template: string;
+  tools: string[];
+  data_reads: string[];
+  data_writes: string[];
+  config: Record<string, unknown>;
+  skill_file: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
 export const agents = {
   list: () => request<Agent[]>('/api/agents'),
+  get: (id: string) => request<AgentDetail>(`/api/agents/${id}`),
+  create: (data: Partial<AgentDetail>) => request<AgentDetail>('/api/agents', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<AgentDetail>) => request<AgentDetail>(`/api/agents/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  delete: (id: string) => request<{ disabled: boolean }>(`/api/agents/${id}`, { method: 'DELETE' }),
   run: (id: string) => request<{ run_id: string; status: string }>(`/api/agents/${id}/run`, { method: 'POST' }),
+  dryRun: (id: string) => request<Record<string, unknown>>(`/api/agents/${id}/run?dry_run=true`, { method: 'POST' }),
   stop: (id: string) => request<{ status: string }>(`/api/agents/${id}/stop`, { method: 'POST' }),
   runs: (id: string, limit = 20) => request<AgentRun[]>(`/api/agents/${id}/runs?limit=${limit}`),
 };
