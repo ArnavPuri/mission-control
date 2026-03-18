@@ -43,6 +43,13 @@ class Settings(BaseSettings):
     telegram_bot_token: str | None = None
     telegram_allowed_users: str | None = None  # comma-separated IDs
 
+    # --- Discord ---
+    discord_bot_token: str | None = None
+    discord_allowed_channels: str | None = None  # comma-separated channel IDs
+
+    # --- GitHub ---
+    github_token: str | None = None  # for API access (optional, enhances sync)
+
     # --- Paths ---
     agent_workdir: str = "/app/workdir"
     skills_dir: str = "skills"
@@ -67,6 +74,12 @@ class Settings(BaseSettings):
             "No LLM provider configured. Set ANTHROPIC_API_KEY, "
             "CLAUDE_CODE_OAUTH_TOKEN, OPENROUTER_API_KEY, or OLLAMA_BASE_URL"
         )
+
+    @property
+    def discord_channel_ids(self) -> list[int]:
+        if not self.discord_allowed_channels:
+            return []
+        return [int(cid.strip()) for cid in self.discord_allowed_channels.split(",") if cid.strip()]
 
     @property
     def telegram_allowed_user_ids(self) -> list[int]:

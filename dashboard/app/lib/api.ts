@@ -366,6 +366,94 @@ export const autotag = {
   batch: (entityType: string, limit = 10) => request<{ tagged: number }>(`/api/autotag/batch?entity_type=${entityType}&limit=${limit}`, { method: 'POST' }),
 };
 
+// --- Notes ---
+
+export interface Note {
+  id: string;
+  title: string;
+  content: string;
+  tags: string[];
+  is_pinned: boolean;
+  project_id?: string;
+  source: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export const notes = {
+  list: (tag?: string) => request<Note[]>(`/api/notes${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`),
+  get: (id: string) => request<Note>(`/api/notes/${id}`),
+  create: (data: Partial<Note>) => request<{ id: string }>('/api/notes', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<Note>) => request<{ updated: boolean }>(`/api/notes/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  delete: (id: string) => request<{ deleted: boolean }>(`/api/notes/${id}`, { method: 'DELETE' }),
+};
+
+// --- API Keys ---
+
+export interface ApiKeyRecord {
+  id: string;
+  name: string;
+  key_prefix: string;
+  scopes: string[];
+  is_active: boolean;
+  last_used_at?: string;
+  expires_at?: string;
+  created_at: string;
+}
+
+export const apiKeys = {
+  list: () => request<ApiKeyRecord[]>('/api/keys'),
+  create: (data: { name: string; scopes?: string[] }) => request<{ id: string; key: string; message: string }>('/api/keys', { method: 'POST', body: JSON.stringify(data) }),
+  revoke: (id: string) => request<{ revoked: boolean }>(`/api/keys/${id}`, { method: 'DELETE' }),
+};
+
+// --- GitHub Repos ---
+
+export interface GitHubRepo {
+  id: string;
+  owner: string;
+  repo: string;
+  full_name: string;
+  is_active: boolean;
+  sync_issues: boolean;
+  sync_prs: boolean;
+  auto_create_tasks: boolean;
+  project_id?: string;
+  last_synced_at?: string;
+  created_at: string;
+}
+
+export const github = {
+  repos: () => request<GitHubRepo[]>('/api/github'),
+  addRepo: (data: { owner: string; repo: string; auto_create_tasks?: boolean; project_id?: string }) =>
+    request<{ id: string; webhook_secret: string; webhook_url: string }>('/api/github', { method: 'POST', body: JSON.stringify(data) }),
+  updateRepo: (id: string, data: Partial<GitHubRepo>) => request<{ updated: boolean }>(`/api/github/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  removeRepo: (id: string) => request<{ deleted: boolean }>(`/api/github/${id}`, { method: 'DELETE' }),
+};
+
+// --- RSS Feeds ---
+
+export interface RSSFeed {
+  id: string;
+  title: string;
+  url: string;
+  is_active: boolean;
+  tags: string[];
+  fetch_interval_minutes: number;
+  last_fetched_at?: string;
+  error_count: number;
+  last_error?: string;
+  created_at: string;
+}
+
+export const feeds = {
+  list: () => request<RSSFeed[]>('/api/feeds'),
+  create: (data: { title: string; url: string; tags?: string[] }) => request<{ id: string }>('/api/feeds', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<RSSFeed>) => request<{ updated: boolean }>(`/api/feeds/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  delete: (id: string) => request<{ deleted: boolean }>(`/api/feeds/${id}`, { method: 'DELETE' }),
+  fetch: (id: string) => request<{ imported: number }>(`/api/feeds/${id}/fetch`, { method: 'POST' }),
+};
+
 // --- Export ---
 
 export const dataExport = {

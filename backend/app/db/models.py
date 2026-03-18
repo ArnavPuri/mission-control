@@ -412,6 +412,85 @@ class AgentTrigger(Base):
     )
 
 
+# ---------- Notes ----------
+
+class Note(Base):
+    """Long-form markdown note for knowledge management."""
+    __tablename__ = "notes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title = Column(String(500), nullable=False)
+    content = Column(Text, nullable=False, default="")
+    tags = Column(ARRAY(String), default=list)
+    is_pinned = Column(Boolean, default=False)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=True)
+    source = Column(String(50), default="manual")
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("idx_notes_project", "project_id"),
+    )
+
+
+# ---------- API Keys ----------
+
+class ApiKey(Base):
+    """API key for authenticated public access."""
+    __tablename__ = "api_keys"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    key_hash = Column(String(128), nullable=False, unique=True)
+    key_prefix = Column(String(8), nullable=False)  # first 8 chars for identification
+    scopes = Column(ARRAY(String), default=lambda: ["read"])  # read, write, admin
+    is_active = Column(Boolean, default=True)
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+# ---------- RSS Feeds ----------
+
+class RSSFeed(Base):
+    """RSS feed subscription for auto-populating reading list."""
+    __tablename__ = "rss_feeds"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title = Column(String(500), nullable=False)
+    url = Column(String(2048), nullable=False, unique=True)
+    is_active = Column(Boolean, default=True)
+    last_fetched_at = Column(DateTime(timezone=True), nullable=True)
+    fetch_interval_minutes = Column(Integer, default=60)
+    tags = Column(ARRAY(String), default=list)  # auto-applied to imported items
+    error_count = Column(Integer, default=0)
+    last_error = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+# ---------- GitHub Integration ----------
+
+class GitHubRepo(Base):
+    """Linked GitHub repository for issue/PR sync."""
+    __tablename__ = "github_repos"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    owner = Column(String(255), nullable=False)
+    repo = Column(String(255), nullable=False)
+    is_active = Column(Boolean, default=True)
+    sync_issues = Column(Boolean, default=True)
+    sync_prs = Column(Boolean, default=True)
+    auto_create_tasks = Column(Boolean, default=False)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=True)
+    last_synced_at = Column(DateTime(timezone=True), nullable=True)
+    webhook_secret = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("idx_github_repos_owner_repo", "owner", "repo", unique=True),
+    )
+
+
 # Optional: Embedding column on existing models (only if pgvector is installed)
 # These are added dynamically to avoid hard dependency on pgvector
 if HAS_PGVECTOR and Vector is not None:

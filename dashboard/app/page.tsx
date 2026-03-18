@@ -15,7 +15,7 @@ import {
   Zap, FolderOpen, ListTodo, Lightbulb, BookOpen, Target,
   Flame, PenLine, Clock, DollarSign, Activity, Shield,
   ExternalLink, CircleDot, Loader2, Sun, Moon, Filter,
-  Pencil, Calendar, TrendingUp, BarChart3,
+  Pencil, Calendar, TrendingUp, BarChart3, FileText, Pin,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -607,6 +607,42 @@ function HabitAnalyticsPanel({ analytics }: { analytics: api.HabitAnalytics | nu
   );
 }
 
+function NotesPanel({ notes, onAdd, onDelete, onTogglePin, showInput, setShowInput }: {
+  notes: api.Note[]; onAdd: (title: string) => void; onDelete: (id: string) => void;
+  onTogglePin: (id: string) => void; showInput: boolean; setShowInput: (v: boolean) => void;
+}) {
+  return (
+    <div>
+      {showInput && <InlineInput placeholder="Note title..." onSubmit={onAdd} onCancel={() => setShowInput(false)} />}
+      <div className="flex flex-col gap-2">
+        {notes.slice(0, 8).map((n) => (
+          <div key={n.id} className="bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-800 rounded-lg px-3.5 py-2.5 hover:shadow-card-hover transition-all group">
+            <div className="flex items-center gap-2">
+              <button onClick={() => onTogglePin(n.id)} className={clsx('shrink-0 cursor-pointer bg-transparent border-none p-0', n.is_pinned ? 'text-amber-500' : 'text-gray-300 dark:text-gray-700 hover:text-amber-400')}>
+                <Pin size={12} />
+              </button>
+              <span className="text-sm text-mc-text dark:text-gray-200 font-medium flex-1 truncate">{n.title}</span>
+              <button onClick={() => onDelete(n.id)} className="opacity-0 group-hover:opacity-100 text-mc-dim hover:text-red-500 transition-all cursor-pointer bg-transparent border-none p-0">
+                <X size={12} />
+              </button>
+            </div>
+            {n.content && (
+              <p className="text-xs text-mc-muted dark:text-gray-500 mt-1 line-clamp-2">{n.content.slice(0, 120)}</p>
+            )}
+            <div className="flex items-center gap-1.5 mt-1.5">
+              {n.tags?.map((tag) => <Badge key={tag}>{tag}</Badge>)}
+              <span className="text-[10px] text-mc-dim ml-auto">
+                {new Date(n.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+              </span>
+            </div>
+          </div>
+        ))}
+        {notes.length === 0 && !showInput && <EmptyState icon={FileText} message="No notes yet" small />}
+      </div>
+    </div>
+  );
+}
+
 function AgentAnalyticsPanel({ analytics, agents }: { analytics: api.AgentAnalyticsOverview | null; agents: api.Agent[] }) {
   if (!analytics || analytics.agents.length === 0) {
     return <EmptyState icon={BarChart3} message="No agent analytics yet" small />;
@@ -1054,6 +1090,7 @@ export default function Dashboard() {
   const [notificationsList, setNotifications] = useState<api.Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [habitAnalytics, setHabitAnalytics] = useState<api.HabitAnalytics | null>(null);
+  const [notesList, setNotes] = useState<api.Note[]>([]);
   const [agentAnalytics, setAgentAnalytics] = useState<api.AgentAnalyticsOverview | null>(null);
   const [healthStatus, setHealth] = useState<api.HealthStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1066,6 +1103,7 @@ export default function Dashboard() {
   const [showHabitInput, setShowHabitInput] = useState(false);
   const [showGoalInput, setShowGoalInput] = useState(false);
   const [showJournalInput, setShowJournalInput] = useState(false);
+  const [showNoteInput, setShowNoteInput] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
 
   useEffect(() => {
@@ -1079,7 +1117,7 @@ export default function Dashboard() {
   const handleCommandAction = (action: string, _value: string) => {
     const map: Record<string, (v: boolean) => void> = {
       task: setShowTaskInput, idea: setShowIdeaInput, reading: setShowReadingInput,
-      habit: setShowHabitInput, goal: setShowGoalInput, journal: setShowJournalInput,
+      habit: setShowHabitInput, goal: setShowGoalInput, journal: setShowJournalInput, note: setShowNoteInput,
     };
     map[action]?.(true);
   };
@@ -1088,7 +1126,7 @@ export default function Dashboard() {
 
   const loadData = useCallback(async () => {
     try {
-      const [p, a, t, i, r, h, hab, g, j, ap, notifs, unread, hAnalytics, aAnalytics] = await Promise.all([
+      const [p, a, t, i, r, h, hab, g, j, ap, notifs, unread, hAnalytics, aAnalytics, n] = await Promise.all([
         api.projects.list(),
         api.agents.list(),
         api.tasks.list(),
@@ -1103,11 +1141,12 @@ export default function Dashboard() {
         api.notifications.unreadCount().catch(() => ({ unread: 0 })),
         api.habits.analytics().catch(() => null),
         api.agentAnalytics.overview().catch(() => null),
+        api.notes.list().catch(() => []),
       ]);
       setProjects(p); setAgents(a); setTasks(t); setIdeas(i); setReading(r); setHealth(h);
       setHabits(hab); setGoals(g); setJournal(j); setApprovals(ap);
       setNotifications(notifs); setUnreadCount(unread.unread); setHabitAnalytics(hAnalytics);
-      setAgentAnalytics(aAnalytics);
+      setAgentAnalytics(aAnalytics); setNotes(n);
       setError(null);
     } catch (e: any) {
       setError(e.message || 'Failed to connect to backend');
@@ -1163,6 +1202,12 @@ export default function Dashboard() {
   const deleteIdea = async (id: string) => { await api.ideas.delete(id); loadData(); };
   const deleteReading = async (id: string) => { await api.reading.delete(id); loadData(); };
   const deleteJournal = async (id: string) => { await api.journal.delete(id); loadData(); };
+  const addNote = async (title: string) => { await api.notes.create({ title }); setShowNoteInput(false); loadData(); };
+  const deleteNote = async (id: string) => { await api.notes.delete(id); loadData(); };
+  const toggleNotePin = async (id: string) => {
+    const note = notesList.find((n) => n.id === id); if (!note) return;
+    await api.notes.update(id, { is_pinned: !note.is_pinned }); loadData();
+  };
 
   const handleApprove = async (id: string) => { await api.approvals.approve(id); loadData(); };
   const handleReject = async (id: string) => { await api.approvals.reject(id); loadData(); };
@@ -1289,6 +1334,10 @@ export default function Dashboard() {
                 <Card className="p-4">
                   <SectionHeader icon={Lightbulb} title="Ideas" count={ideasList.length} onAdd={() => setShowIdeaInput(true)} />
                   <IdeasPanel ideas={ideasList} onAdd={addIdea} showInput={showIdeaInput} setShowInput={setShowIdeaInput} onDelete={deleteIdea} />
+                </Card>
+                <Card className="p-4">
+                  <SectionHeader icon={FileText} title="Notes" count={notesList.length} onAdd={() => setShowNoteInput(true)} />
+                  <NotesPanel notes={notesList} onAdd={addNote} onDelete={deleteNote} onTogglePin={toggleNotePin} showInput={showNoteInput} setShowInput={setShowNoteInput} />
                 </Card>
                 <Card className="p-4">
                   <SectionHeader icon={BookOpen} title="Reading List" count={readingList.filter((r) => !r.is_read).length} onAdd={() => setShowReadingInput(true)} />

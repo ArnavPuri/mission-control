@@ -35,6 +35,11 @@ What's already built:
 - **Agent analytics** — Success rates, cost efficiency, daily cost sparklines
 - **Auto-tagging** — LLM-based classification for tasks and ideas
 - **pgvector support** — Optional embedding columns for semantic search
+- **Notes system** — Long-form markdown notes with pin, tags, dashboard panel
+- **API key auth** — Scoped API keys with SHA-256 hashing for public API access
+- **GitHub integration** — Repo linking, webhook receiver, issue/PR sync, auto-task creation
+- **RSS feeds** — Subscribe to feeds, auto-import to reading list via feedparser
+- **Discord bot** — Full command set mirroring Telegram (tasks, ideas, notes, status, agents)
 
 ---
 
@@ -44,14 +49,14 @@ What's already built:
 |-------|------|-------|----------|
 | 1. Foundation Hardening | 3 | 15 | 20% |
 | 2. Intelligence Layer | 7 | 13 | 54% |
-| 3. Personal Productivity | 10 | 23 | 43% |
+| 3. Personal Productivity | 12 | 23 | 52% |
 | 4. Dashboard 2.0 | 10 | 18 | 56% |
-| 5. Integrations | 4 | 18 | 22% |
+| 5. Integrations | 7 | 18 | 39% |
 | 6. Multi-Agent Intelligence | 2 | 16 | 13% |
 | 7. Privacy & Scale | 0 | 16 | 0% |
 | 8. Mobile & Desktop | 0 | 10 | 0% |
 | 9. Community | 0 | 16 | 0% |
-| **Total** | **36** | **145** | **25%** |
+| **Total** | **41** | **145** | **28%** |
 
 ---
 
@@ -147,12 +152,12 @@ _Go beyond task management into a full life operating system._
 - [ ] Deadline awareness — agents factor in due dates for prioritization
 
 ### 3.5 Knowledge Management
-- [ ] Notes table — long-form content with markdown support
+- [x] Notes table — long-form content with markdown support, pin/unpin, tags
 - [ ] Auto-summarize reading list articles when marked as read
 - [ ] Spaced repetition for learning items (Anki-style)
 - [ ] Web clipper (browser extension) to save articles to reading list
 - [ ] YouTube/podcast transcript ingestion and summarization
-- [ ] RSS feed integration — auto-populate reading list from subscriptions
+- [x] RSS feed integration — auto-populate reading list from subscriptions (feedparser)
 
 ### 3.6 Finance Tracking (Lightweight)
 - [ ] Simple income/expense logging
@@ -205,14 +210,14 @@ _Connect Mission Control to the tools people already use._
 ### 5.1 Input Channels
 - [ ] Email ingestion — forward emails to create tasks/ideas
 - [ ] WhatsApp bot (via WhatsApp Business API)
-- [ ] Discord bot
+- [x] Discord bot — mirrors Telegram: tasks, ideas, reading, notes, status, agents
 - [ ] Slack bot
 - [ ] Voice input via Telegram voice messages (whisper transcription)
 - [ ] iOS/Android shortcut for quick capture
 - [ ] Apple Shortcuts / Siri integration
 
 ### 5.2 Service Integrations
-- [ ] GitHub — sync issues, PRs, notifications; auto-create tasks from issues
+- [x] GitHub — sync issues, PRs via webhooks; auto-create tasks from issues
 - [ ] Linear — bidirectional task sync
 - [ ] Notion — import/export pages and databases
 - [ ] Google Workspace — Docs, Sheets, Calendar
@@ -227,7 +232,7 @@ _Connect Mission Control to the tools people already use._
 - [x] Webhook log with replay capability
 
 ### 5.4 API & Developer Platform
-- [ ] Public REST API with API key authentication
+- [x] Public REST API with API key authentication (scoped, SHA-256 hashed)
 - [ ] API rate limiting and usage tracking
 - [x] OpenAPI/Swagger documentation auto-generated
 - [ ] SDK packages (Python, TypeScript) for programmatic access
@@ -362,15 +367,25 @@ All completed:
 4. ~~**Agent memory** — persistent key-value store per agent, loaded in context, saveable via actions (Phase 2.1)~~
 5. ~~**Agent performance analytics** — success rates, cost, duration, daily sparklines on dashboard (Phase 6.3)~~
 
-### Sprint 7: Integrations & Reach
+### Sprint 7: Integrations & Reach ✅
 
-These connect Mission Control to the outside world:
+All completed:
 
-1. **GitHub integration** — sync issues/PRs, auto-create tasks (Phase 5.2)
-2. **RSS feed ingestion** — auto-populate reading list from subscriptions (Phase 3.5)
-3. **Notes table** — long-form markdown content with full CRUD (Phase 3.5)
-4. **API key authentication** — secure public API access (Phase 5.4)
-5. **Slack or Discord bot** — another input channel beyond Telegram (Phase 5.1)
+1. ~~**GitHub integration** — webhook receiver, issue/PR sync, auto-create tasks (Phase 5.2)~~
+2. ~~**RSS feed ingestion** — subscribe to feeds, auto-import via feedparser (Phase 3.5)~~
+3. ~~**Notes table** — long-form markdown with pin/unpin, tags, dashboard panel (Phase 3.5)~~
+4. ~~**API key authentication** — scoped keys with SHA-256 hashing (Phase 5.4)~~
+5. ~~**Discord bot** — full command set mirroring Telegram (Phase 5.1)~~
+
+### Sprint 8: Dashboard Power-Up (Recommended)
+
+Level up the dashboard for daily driver use:
+
+1. **Multi-page layout** — separate pages for Dashboard, Projects, Agents, Journal, Settings (Phase 4.1)
+2. **Kanban board** — drag-and-drop task view by status columns (Phase 4.2)
+3. **Bulk actions** — select multiple tasks, bulk update status/priority/tags (Phase 4.3)
+4. **Keyboard shortcuts** — vim-style navigation for power users (Phase 4.1)
+5. **Project dashboards** — dedicated view per project with all related items (Phase 4.2)
 
 ---
 
