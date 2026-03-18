@@ -1379,6 +1379,129 @@ function QuickCapture({ open, onClose, onCapture }: {
   );
 }
 
+// ─── Timeline / Gantt View ───────────────────────────────
+
+function TimelineView({ tasks, projects }: { tasks: api.Task[]; projects: api.Project[] }) {
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+
+  // Show tasks with due dates, grouped by project
+  const tasksWithDue = tasks.filter((t) => t.due_date && t.status !== 'done');
+
+  // Build a 4-week window
+  const startDate = new Date(today);
+  startDate.setDate(startDate.getDate() - 3); // start 3 days ago
+  const totalDays = 28;
+  const days: string[] = [];
+  for (let i = 0; i < totalDays; i++) {
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + i);
+    days.push(d.toISOString().split('T')[0]);
+  }
+
+  // Group tasks by project
+  const grouped: Record<string, { project: api.Project | null; tasks: api.Task[] }> = {};
+  for (const t of tasksWithDue) {
+    const key = t.project_id || '_none';
+    if (!grouped[key]) {
+      grouped[key] = { project: projects.find((p) => p.id === t.project_id) || null, tasks: [] };
+    }
+    grouped[key].tasks.push(t);
+  }
+
+  const priorityColors: Record<string, string> = { critical: '#ef4444', high: '#f97316', medium: '#3b82f6', low: '#9ca3af' };
+
+  if (tasksWithDue.length === 0) {
+    return <p className="text-xs text-mc-dim text-center py-4">No tasks with due dates to show on timeline</p>;
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      {/* Header: day labels */}
+      <div className="flex mb-1 min-w-[700px]">
+        <div className="w-28 shrink-0" />
+        {days.map((d) => {
+          const date = new Date(d + 'T00:00:00');
+          const isToday = d === todayStr;
+          const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+          return (
+            <div key={d} className={clsx(
+              'flex-1 text-center text-[9px] py-0.5 min-w-[22px]',
+              isToday ? 'text-mc-accent font-bold' : isWeekend ? 'text-mc-dim/50' : 'text-mc-dim',
+            )}>
+              {date.getDate()}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Rows: one per project group */}
+      {Object.entries(grouped).map(([key, group]) => (
+        <div key={key} className="mb-2">
+          <div className="text-[10px] font-medium text-mc-muted dark:text-gray-500 mb-0.5 px-1">
+            {group.project ? group.project.name : 'No project'}
+          </div>
+          {group.tasks.map((t) => {
+            const dueDateStr = t.due_date!.split('T')[0];
+            const dayIdx = days.indexOf(dueDateStr);
+            const createdStr = t.created_at.split('T')[0];
+            const startIdx = Math.max(0, days.indexOf(createdStr));
+            const endIdx = dayIdx >= 0 ? dayIdx : totalDays - 1;
+            const barStart = Math.min(startIdx, endIdx);
+            const barEnd = endIdx;
+
+            return (
+              <div key={t.id} className="flex items-center min-w-[700px]">
+                <div className="w-28 shrink-0 text-[10px] text-mc-secondary dark:text-gray-400 truncate pr-2">
+                  {t.text.slice(0, 20)}{t.text.length > 20 ? '…' : ''}
+                </div>
+                <div className="flex flex-1 relative h-5">
+                  {days.map((d, i) => (
+                    <div key={d} className={clsx('flex-1 border-r border-mc-border/20 dark:border-gray-800/30 min-w-[22px]', d === todayStr && 'bg-mc-accent/5')} />
+                  ))}
+                  {/* Gantt bar */}
+                  {dayIdx >= 0 && (
+                    <Tooltip.Root>
+                      <Tooltip.Trigger asChild>
+                        <div
+                          className="absolute top-1 h-3 rounded-full opacity-80 hover:opacity-100 transition-opacity"
+                          style={{
+                            left: `${(barStart / totalDays) * 100}%`,
+                            width: `${(Math.max(1, barEnd - barStart + 1) / totalDays) * 100}%`,
+                            background: priorityColors[t.priority] || '#3b82f6',
+                          }}
+                        />
+                      </Tooltip.Trigger>
+                      <Tooltip.Portal>
+                        <Tooltip.Content className="bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-[11px] px-3 py-2 rounded-lg shadow-lg max-w-[250px] z-50" sideOffset={5}>
+                          <div className="font-medium">{t.text}</div>
+                          <div className="text-gray-400 dark:text-gray-600 mt-0.5">Due: {new Date(t.due_date!).toLocaleDateString()}</div>
+                          <div className="text-gray-400 dark:text-gray-600">Priority: {t.priority}</div>
+                          <Tooltip.Arrow className="fill-gray-900 dark:fill-gray-100" />
+                        </Tooltip.Content>
+                      </Tooltip.Portal>
+                    </Tooltip.Root>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+
+      {/* Today marker label */}
+      <div className="flex mt-1 min-w-[700px]">
+        <div className="w-28 shrink-0" />
+        {days.map((d) => (
+          <div key={d} className="flex-1 min-w-[22px] text-center">
+            {d === todayStr && <span className="text-[9px] text-mc-accent font-bold">Today</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Journal Search ──────────────────────────────────────
 
 function JournalSearchPanel() {
@@ -1977,6 +2100,14 @@ export default function Dashboard() {
                 </Card>
               </div>
             </div>
+
+            {/* Timeline Row */}
+            {tasksList.some((t) => t.due_date && t.status !== 'done') && (
+              <Card className="p-4">
+                <SectionHeader icon={GitBranch} title="Timeline" count={tasksList.filter((t) => t.due_date && t.status !== 'done').length} />
+                <TimelineView tasks={tasksList} projects={projectsList} />
+              </Card>
+            )}
 
             {/* Bottom Row: Calendar + Analytics + Activity + Costs */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">

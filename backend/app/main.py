@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.db.session import init_db
-from app.api import projects, tasks, ideas, reading, agents, ws, health, habits, goals, journal, approvals, search, webhooks, export, notifications, agent_memory, triggers, agent_analytics, autotag, notes, api_keys, github_integration, rss_feeds, marketing_signals, marketing_content, marketing_stats, routines, dedup, workflows, smart_priority, push
+from app.api import projects, tasks, ideas, reading, agents, ws, health, habits, goals, journal, approvals, search, webhooks, export, notifications, agent_memory, triggers, agent_analytics, autotag, notes, api_keys, github_integration, rss_feeds, marketing_signals, marketing_content, marketing_stats, routines, dedup, workflows, smart_priority, push, backup
 from app.orchestrator.scheduler import Scheduler
 from app.integrations.telegram import start_telegram_bot
 from app.integrations.discord_bot import start_discord_bot
@@ -100,4 +100,5 @@ app.include_router(dedup.router, prefix="/api/dedup", tags=["dedup"])
 app.include_router(workflows.router, prefix="/api/workflows", tags=["workflows"])
 app.include_router(smart_priority.router, prefix="/api/priority", tags=["priority"])
 app.include_router(push.router, prefix="/api/push", tags=["push"])
+app.include_router(backup.router, prefix="/api/backup", tags=["backup"])
 app.include_router(ws.router, tags=["websocket"])

@@ -664,6 +664,20 @@ export const dedup = {
     request<{ text: string; is_duplicate: boolean; matches: DuplicateMatch[] }>('/api/dedup/check', { method: 'POST', body: JSON.stringify({ text, entity_type: entityType }) }),
 };
 
+// --- Backup ---
+
+export const backup = {
+  create: () => request<Record<string, unknown>>('/api/backup/backup'),
+  summary: () => request<{ total_rows: number; tables: Record<string, number> }>('/api/backup/backup/summary'),
+  downloadUrl: () => `${API_BASE}/api/backup/backup`,
+};
+
+// --- Reading Summarize ---
+
+export const readingSummarize = {
+  summarize: (id: string) => request<{ id: string; summary: string }>(`/api/reading/${id}/summarize`, { method: 'POST' }),
+};
+
 // --- Export ---
 
 export const dataExport = {

@@ -67,6 +67,11 @@ What's already built:
 - **Drag-and-drop task reordering** — sort_order field with HTML5 drag-and-drop in dashboard
 - **Browser push notifications** — Web Push subscription management with VAPID support
 - **Journal search** — Text and semantic similarity search with relevance scoring and mood filtering
+- **Agent self-evaluation** — Heuristic output scoring with auto-retry on low confidence
+- **Time-based context** — Agents receive time period, day of week, and behavior guidance
+- **Timeline/Gantt view** — 4-week horizontal timeline with project grouping and priority bars
+- **Auto-summarize reading** — LLM summarization when articles marked as read
+- **Database backup/restore** — JSON backup/restore API with duplicate detection
 
 ---
 
@@ -74,16 +79,16 @@ What's already built:
 
 | Phase | Done | Total | Progress |
 |-------|------|-------|----------|
-| 1. Foundation Hardening | 10 | 15 | 67% |
-| 2. Intelligence Layer | 12 | 13 | 92% |
-| 3. Personal Productivity | 14 | 23 | 61% |
-| 4. Dashboard 2.0 | 18 | 18 | 100% |
+| 1. Foundation Hardening | 11 | 15 | 73% |
+| 2. Intelligence Layer | 13 | 13 | **100%** |
+| 3. Personal Productivity | 15 | 23 | 65% |
+| 4. Dashboard 2.0 | 18 | 18 | **100%** |
 | 5. Integrations | 7 | 18 | 39% |
 | 6. Multi-Agent Intelligence | 4 | 16 | 25% |
 | 7. Privacy & Scale | 0 | 16 | 0% |
 | 8. Mobile & Desktop | 0 | 10 | 0% |
 | 9. Community | 0 | 16 | 0% |
-| **Total** | **65** | **145** | **45%** |
+| **Total** | **68** | **145** | **47%** |
 
 ---
 
@@ -101,7 +106,7 @@ _Make what exists rock-solid and easy to set up._
 ### 1.2 Database & Migrations
 - [x] Alembic migration pipeline with async PostgreSQL support
 - [x] Seed data with example projects, tasks, habits, goals, journal, notes for new users
-- [ ] Database backup/restore commands (`mc backup`, `mc restore`)
+- [x] Database backup/restore commands (`mc backup`, `mc restore`)
 - [x] Data export to JSON/CSV for portability
 
 ### 1.3 Testing & Reliability
@@ -136,13 +141,13 @@ _Make agents smarter and the system more context-aware._
 - [x] Conditional triggers — run agent when specific DB conditions are met
 - [x] Agent-to-agent communication via shared memory scratchpad + daily standup coordination
 - [x] Multi-step agent workflows (DAGs) with dependency resolution
-- [ ] Agent self-evaluation — score own output quality, retry if low confidence
+- [x] Agent self-evaluation — score own output quality, retry if low confidence
 
 ### 2.3 Context Engine
 - [x] Auto-tag tasks and ideas using LLM classification
 - [x] Smart prioritization — ML-based priority suggestions from patterns
 - [x] Project health scoring — aggregate metrics per project
-- [ ] Time-based context — "morning brief" vs "evening review" agent behavior
+- [x] Time-based context — "morning brief" vs "evening review" agent behavior
 - [ ] User pattern learning — adapt agent schedules to user activity
 
 ---
@@ -180,7 +185,7 @@ _Go beyond task management into a full life operating system._
 
 ### 3.5 Knowledge Management
 - [x] Notes table — long-form content with markdown support, pin/unpin, tags
-- [ ] Auto-summarize reading list articles when marked as read
+- [x] Auto-summarize reading list articles when marked as read
 - [ ] Spaced repetition for learning items (Anki-style)
 - [ ] Web clipper (browser extension) to save articles to reading list
 - [ ] YouTube/podcast transcript ingestion and summarization
@@ -210,7 +215,7 @@ _Transform the dashboard from a status board into a powerful daily driver._
 ### 4.2 Views & Visualizations
 - [x] Kanban board view for tasks (by status columns, list/board toggle)
 - [x] Calendar view for tasks with due dates
-- [ ] Timeline/Gantt view for project planning
+- [x] Timeline/Gantt view for project planning
 - [x] Agent cost dashboard — spending per agent, per day, cumulative
 - [x] Activity heatmap (GitHub-style contribution graph)
 - [x] Project dashboards — dedicated view per project with tasks, goals, agents, notes
@@ -457,15 +462,25 @@ All completed:
 4. ~~**Browser push notifications** — Web Push subscription management, VAPID support, send API (Phase 4.4)~~
 5. ~~**Journal search with semantic similarity** — text + semantic search modes, relevance scoring, mood filtering (Phase 3.3)~~
 
-### Sprint 13: Advanced Intelligence (Recommended)
+### Sprint 13: Advanced Intelligence ✅
+
+All completed:
+
+1. ~~**Agent self-evaluation** — heuristic output scoring, auto-retry with feedback if below confidence threshold (Phase 2.2)~~
+2. ~~**Time-based context** — agents receive time period, day of week, and behavior guidance in context (Phase 2.3)~~
+3. ~~**Timeline/Gantt view** — 4-week horizontal timeline with project-grouped bars, priority colors, tooltips (Phase 4.2)~~
+4. ~~**Auto-summarize reading** — LLM summarizes articles when marked as read, manual summarize endpoint (Phase 3.5)~~
+5. ~~**Database backup/restore** — JSON backup/restore API with summary, duplicate detection on restore (Phase 1.2)~~
+
+### Sprint 14: Scale & Ecosystem (Recommended)
 
 Next high-impact features:
 
-1. **Agent self-evaluation** — score own output quality, retry if low confidence (Phase 2.2)
-2. **Time-based context** — "morning brief" vs "evening review" agent behavior (Phase 2.3)
-3. **Timeline/Gantt view** — project planning view (Phase 4.2)
-4. **Auto-summarize reading** — summarize articles when marked as read (Phase 3.5)
-5. **Database backup/restore** — `mc backup` and `mc restore` commands (Phase 1.2)
+1. **User pattern learning** — adapt agent schedules to user activity (Phase 2.3)
+2. **Health check improvements** — detailed diagnostics per component (Phase 1.3)
+3. **Webhook templates** — for common services (Phase 5.3)
+4. **API rate limiting** — and usage tracking (Phase 5.4)
+5. **Agent versioning** — track skill file changes over time (Phase 1.4)
 
 ---
 

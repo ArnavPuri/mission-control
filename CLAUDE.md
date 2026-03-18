@@ -2,14 +2,14 @@
 
 ## What is this?
 
-Mission Control is a personal AI-powered command center (v0.4, 65/145 features).
+Mission Control is a personal AI-powered command center (v0.5, 68/145 features).
 One PostgreSQL database is the single source of truth. Agents (defined as YAML
 skill files) read from and write to the database. A dashboard shows the status.
 Telegram/Discord bots, MCP server, and push notifications provide input channels.
 
 ## Architecture
 
-- **Backend**: Python/FastAPI at `backend/app/` — 30 API routers
+- **Backend**: Python/FastAPI at `backend/app/` — 31 API routers
 - **Dashboard**: Next.js/TypeScript at `dashboard/` — 5 pages, fully complete
 - **Agent Skills**: YAML files at `backend/skills/`
 - **Database**: PostgreSQL with pgvector — 25 tables, 6 migrations
@@ -29,6 +29,8 @@ Telegram/Discord bots, MCP server, and push notifications provide input channels
 - `backend/app/api/smart_priority.py` — Smart prioritization suggestions
 - `backend/app/api/push.py` — Browser push notification subscriptions
 - `backend/app/api/journal.py` — Journal CRUD + semantic search
+- `backend/app/api/backup.py` — Database backup/restore API
+- `backend/app/api/reading.py` — Reading list with auto-summarization
 - `backend/app/integrations/telegram.py` — Telegram bot
 - `backend/app/integrations/discord_bot.py` — Discord bot
 - `backend/app/integrations/mcp_server.py` — MCP server for Claude Code
@@ -74,6 +76,7 @@ cd backend && alembic revision --autogenerate -m "description"
 - **Sprint 10**: Agent learning loop, shared scratchpad, daily standup, output validation, retry logic
 - **Sprint 11**: Routine builder, project health scoring, calendar view, quick capture, deduplication
 - **Sprint 12**: Workflow DAGs, smart prioritization, drag-and-drop, push notifications, journal search
+- **Sprint 13**: Agent self-evaluation, time-based context, timeline/Gantt view, auto-summarize reading, backup/restore
 
 ## Auth
 

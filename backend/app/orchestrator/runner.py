@@ -70,7 +70,18 @@ class AgentRunner:
         if identity:
             parts.append(f"\n## About the User\n{identity}")
 
-        # 5. Memory & learning instructions
+        # 5. Time awareness
+        parts.append(
+            "\n## Time Awareness\n"
+            'Your context includes "time_context" with the current UTC time, period (morning/afternoon/evening/night), '
+            "and guidance on what kind of work is appropriate. Adapt your behavior accordingly:\n"
+            "- Morning: planning, prioritization, daily briefings\n"
+            "- Afternoon: execution, progress updates\n"
+            "- Evening: reflection, reviews, day summaries\n"
+            "- Night: quiet background tasks, prep for tomorrow"
+        )
+
+        # 6. Memory & learning instructions
         parts.append(
             "\n## Memory & Learning\n"
             "You have persistent memory that survives between runs. Use it.\n"
@@ -83,7 +94,7 @@ class AgentRunner:
             "- If you notice a pattern (e.g., you keep creating similar tasks), save an insight to memory."
         )
 
-        # 6. Output format
+        # 7. Output format
         parts.append(
             "\n## Output Format\n"
             "You MUST respond with valid JSON only. No markdown, no explanation.\n"
@@ -266,6 +277,33 @@ class AgentRunner:
 
             context["standup"] = standup_roster
 
+        # Time-based context: tell agent what time of day it is for appropriate behavior
+        now = datetime.now(timezone.utc)
+        hour = now.hour
+        if hour < 6:
+            time_period = "late_night"
+            time_guidance = "It's late night. Focus on low-priority background tasks. Avoid user-facing notifications."
+        elif hour < 12:
+            time_period = "morning"
+            time_guidance = "It's morning. Good time for planning, prioritization, and daily briefings."
+        elif hour < 17:
+            time_period = "afternoon"
+            time_guidance = "It's afternoon. Focus on execution, progress updates, and unblocking tasks."
+        elif hour < 21:
+            time_period = "evening"
+            time_guidance = "It's evening. Good time for reflection, reviews, and summarizing the day."
+        else:
+            time_period = "night"
+            time_guidance = "It's night. Focus on quiet background tasks and preparation for tomorrow."
+
+        context["time_context"] = {
+            "utc_time": now.isoformat(),
+            "hour": hour,
+            "period": time_period,
+            "day_of_week": now.strftime("%A").lower(),
+            "guidance": time_guidance,
+        }
+
         # Load agent memory (persistent context from previous runs)
         mem_result = await db.execute(
             select(AgentMemory).where(AgentMemory.agent_id == agent.id).order_by(AgentMemory.updated_at.desc())
@@ -437,6 +475,86 @@ class AgentRunner:
         except json.JSONDecodeError:
             return {"summary": text, "actions": [], "raw": True}
 
+    async def _self_evaluate(self, result: dict, agent: AgentConfig, min_confidence: float) -> tuple[dict, dict | None]:
+        """Score agent output quality. If below threshold, retry once with feedback.
+
+        Returns (possibly_improved_result, evaluation_metadata).
+        """
+        summary = result.get("summary", "")
+        actions = result.get("actions", [])
+
+        # Simple heuristic scoring (no LLM call needed)
+        score = 0.5  # baseline
+        reasons = []
+
+        # Penalize empty or very short summary
+        if not summary or len(summary) < 10:
+            score -= 0.3
+            reasons.append("Summary too short or missing")
+        elif len(summary) > 50:
+            score += 0.1
+            reasons.append("Good summary length")
+
+        # Penalize no actions when agent has data_writes
+        if not actions and (agent.data_writes or []):
+            score -= 0.2
+            reasons.append("No actions produced despite write permissions")
+        elif actions:
+            score += 0.1
+            reasons.append(f"{len(actions)} actions produced")
+
+        # Penalize if raw/unparsed output
+        if result.get("raw"):
+            score -= 0.3
+            reasons.append("Output was not valid JSON")
+
+        # Reward valid action types
+        valid_types = {"create_task", "create_idea", "update_task", "add_reading",
+                       "create_journal", "save_memory", "save_shared_memory",
+                       "create_goal", "create_signal", "create_content"}
+        for a in actions:
+            if isinstance(a, dict) and a.get("type") in valid_types:
+                score += 0.05
+
+        score = max(0.0, min(1.0, score))
+        eval_meta = {"score": round(score, 2), "reasons": reasons, "threshold": min_confidence}
+
+        if score < min_confidence:
+            # Retry once with feedback
+            logger.info(
+                f"Agent {agent.name} self-eval score {score:.2f} < {min_confidence}. Retrying with feedback."
+            )
+            eval_meta["retried"] = True
+            feedback_prompt = (
+                f"Your previous output scored {score:.2f} (threshold: {min_confidence}).\n"
+                f"Issues: {'; '.join(reasons)}\n"
+                f"Previous summary: {summary[:200]}\n\n"
+                "Please try again with a better response. "
+                "Ensure you provide a clear summary and well-formed actions as JSON."
+            )
+            try:
+                retry_result = await self._execute_llm(feedback_prompt, agent)
+                # Re-score
+                retry_summary = retry_result.get("summary", "")
+                retry_actions = retry_result.get("actions", [])
+                retry_score = 0.5
+                if retry_summary and len(retry_summary) > 10:
+                    retry_score += 0.2
+                if retry_actions:
+                    retry_score += 0.15
+                if not retry_result.get("raw"):
+                    retry_score += 0.15
+                retry_score = min(1.0, retry_score)
+                eval_meta["retry_score"] = round(retry_score, 2)
+
+                if retry_score > score:
+                    return retry_result, eval_meta
+            except Exception as e:
+                logger.warning(f"Self-eval retry failed for {agent.name}: {e}")
+                eval_meta["retry_error"] = str(e)[:100]
+
+        return result, eval_meta
+
     async def _execute_llm(self, prompt: str, agent: AgentConfig) -> dict:
         """Execute LLM call with provider fallback, retry, and timeout enforcement."""
         timeout_seconds = (agent.config or {}).get("timeout_seconds", 300)
@@ -499,6 +617,14 @@ class AgentRunner:
 
             # Execute with timeout enforcement and retry
             result = await self._execute_llm(prompt, agent)
+
+            # Self-evaluation: score output quality and retry if low confidence
+            self_eval_enabled = (agent.config or {}).get("self_eval", False)
+            min_confidence = (agent.config or {}).get("min_confidence", 0.5)
+            if self_eval_enabled:
+                result, eval_meta = await self._self_evaluate(result, agent, min_confidence)
+                if eval_meta:
+                    result["_self_eval"] = eval_meta
 
             # Validate output
             validated, validation_warnings = validate_agent_output(result)
