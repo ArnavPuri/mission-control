@@ -1,6 +1,6 @@
 name: reddit-scout
 description: Finds promotional opportunities on Reddit for your products
-version: "1.0"
+version: "2.0"
 type: marketing
 
 model: claude-sonnet-4-6
@@ -11,7 +11,7 @@ tools:
 
 data:
   reads: [projects, tasks]
-  writes: [tasks]
+  writes: [marketing_signals, marketing_content]
 
 schedule:
   type: interval
@@ -32,23 +32,32 @@ prompt_template: |
      threads would be relevant (people asking for recommendations,
      complaining about competitors, discussing the problem space).
   2. Search for recent threads that match.
-  3. For each opportunity found, create a task with:
-     - The subreddit and thread topic
-     - A draft comment that is genuinely helpful (NOT spammy)
-     - Why this is a good opportunity
+  3. For each opportunity found, create a signal AND optionally a draft reply.
 
   Respond with JSON:
   {
     "summary": "Found N opportunities across M subreddits",
     "actions": [
       {
-        "type": "create_task",
-        "text": "Reddit opportunity: r/selfhosted - 'Looking for site hosting alternatives' - Draft: ...",
-        "priority": "medium",
-        "tags": ["reddit", "marketing"]
+        "type": "create_signal",
+        "title": "r/SaaS - Looking for SEO tool alternatives",
+        "body": "User asking for affordable SEO tool recommendations. Thread has 23 upvotes and 12 comments. Good engagement opportunity.",
+        "source_type": "reddit",
+        "source_url": "https://reddit.com/r/SaaS/...",
+        "relevance_score": 0.85,
+        "signal_type": "opportunity",
+        "channel_metadata": {"subreddit": "SaaS", "upvotes": 23, "comment_count": 12},
+        "tags": ["reddit", "seo"]
+      },
+      {
+        "type": "create_content",
+        "title": "Reply to r/SaaS SEO tools thread",
+        "body": "Hey! I actually built something for exactly this use case...",
+        "channel": "reddit_comment",
+        "tags": ["reddit", "seo"]
       }
     ]
   }
 
 requires_approval: false
-max_actions_per_run: 5
+max_actions_per_run: 10

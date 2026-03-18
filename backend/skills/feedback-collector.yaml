@@ -1,7 +1,7 @@
 name: feedback-collector
 description: Scrapes and analyzes user feedback from public sources for your products
-version: "1.0"
-type: research
+version: "2.0"
+type: marketing
 
 model: claude-haiku-4-5
 max_budget_usd: 0.10
@@ -11,7 +11,7 @@ tools:
 
 data:
   reads: [projects]
-  writes: [tasks, ideas]
+  writes: [marketing_signals]
 
 schedule:
   type: interval
@@ -31,24 +31,21 @@ prompt_template: |
   4. GitHub issues (if applicable)
   5. Product Hunt comments (if applicable)
 
-  For each piece of feedback found:
-  - Categorize: bug report, feature request, praise, complaint
-  - Extract the core insight
-  - Suggest an actionable task if warranted
+  For each piece of feedback found, create a signal categorized by type.
 
   Respond with JSON:
   {
     "summary": "Found N mentions. Key themes: ...",
     "actions": [
       {
-        "type": "create_task",
-        "text": "User feedback: [source] - [summary of feedback] - Action: ...",
-        "priority": "medium",
-        "tags": ["feedback", "user-research"]
-      },
-      {
-        "type": "create_idea",
-        "text": "Feature request pattern: multiple users asking for ...",
+        "type": "create_signal",
+        "title": "User feedback: [source] - [short summary]",
+        "body": "Full context of the feedback...",
+        "source_type": "reddit",
+        "source_url": "https://...",
+        "relevance_score": 0.7,
+        "signal_type": "feedback",
+        "channel_metadata": {"subreddit": "startups"},
         "tags": ["feedback", "feature-request"]
       }
     ]
