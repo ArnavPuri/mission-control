@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import { Zap, Play, ChevronDown, ChevronRight, Loader2, AlertCircle } from 'lucide-react';
 import { clsx } from 'clsx';
 import * as api from '../../../lib/api';
-import { AgentBuilderForm } from '../../new/page';
+import { AgentBuilderForm } from '../../builder-form';
 import { Card } from '../../../components/shared';
 
 // ─── Dry Run Result Panel ─────────────────────────────────
