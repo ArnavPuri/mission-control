@@ -474,6 +474,96 @@ export const health = {
   check: () => request<HealthStatus>('/health'),
 };
 
+// --- Marketing Signals ---
+
+export interface MarketingSignal {
+  id: string;
+  title: string;
+  body: string;
+  source: string;
+  source_type: string;
+  source_url: string | null;
+  relevance_score: number;
+  signal_type: string;
+  status: 'new' | 'reviewed' | 'acted_on' | 'dismissed';
+  channel_metadata: Record<string, unknown>;
+  project_id: string | null;
+  agent_id: string | null;
+  tags: string[];
+  created_at: string;
+  updated_at: string | null;
+}
+
+export function fetchSignals(params?: { status?: string; source_type?: string; signal_type?: string; project_id?: string }) {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set('status', params.status);
+  if (params?.source_type) qs.set('source_type', params.source_type);
+  if (params?.signal_type) qs.set('signal_type', params.signal_type);
+  if (params?.project_id) qs.set('project_id', params.project_id);
+  const query = qs.toString();
+  return request<MarketingSignal[]>(`/api/mkt-signals${query ? `?${query}` : ''}`);
+}
+
+export function createSignal(data: Partial<MarketingSignal>) {
+  return request<MarketingSignal>('/api/mkt-signals', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function updateSignal(id: string, data: Partial<MarketingSignal>) {
+  return request<MarketingSignal>(`/api/mkt-signals/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+}
+
+export function deleteSignal(id: string) {
+  return request<{ deleted: boolean }>(`/api/mkt-signals/${id}`, { method: 'DELETE' });
+}
+
+// --- Marketing Content ---
+
+export interface MarketingContent {
+  id: string;
+  title: string;
+  body: string;
+  channel: string;
+  status: 'draft' | 'approved' | 'posted' | 'archived';
+  source: string;
+  signal_id: string | null;
+  project_id: string | null;
+  agent_id: string | null;
+  posted_url: string | null;
+  posted_at: string | null;
+  notes: string | null;
+  tags: string[];
+  created_at: string;
+  updated_at: string | null;
+}
+
+export function fetchContent(params?: { status?: string; channel?: string; project_id?: string }) {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set('status', params.status);
+  if (params?.channel) qs.set('channel', params.channel);
+  if (params?.project_id) qs.set('project_id', params.project_id);
+  const query = qs.toString();
+  return request<MarketingContent[]>(`/api/mkt-content${query ? `?${query}` : ''}`);
+}
+
+export function createContent(data: Partial<MarketingContent>) {
+  return request<MarketingContent>('/api/mkt-content', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function updateContent(id: string, data: Partial<MarketingContent>) {
+  return request<MarketingContent>(`/api/mkt-content/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+}
+
+export function deleteContent(id: string) {
+  return request<{ deleted: boolean }>(`/api/mkt-content/${id}`, { method: 'DELETE' });
+}
+
+export function fetchMarketingStats() {
+  return request<{
+    signals: { by_status: Record<string, number>; by_type: Record<string, number>; total: number };
+    content: { by_status: Record<string, number>; by_channel: Record<string, number>; total: number };
+  }>('/api/mkt-stats');
+}
+
 // --- WebSocket ---
 
 export function connectWebSocket(onMessage: (event: { type: string; data: any }) => void): WebSocket | null {
