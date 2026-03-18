@@ -378,3 +378,87 @@ async def test_delete_signal(client: AsyncClient):
     assert resp.status_code == 200
     listing = await client.get("/api/mkt-signals")
     assert len(listing.json()) == 0
+
+
+# ─── Marketing Content ───────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_create_content(client: AsyncClient):
+    resp = await client.post("/api/mkt-content", json={
+        "title": "Reply to SEO thread",
+        "body": "Hey, I built a tool for exactly this...",
+        "channel": "reddit_comment",
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["title"] == "Reply to SEO thread"
+    assert data["status"] == "draft"
+
+
+@pytest.mark.asyncio
+async def test_create_content_linked_to_signal(client: AsyncClient):
+    signal = await client.post("/api/mkt-signals", json={
+        "title": "Opportunity", "source_type": "reddit", "signal_type": "opportunity",
+    })
+    signal_id = signal.json()["id"]
+    resp = await client.post("/api/mkt-content", json={
+        "title": "Reply draft",
+        "body": "Content body",
+        "channel": "reddit_comment",
+        "signal_id": signal_id,
+    })
+    assert resp.status_code == 200
+    assert resp.json()["signal_id"] == signal_id
+
+
+@pytest.mark.asyncio
+async def test_approve_content(client: AsyncClient):
+    create = await client.post("/api/mkt-content", json={
+        "title": "Draft tweet", "body": "Check out our tool", "channel": "twitter_tweet",
+    })
+    content_id = create.json()["id"]
+    resp = await client.patch(f"/api/mkt-content/{content_id}", json={"status": "approved"})
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "approved"
+
+
+@pytest.mark.asyncio
+async def test_mark_content_posted(client: AsyncClient):
+    create = await client.post("/api/mkt-content", json={
+        "title": "Tweet", "body": "Content", "channel": "twitter_tweet",
+    })
+    content_id = create.json()["id"]
+    await client.patch(f"/api/mkt-content/{content_id}", json={"status": "approved"})
+    resp = await client.patch(f"/api/mkt-content/{content_id}", json={
+        "status": "posted",
+        "posted_url": "https://twitter.com/user/status/123",
+    })
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "posted"
+    assert resp.json()["posted_url"] == "https://twitter.com/user/status/123"
+
+
+@pytest.mark.asyncio
+async def test_list_content_filter_channel(client: AsyncClient):
+    await client.post("/api/mkt-content", json={
+        "title": "Tweet", "body": "...", "channel": "twitter_tweet",
+    })
+    await client.post("/api/mkt-content", json={
+        "title": "Reddit", "body": "...", "channel": "reddit_comment",
+    })
+    resp = await client.get("/api/mkt-content?channel=twitter_tweet")
+    assert resp.status_code == 200
+    assert len(resp.json()) == 1
+    assert resp.json()[0]["channel"] == "twitter_tweet"
+
+
+@pytest.mark.asyncio
+async def test_delete_content(client: AsyncClient):
+    create = await client.post("/api/mkt-content", json={
+        "title": "Delete me", "body": "...", "channel": "twitter_tweet",
+    })
+    content_id = create.json()["id"]
+    resp = await client.delete(f"/api/mkt-content/{content_id}")
+    assert resp.status_code == 200
+    listing = await client.get("/api/mkt-content")
+    assert len(listing.json()) == 0
