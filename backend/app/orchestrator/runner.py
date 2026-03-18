@@ -30,6 +30,8 @@ from app.config import settings, LLMProvider
 from app.db.models import (
     AgentConfig, AgentRun, AgentStatus, AgentRunStatus,
     Project, Task, Idea, ReadingItem, EventLog, TaskStatus,
+    Habit, Goal, JournalEntry, AgentApproval, ApprovalStatus,
+    AgentMemory,
 )
 from app.api.ws import broadcast
 
@@ -73,6 +75,39 @@ class AgentRunner:
                 {"id": str(r.id), "title": r.title, "url": r.url}
                 for r in result.scalars().all()
             ]
+
+        if "habits" in (agent.data_reads or []):
+            result = await db.execute(select(Habit).where(Habit.is_active == True))
+            context["habits"] = [
+                {"id": str(h.id), "name": h.name, "current_streak": h.current_streak, "best_streak": h.best_streak}
+                for h in result.scalars().all()
+            ]
+
+        if "goals" in (agent.data_reads or []):
+            from app.db.models import GoalStatus
+            result = await db.execute(select(Goal).where(Goal.status == GoalStatus.ACTIVE))
+            context["goals"] = [
+                {"id": str(g.id), "title": g.title, "description": g.description, "progress": g.progress}
+                for g in result.scalars().all()
+            ]
+
+        if "journal" in (agent.data_reads or []):
+            result = await db.execute(
+                select(JournalEntry).order_by(JournalEntry.created_at.desc()).limit(7)
+            )
+            context["journal"] = [
+                {"id": str(j.id), "content": j.content[:200], "mood": j.mood.value if j.mood else None,
+                 "created_at": j.created_at.isoformat()}
+                for j in result.scalars().all()
+            ]
+
+        # Load agent memory (persistent context from previous runs)
+        mem_result = await db.execute(
+            select(AgentMemory).where(AgentMemory.agent_id == agent.id).order_by(AgentMemory.updated_at.desc())
+        )
+        memories = mem_result.scalars().all()
+        if memories:
+            context["memory"] = {m.key: m.value for m in memories}
 
         # Include project-specific context if agent is bound to a project
         if agent.project_id:
@@ -163,21 +198,43 @@ class AgentRunner:
         if settings.anthropic_api_key:
             headers["x-api-key"] = settings.anthropic_api_key
 
-        async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers=headers,
-                json={
-                    "model": agent.model or settings.default_model,
-                    "max_tokens": 4096,
-                    "system": (
-                        f"You are {agent.name}. {agent.description}\n"
-                        "Respond with valid JSON only: {{\"actions\": [...], \"summary\": \"...\"}}"
-                    ),
-                    "messages": [{"role": "user", "content": prompt}],
-                },
-            )
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                resp = await client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers=headers,
+                    json={
+                        "model": agent.model or settings.default_model,
+                        "max_tokens": 4096,
+                        "system": (
+                            f"You are {agent.name}. {agent.description}\n"
+                            "Respond with valid JSON only: {{\"actions\": [...], \"summary\": \"...\"}}"
+                        ),
+                        "messages": [{"role": "user", "content": prompt}],
+                    },
+                )
+
+            if resp.status_code == 401:
+                raise RuntimeError("LLM authentication failed. Check your ANTHROPIC_API_KEY.")
+            if resp.status_code == 429:
+                raise RuntimeError("LLM rate limit exceeded. Try again later or reduce agent frequency.")
+            if resp.status_code == 529:
+                raise RuntimeError("Anthropic API is overloaded. Try again in a few minutes.")
+            if resp.status_code >= 500:
+                raise RuntimeError(f"LLM provider error (HTTP {resp.status_code}). The API may be experiencing issues.")
+            if resp.status_code >= 400:
+                raise RuntimeError(f"LLM request failed (HTTP {resp.status_code}): {resp.text[:200]}")
+
             data = resp.json()
+        except httpx.ConnectError:
+            raise RuntimeError("Cannot connect to LLM provider. Check your network and API configuration.")
+        except httpx.TimeoutException:
+            raise RuntimeError("LLM request timed out. The model may be overloaded.")
+
+        # Check for API-level errors
+        if "error" in data:
+            err_msg = data["error"].get("message", str(data["error"]))
+            raise RuntimeError(f"LLM API error: {err_msg}")
 
         text = ""
         for block in data.get("content", []):
@@ -189,6 +246,29 @@ class AgentRunner:
             return json.loads(cleaned)
         except json.JSONDecodeError:
             return {"summary": text, "actions": [], "raw": True}
+
+    async def _execute_llm(self, prompt: str, agent: AgentConfig) -> dict:
+        """Execute LLM call with provider fallback and timeout enforcement."""
+        timeout_seconds = (agent.config or {}).get("timeout_seconds", 300)
+
+        async def _run():
+            provider = settings.llm_provider
+            if provider in (LLMProvider.ANTHROPIC_API, LLMProvider.ANTHROPIC_OAUTH):
+                try:
+                    return await self.execute_with_agent_sdk(prompt, agent)
+                except Exception as sdk_err:
+                    logger.warning(f"Agent SDK failed, falling back to API: {sdk_err}")
+                    return await self.execute_with_anthropic_api(prompt, agent)
+            else:
+                return await self.execute_with_anthropic_api(prompt, agent)
+
+        try:
+            return await asyncio.wait_for(_run(), timeout=timeout_seconds)
+        except asyncio.TimeoutError:
+            raise TimeoutError(
+                f"Agent {agent.name} timed out after {timeout_seconds}s. "
+                f"Increase timeout_seconds in agent config if needed."
+            )
 
     async def start_run(self, agent: AgentConfig, trigger: str, db: AsyncSession) -> AgentRun:
         """Start an agent run - creates log entry, executes, writes results."""
@@ -208,16 +288,8 @@ class AgentRunner:
             prompt = self.render_prompt(agent.prompt_template, context)
             run.input_data = {"prompt_length": len(prompt), "context_keys": list(context.keys())}
 
-            # Execute based on provider
-            provider = settings.llm_provider
-            if provider in (LLMProvider.ANTHROPIC_API, LLMProvider.ANTHROPIC_OAUTH):
-                try:
-                    result = await self.execute_with_agent_sdk(prompt, agent)
-                except Exception as sdk_err:
-                    logger.warning(f"Agent SDK failed, falling back to API: {sdk_err}")
-                    result = await self.execute_with_anthropic_api(prompt, agent)
-            else:
-                result = await self.execute_with_anthropic_api(prompt, agent)
+            # Execute with timeout enforcement
+            result = await self._execute_llm(prompt, agent)
 
             # Update run
             run.status = AgentRunStatus.COMPLETED
@@ -226,14 +298,63 @@ class AgentRunner:
             agent.status = AgentStatus.IDLE
             agent.last_run_at = datetime.now(timezone.utc)
 
-            # Process agent output actions (write to DB)
-            await self._process_actions(result.get("actions", []), agent, db)
+            # Check if agent requires approval
+            requires_approval = agent.config.get("requires_approval", False) if agent.config else False
+            actions = result.get("actions", [])
+
+            if requires_approval and actions:
+                # Queue for approval instead of executing immediately
+                from datetime import timedelta
+                approval = AgentApproval(
+                    run_id=run.id,
+                    agent_id=agent.id,
+                    actions=actions,
+                    summary=result.get("summary", ""),
+                    expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
+                )
+                db.add(approval)
+                await broadcast("approval.pending", {
+                    "agent_id": str(agent.id),
+                    "run_id": str(run.id),
+                    "action_count": len(actions),
+                    "summary": result.get("summary", ""),
+                })
+            else:
+                await self._process_actions(actions, agent, db)
 
             await broadcast("agent.completed", {
                 "agent_id": str(agent.id),
                 "run_id": str(run.id),
                 "summary": result.get("summary", ""),
             })
+
+            # Create notification
+            try:
+                from app.api.notifications import create_notification
+                summary = result.get("summary", "Run completed")
+                category = "approval" if requires_approval and actions else "success"
+                await create_notification(
+                    db, title=f"{agent.name} completed",
+                    body=summary[:200], category=category,
+                    source=f"agent:{agent.slug}",
+                )
+            except Exception:
+                pass  # notifications are best-effort
+
+            # Agent chaining: if this agent has a "chain_to" config, trigger the next agent
+            chain_to = agent.config.get("chain_to") if agent.config else None
+            if chain_to:
+                try:
+                    from sqlalchemy import select as sa_select
+                    chain_result = await db.execute(
+                        sa_select(AgentConfig).where(AgentConfig.slug == chain_to)
+                    )
+                    next_agent = chain_result.scalar_one_or_none()
+                    if next_agent and next_agent.status != AgentStatus.RUNNING:
+                        logger.info(f"Chaining: {agent.name} -> {next_agent.name}")
+                        asyncio.create_task(self._chain_run(next_agent.id, result, trigger))
+                except Exception as chain_err:
+                    logger.warning(f"Agent chaining failed: {chain_err}")
 
         except Exception as e:
             run.status = AgentRunStatus.FAILED
@@ -247,6 +368,17 @@ class AgentRunner:
                 "run_id": str(run.id),
                 "error": str(e),
             })
+
+            # Notification for failures
+            try:
+                from app.api.notifications import create_notification
+                await create_notification(
+                    db, title=f"{agent.name} failed",
+                    body=str(e)[:200], category="error",
+                    source=f"agent:{agent.slug}",
+                )
+            except Exception:
+                pass
 
         await db.flush()
 
@@ -262,6 +394,33 @@ class AgentRunner:
         await db.flush()
 
         return run
+
+    async def _chain_run(self, next_agent_id, previous_result: dict, trigger: str):
+        """Run the next agent in a chain, passing previous output as context."""
+        from app.db.session import async_session
+        async with async_session() as db:
+            next_agent = await db.get(AgentConfig, next_agent_id)
+            if not next_agent or next_agent.status == AgentStatus.RUNNING:
+                return
+            # Store chain input as agent memory (transient, not in config)
+            from app.db.models import AgentMemory
+            existing = await db.execute(
+                select(AgentMemory).where(
+                    AgentMemory.agent_id == next_agent.id,
+                    AgentMemory.key == "_chain_input",
+                )
+            )
+            mem = existing.scalar_one_or_none()
+            chain_data = json.dumps(previous_result)[:2000]  # limit size
+            if mem:
+                mem.value = chain_data
+            else:
+                db.add(AgentMemory(
+                    agent_id=next_agent.id, key="_chain_input",
+                    value=chain_data, memory_type="chain",
+                ))
+            await self.start_run(next_agent, trigger=f"chain:{trigger}", db=db)
+            await db.commit()
 
     async def _process_actions(self, actions: list, agent: AgentConfig, db: AsyncSession):
         """Process structured actions from agent output and write to DB."""
@@ -309,3 +468,50 @@ class AgentRunner:
                     tags=action.get("tags", []),
                 )
                 db.add(item)
+
+            elif action_type == "create_journal" and "journal" in (agent.data_writes or []):
+                from app.db.models import MoodLevel
+                mood_str = action.get("mood")
+                mood = MoodLevel(mood_str) if mood_str and mood_str in MoodLevel.__members__.values() else None
+                entry = JournalEntry(
+                    content=action.get("content", ""),
+                    mood=mood,
+                    energy=action.get("energy"),
+                    tags=action.get("tags", []),
+                    wins=action.get("wins", []),
+                    challenges=action.get("challenges", []),
+                    gratitude=action.get("gratitude", []),
+                    source=f"agent:{agent.slug}",
+                )
+                db.add(entry)
+                await broadcast("journal.created", {"source": f"agent:{agent.slug}"})
+
+            elif action_type == "save_memory":
+                # Agents can persist memory entries for future runs
+                key = action.get("key")
+                value = action.get("value")
+                if key and value:
+                    existing = await db.execute(
+                        select(AgentMemory).where(
+                            AgentMemory.agent_id == agent.id,
+                            AgentMemory.key == key,
+                        )
+                    )
+                    mem = existing.scalar_one_or_none()
+                    if mem:
+                        mem.value = str(value)
+                    else:
+                        db.add(AgentMemory(
+                            agent_id=agent.id, key=key, value=str(value),
+                            memory_type=action.get("memory_type", "general"),
+                        ))
+
+            elif action_type == "create_goal" and "goals" in (agent.data_writes or []):
+                goal = Goal(
+                    title=action.get("title", "Untitled goal"),
+                    description=action.get("description", ""),
+                    project_id=agent.project_id,
+                    tags=action.get("tags", []),
+                )
+                db.add(goal)
+                await broadcast("goal.created", {"title": goal.title})

@@ -135,6 +135,332 @@ export const agents = {
   runs: (id: string, limit = 20) => request<AgentRun[]>(`/api/agents/${id}/runs?limit=${limit}`),
 };
 
+// --- Habits ---
+
+export interface Habit {
+  id: string;
+  name: string;
+  description: string;
+  frequency: 'daily' | 'weekly' | 'custom';
+  current_streak: number;
+  best_streak: number;
+  total_completions: number;
+  is_active: boolean;
+  color: string;
+  completed_today: boolean;
+  project_id?: string;
+  created_at: string;
+}
+
+export interface HabitAnalytics {
+  habits: {
+    id: string;
+    name: string;
+    color: string;
+    current_streak: number;
+    best_streak: number;
+    total_completions: number;
+    completion_rate: number;
+    weekly_data: { week: number; completions: number }[];
+  }[];
+  days: number;
+}
+
+export const habits = {
+  list: (activeOnly = true) => request<Habit[]>(`/api/habits?active_only=${activeOnly}`),
+  create: (data: Partial<Habit>) => request<{ id: string }>('/api/habits', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<Habit>) => request<{ updated: boolean }>(`/api/habits/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  complete: (id: string) => request<{ current_streak: number }>(`/api/habits/${id}/complete`, { method: 'POST' }),
+  uncomplete: (id: string) => request<{ uncompleted: boolean }>(`/api/habits/${id}/uncomplete`, { method: 'POST' }),
+  delete: (id: string) => request<{ deleted: boolean }>(`/api/habits/${id}`, { method: 'DELETE' }),
+  analytics: (days = 30) => request<HabitAnalytics>(`/api/habits/analytics/overview?days=${days}`),
+};
+
+// --- Goals ---
+
+export interface KeyResult {
+  id: string;
+  title: string;
+  target_value: number;
+  current_value: number;
+  unit: string;
+  progress: number;
+}
+
+export interface Goal {
+  id: string;
+  title: string;
+  description: string;
+  status: 'active' | 'completed' | 'abandoned';
+  target_date?: string;
+  progress: number;
+  project_id?: string;
+  tags: string[];
+  key_results: KeyResult[];
+  created_at: string;
+}
+
+export const goals = {
+  list: (status?: string) => {
+    const qs = status ? `?status=${status}` : '';
+    return request<Goal[]>(`/api/goals${qs}`);
+  },
+  create: (data: Partial<Goal>) => request<{ id: string }>('/api/goals', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<Goal>) => request<{ updated: boolean }>(`/api/goals/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  delete: (id: string) => request<{ deleted: boolean }>(`/api/goals/${id}`, { method: 'DELETE' }),
+  createKeyResult: (goalId: string, data: Partial<KeyResult>) =>
+    request<{ id: string }>(`/api/goals/${goalId}/key-results`, { method: 'POST', body: JSON.stringify(data) }),
+  updateKeyResult: (goalId: string, krId: string, data: Partial<KeyResult>) =>
+    request<{ updated: boolean }>(`/api/goals/${goalId}/key-results/${krId}`, { method: 'PATCH', body: JSON.stringify(data) }),
+};
+
+// --- Journal ---
+
+export interface JournalEntry {
+  id: string;
+  content: string;
+  mood?: 'great' | 'good' | 'okay' | 'low' | 'bad';
+  energy?: number;
+  tags: string[];
+  wins: string[];
+  challenges: string[];
+  gratitude: string[];
+  source: string;
+  created_at: string;
+}
+
+export const journal = {
+  list: (limit = 30) => request<JournalEntry[]>(`/api/journal?limit=${limit}`),
+  create: (data: Partial<JournalEntry>) => request<{ id: string }>('/api/journal', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<JournalEntry>) => request<{ updated: boolean }>(`/api/journal/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  delete: (id: string) => request<{ deleted: boolean }>(`/api/journal/${id}`, { method: 'DELETE' }),
+};
+
+// --- Approvals ---
+
+export interface Approval {
+  id: string;
+  agent_id: string;
+  agent_name: string;
+  run_id: string;
+  summary: string;
+  actions: any[];
+  action_count: number;
+  created_at: string;
+  expires_at?: string;
+}
+
+export const approvals = {
+  list: () => request<Approval[]>('/api/approvals'),
+  approve: (id: string) => request<{ status: string }>(`/api/approvals/${id}/approve`, { method: 'POST' }),
+  reject: (id: string) => request<{ status: string }>(`/api/approvals/${id}/reject`, { method: 'POST' }),
+};
+
+// --- Search ---
+
+export interface SearchResult {
+  type: string;
+  id: string;
+  title: string;
+  status?: string;
+  priority?: string;
+  tags?: string[];
+  created_at: string;
+}
+
+export interface SearchResponse {
+  query: string;
+  total: number;
+  results: SearchResult[];
+}
+
+export const search = {
+  query: (q: string, entityTypes = 'all', limit = 20) =>
+    request<SearchResponse>(`/api/search?q=${encodeURIComponent(q)}&entity_types=${entityTypes}&limit=${limit}`),
+};
+
+// --- Notifications ---
+
+export interface Notification {
+  id: string;
+  title: string;
+  body: string;
+  category: 'info' | 'success' | 'warning' | 'error' | 'approval';
+  source: string;
+  is_read: boolean;
+  action_url?: string;
+  created_at: string;
+}
+
+export const notifications = {
+  list: (unreadOnly = false, limit = 50) =>
+    request<Notification[]>(`/api/notifications?unread_only=${unreadOnly}&limit=${limit}`),
+  unreadCount: () => request<{ unread: number }>('/api/notifications/count'),
+  markRead: (id: string) => request<{ read: boolean }>(`/api/notifications/${id}/read`, { method: 'POST' }),
+  markAllRead: () => request<{ read_all: boolean }>('/api/notifications/read-all', { method: 'POST' }),
+};
+
+// --- Agent Analytics ---
+
+export interface AgentAnalyticsOverview {
+  days: number;
+  agents: {
+    agent_id: string;
+    agent_name: string;
+    agent_slug: string;
+    model: string;
+    total_runs: number;
+    completed: number;
+    failed: number;
+    success_rate: number;
+    total_cost_usd: number;
+    total_tokens: number;
+    avg_cost_per_run: number;
+    avg_duration_seconds: number;
+    daily_costs: Record<string, number>;
+    last_run_at: string | null;
+  }[];
+  totals: {
+    total_agents: number;
+    total_runs: number;
+    total_completed: number;
+    total_failed: number;
+    overall_success_rate: number;
+    total_cost_usd: number;
+  };
+}
+
+export const agentAnalytics = {
+  overview: (days = 30) => request<AgentAnalyticsOverview>(`/api/analytics/agents/overview?days=${days}`),
+};
+
+// --- Triggers ---
+
+export interface AgentTrigger {
+  id: string;
+  agent_id: string;
+  agent_name: string | null;
+  name: string;
+  description: string;
+  is_active: boolean;
+  entity_type: string;
+  event: string;
+  condition: Record<string, string> | null;
+  last_triggered_at: string | null;
+  trigger_count: number;
+  created_at: string;
+}
+
+export const triggers = {
+  list: () => request<AgentTrigger[]>('/api/triggers'),
+  create: (data: Partial<AgentTrigger>) => request<{ id: string }>('/api/triggers', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<AgentTrigger>) => request<{ updated: boolean }>(`/api/triggers/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  delete: (id: string) => request<{ deleted: boolean }>(`/api/triggers/${id}`, { method: 'DELETE' }),
+};
+
+// --- Auto-tag ---
+
+export const autotag = {
+  task: (id: string) => request<{ tags: string[] }>(`/api/autotag/task/${id}`, { method: 'POST' }),
+  idea: (id: string) => request<{ tags: string[] }>(`/api/autotag/idea/${id}`, { method: 'POST' }),
+  batch: (entityType: string, limit = 10) => request<{ tagged: number }>(`/api/autotag/batch?entity_type=${entityType}&limit=${limit}`, { method: 'POST' }),
+};
+
+// --- Notes ---
+
+export interface Note {
+  id: string;
+  title: string;
+  content: string;
+  tags: string[];
+  is_pinned: boolean;
+  project_id?: string;
+  source: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export const notes = {
+  list: (tag?: string) => request<Note[]>(`/api/notes${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`),
+  get: (id: string) => request<Note>(`/api/notes/${id}`),
+  create: (data: Partial<Note>) => request<{ id: string }>('/api/notes', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<Note>) => request<{ updated: boolean }>(`/api/notes/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  delete: (id: string) => request<{ deleted: boolean }>(`/api/notes/${id}`, { method: 'DELETE' }),
+};
+
+// --- API Keys ---
+
+export interface ApiKeyRecord {
+  id: string;
+  name: string;
+  key_prefix: string;
+  scopes: string[];
+  is_active: boolean;
+  last_used_at?: string;
+  expires_at?: string;
+  created_at: string;
+}
+
+export const apiKeys = {
+  list: () => request<ApiKeyRecord[]>('/api/keys'),
+  create: (data: { name: string; scopes?: string[] }) => request<{ id: string; key: string; message: string }>('/api/keys', { method: 'POST', body: JSON.stringify(data) }),
+  revoke: (id: string) => request<{ revoked: boolean }>(`/api/keys/${id}`, { method: 'DELETE' }),
+};
+
+// --- GitHub Repos ---
+
+export interface GitHubRepo {
+  id: string;
+  owner: string;
+  repo: string;
+  full_name: string;
+  is_active: boolean;
+  sync_issues: boolean;
+  sync_prs: boolean;
+  auto_create_tasks: boolean;
+  project_id?: string;
+  last_synced_at?: string;
+  created_at: string;
+}
+
+export const github = {
+  repos: () => request<GitHubRepo[]>('/api/github'),
+  addRepo: (data: { owner: string; repo: string; auto_create_tasks?: boolean; project_id?: string }) =>
+    request<{ id: string; webhook_secret: string; webhook_url: string }>('/api/github', { method: 'POST', body: JSON.stringify(data) }),
+  updateRepo: (id: string, data: Partial<GitHubRepo>) => request<{ updated: boolean }>(`/api/github/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  removeRepo: (id: string) => request<{ deleted: boolean }>(`/api/github/${id}`, { method: 'DELETE' }),
+};
+
+// --- RSS Feeds ---
+
+export interface RSSFeed {
+  id: string;
+  title: string;
+  url: string;
+  is_active: boolean;
+  tags: string[];
+  fetch_interval_minutes: number;
+  last_fetched_at?: string;
+  error_count: number;
+  last_error?: string;
+  created_at: string;
+}
+
+export const feeds = {
+  list: () => request<RSSFeed[]>('/api/feeds'),
+  create: (data: { title: string; url: string; tags?: string[] }) => request<{ id: string }>('/api/feeds', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<RSSFeed>) => request<{ updated: boolean }>(`/api/feeds/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  delete: (id: string) => request<{ deleted: boolean }>(`/api/feeds/${id}`, { method: 'DELETE' }),
+  fetch: (id: string) => request<{ imported: number }>(`/api/feeds/${id}/fetch`, { method: 'POST' }),
+};
+
+// --- Export ---
+
+export const dataExport = {
+  jsonUrl: (entities = 'all') => `${API_BASE}/api/export/json?entities=${entities}`,
+  csvUrl: (entityType: string) => `${API_BASE}/api/export/csv/${entityType}`,
+};
+
 // --- Health ---
 
 export interface HealthStatus {
@@ -152,20 +478,29 @@ export const health = {
 
 export function connectWebSocket(onMessage: (event: { type: string; data: any }) => void): WebSocket | null {
   const wsUrl = API_BASE.replace(/^http/, 'ws') + '/ws';
-  try {
-    const ws = new WebSocket(wsUrl);
-    ws.onmessage = (e) => {
-      try {
-        const parsed = JSON.parse(e.data);
-        onMessage(parsed);
-      } catch {}
-    };
-    ws.onclose = () => {
-      // Auto-reconnect after 3s
-      setTimeout(() => connectWebSocket(onMessage), 3000);
-    };
-    return ws;
-  } catch {
-    return null;
-  }
+  const maxRetries = 10;
+  let retryCount = 0;
+  const connect = (): WebSocket | null => {
+    try {
+      const ws = new WebSocket(wsUrl);
+      ws.onopen = () => { retryCount = 0; };
+      ws.onmessage = (e) => {
+        try {
+          const parsed = JSON.parse(e.data);
+          onMessage(parsed);
+        } catch {}
+      };
+      ws.onclose = () => {
+        if (retryCount < maxRetries) {
+          const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
+          retryCount++;
+          setTimeout(connect, delay);
+        }
+      };
+      return ws;
+    } catch {
+      return null;
+    }
+  };
+  return connect();
 }

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
     Project, Task, Idea, ReadingItem, AgentConfig,
-    TaskStatus,
+    TaskStatus, Habit, Goal, GoalStatus, JournalEntry,
 )
 
 
@@ -18,6 +18,7 @@ from app.db.models import (
 MAX_TASKS = 30
 MAX_IDEAS = 15
 MAX_READING = 10
+MAX_JOURNAL = 5
 
 
 async def build_db_context(db: AsyncSession) -> dict:
@@ -85,6 +86,46 @@ async def build_db_context(db: AsyncSession) -> dict:
             "id_prefix": str(r.id)[:8],
         }
         for r in result.scalars().all()
+    ]
+
+    # Habits — active ones
+    result = await db.execute(select(Habit).where(Habit.is_active == True))
+    context["habits"] = [
+        {
+            "name": h.name,
+            "streak": h.current_streak,
+            "best_streak": h.best_streak,
+            "frequency": h.frequency.value,
+        }
+        for h in result.scalars().all()
+    ]
+
+    # Goals — active ones
+    result = await db.execute(
+        select(Goal).where(Goal.status == GoalStatus.ACTIVE)
+    )
+    context["goals"] = [
+        {
+            "title": g.title,
+            "progress": f"{round(g.progress * 100)}%",
+            "id_prefix": str(g.id)[:8],
+        }
+        for g in result.scalars().all()
+    ]
+
+    # Journal — recent entries
+    result = await db.execute(
+        select(JournalEntry)
+        .order_by(desc(JournalEntry.created_at))
+        .limit(MAX_JOURNAL)
+    )
+    context["journal"] = [
+        {
+            "content": j.content[:120],
+            "mood": j.mood.value if j.mood else None,
+            "date": j.created_at.strftime("%b %d"),
+        }
+        for j in result.scalars().all()
     ]
 
     # Agents — all with status info
