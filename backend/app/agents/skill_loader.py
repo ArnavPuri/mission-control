@@ -20,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.db.models import AgentConfig, AgentStatus
+from app.db.models import AgentConfig, AgentStatus, AgentTrigger
 from app.db.session import async_session
 
 logger = logging.getLogger(__name__)
@@ -89,7 +89,7 @@ async def sync_skills_to_db(skills_dir: str | None = None):
                     **{k: v for k, v in data.items() if k not in (
                         "name", "description", "type", "model", "max_budget_usd",
                         "prompt_template", "tools", "schedule", "data", "_source_file",
-                        "version", "requires_approval",
+                        "version", "requires_approval", "triggers",
                     )},
                     # Ensure persona/tone are always in config for the runner
                     "persona": data.get("persona", ""),
@@ -110,4 +110,75 @@ async def sync_skills_to_db(skills_dir: str | None = None):
         # Note: Only YAML-managed agents (skill_file IS NOT NULL) are synced.
         # Agents created via the UI (skill_file = NULL) are never touched by the loader.
         await db.commit()
+
+        # Second pass: sync triggers defined in YAML files
+        await _sync_triggers(db, skills_dir=directory)
+
     logger.info(f"Skill sync complete: {len(loaded_slugs)} agents loaded")
+
+
+async def _sync_triggers(db: AsyncSession, skills_dir: Path):
+    """Sync trigger definitions from YAML files to the agent_triggers table.
+
+    YAML format:
+        triggers:
+          - entity_type: signal
+            event: created
+            condition: {field: relevance_score, op: gt, value: "0.7"}
+    """
+    skill_files = list(skills_dir.glob("*.yaml")) + list(skills_dir.glob("*.yml"))
+
+    for path in skill_files:
+        data = load_skill_file(path)
+        if not data:
+            continue
+
+        triggers_data = data.get("triggers")
+        if not triggers_data or not isinstance(triggers_data, list):
+            continue
+
+        name = data.get("name", path.stem)
+        slug = slugify(name)
+
+        # Find the agent
+        result = await db.execute(select(AgentConfig).where(AgentConfig.slug == slug))
+        agent = result.scalar_one_or_none()
+        if not agent:
+            continue
+
+        # Delete existing YAML-managed triggers for this agent (re-sync from scratch)
+        existing_triggers = await db.execute(
+            select(AgentTrigger).where(
+                AgentTrigger.agent_id == agent.id,
+                AgentTrigger.name.like("yaml:%"),
+            )
+        )
+        for old_trigger in existing_triggers.scalars().all():
+            await db.delete(old_trigger)
+        await db.flush()
+
+        # Create triggers from YAML
+        for i, trigger_def in enumerate(triggers_data):
+            if not isinstance(trigger_def, dict):
+                continue
+
+            entity_type = trigger_def.get("entity_type")
+            event = trigger_def.get("event")
+            if not entity_type or not event:
+                logger.warning(f"Skipping trigger {i} in {path}: missing entity_type or event")
+                continue
+
+            trigger_name = f"yaml:{slug}:{entity_type}.{event}"
+            trigger = AgentTrigger(
+                agent_id=agent.id,
+                name=trigger_name,
+                description=trigger_def.get("description", f"Auto-run {name} on {entity_type}.{event}"),
+                entity_type=entity_type,
+                event=event,
+                condition=trigger_def.get("condition"),
+                is_active=trigger_def.get("is_active", True),
+            )
+            db.add(trigger)
+            logger.info(f"Synced trigger: {trigger_name}")
+
+    await db.commit()

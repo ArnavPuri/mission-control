@@ -53,3 +53,10 @@ prompt_template: |
 
 requires_approval: false
 max_actions_per_run: 5
+
+# Auto-run when a high-relevance marketing signal is created
+triggers:
+  - entity_type: signal
+    event: created
+    condition: {field: relevance_score, op: gt, value: "0.7"}
+    description: Auto-draft content when Pulse finds a strong signal

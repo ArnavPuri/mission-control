@@ -53,3 +53,9 @@ prompt_template: |
 
 requires_approval: true
 max_actions_per_run: 15
+
+# Auto-run when a new goal is created
+triggers:
+  - entity_type: goal
+    event: created
+    description: Auto-break down new goals into actionable tasks

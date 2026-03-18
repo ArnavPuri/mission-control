@@ -176,6 +176,14 @@ class AgentRunner:
         if memories:
             context["memory"] = {m.key: m.value for m in memories}
 
+        # Load shared scratchpad (agent_id=NULL, visible to all agents)
+        shared_result = await db.execute(
+            select(AgentMemory).where(AgentMemory.agent_id.is_(None)).order_by(AgentMemory.updated_at.desc())
+        )
+        shared_memories = shared_result.scalars().all()
+        if shared_memories:
+            context["shared_memory"] = {m.key: m.value for m in shared_memories}
+
         # Include project-specific context if agent is bound to a project
         if agent.project_id:
             project = await db.get(Project, agent.project_id)
@@ -507,6 +515,14 @@ class AgentRunner:
             await self.start_run(next_agent, trigger=f"chain:{trigger}", db=db)
             await db.commit()
 
+    async def _fire_trigger(self, entity_type: str, event: str, entity_data: dict, db: AsyncSession):
+        """Fire event-driven triggers (best-effort)."""
+        try:
+            from app.api.triggers import evaluate_triggers
+            await evaluate_triggers(entity_type, event, entity_data, db)
+        except Exception as e:
+            logger.debug(f"Trigger evaluation failed: {e}")
+
     async def _process_actions(self, actions: list, agent: AgentConfig, db: AsyncSession):
         """Process structured actions from agent output and write to DB."""
         for action in actions:
@@ -524,7 +540,13 @@ class AgentRunner:
                     tags=action.get("tags", []),
                 )
                 db.add(task)
+                await db.flush()
                 await broadcast("task.created", {"text": task.text, "source": task.source})
+                await self._fire_trigger("task", "created", {
+                    "text": task.text, "priority": task.priority.value if hasattr(task.priority, 'value') else task.priority,
+                    "status": task.status.value if hasattr(task.status, 'value') else task.status,
+                    "tags": task.tags or [], "source": task.source,
+                }, db)
 
             elif action_type == "create_idea" and "ideas" in (agent.data_writes or []):
                 idea = Idea(
@@ -533,7 +555,11 @@ class AgentRunner:
                     source=f"agent:{agent.slug}",
                 )
                 db.add(idea)
+                await db.flush()
                 await broadcast("idea.created", {"text": idea.text, "source": idea.source})
+                await self._fire_trigger("idea", "created", {
+                    "text": idea.text, "tags": idea.tags or [], "source": idea.source,
+                }, db)
 
             elif action_type == "update_task" and "tasks" in (agent.data_writes or []):
                 task_id = action.get("task_id")
@@ -569,7 +595,12 @@ class AgentRunner:
                     source=f"agent:{agent.slug}",
                 )
                 db.add(entry)
+                await db.flush()
                 await broadcast("journal.created", {"source": f"agent:{agent.slug}"})
+                await self._fire_trigger("journal", "created", {
+                    "content": entry.content[:200], "mood": mood_str,
+                    "energy": entry.energy, "tags": entry.tags or [], "source": entry.source,
+                }, db)
 
             elif action_type == "save_memory":
                 # Agents can persist memory entries for future runs
@@ -591,6 +622,26 @@ class AgentRunner:
                             memory_type=action.get("memory_type", "general"),
                         ))
 
+            elif action_type == "save_shared_memory":
+                # Write to shared scratchpad (agent_id=NULL, visible to all agents)
+                key = action.get("key")
+                value = action.get("value")
+                if key and value:
+                    existing = await db.execute(
+                        select(AgentMemory).where(
+                            AgentMemory.agent_id.is_(None),
+                            AgentMemory.key == key,
+                        )
+                    )
+                    mem = existing.scalar_one_or_none()
+                    if mem:
+                        mem.value = str(value)
+                    else:
+                        db.add(AgentMemory(
+                            agent_id=None, key=key, value=str(value),
+                            memory_type="shared",
+                        ))
+
             elif action_type == "create_goal" and "goals" in (agent.data_writes or []):
                 goal = Goal(
                     title=action.get("title", "Untitled goal"),
@@ -599,7 +650,11 @@ class AgentRunner:
                     tags=action.get("tags", []),
                 )
                 db.add(goal)
+                await db.flush()
                 await broadcast("goal.created", {"title": goal.title})
+                await self._fire_trigger("goal", "created", {
+                    "title": goal.title, "description": goal.description, "tags": goal.tags or [],
+                }, db)
 
             elif action_type == "create_signal" and "marketing_signals" in (agent.data_writes or []):
                 from app.db.models import MarketingSignal
@@ -624,6 +679,11 @@ class AgentRunner:
                     data={"title": signal.title, "signal_type": signal.signal_type},
                 ))
                 await broadcast("signal.created", {"id": str(signal.id), "title": signal.title, "source": signal.source})
+                await self._fire_trigger("signal", "created", {
+                    "title": signal.title, "source_type": signal.source_type,
+                    "signal_type": signal.signal_type, "relevance_score": signal.relevance_score,
+                    "tags": signal.tags or [], "source": signal.source,
+                }, db)
 
             elif action_type == "create_content" and "marketing_content" in (agent.data_writes or []):
                 from app.db.models import MarketingContent
@@ -645,3 +705,7 @@ class AgentRunner:
                     data={"title": content.title, "channel": content.channel},
                 ))
                 await broadcast("content.created", {"id": str(content.id), "title": content.title, "source": content.source})
+                await self._fire_trigger("content", "created", {
+                    "title": content.title, "channel": content.channel,
+                    "tags": content.tags or [], "source": content.source,
+                }, db)

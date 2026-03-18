@@ -91,6 +91,16 @@ async def create_goal(data: GoalCreate, db: AsyncSession = Depends(get_db)):
     goal = Goal(**data.model_dump())
     db.add(goal)
     await db.flush()
+
+    # Evaluate conditional triggers
+    try:
+        from app.api.triggers import evaluate_triggers
+        await evaluate_triggers("goal", "created", {
+            "title": goal.title, "description": goal.description, "tags": goal.tags or [],
+        }, db)
+    except Exception:
+        pass  # triggers are best-effort
+
     return {"id": str(goal.id), "title": goal.title}
 
 

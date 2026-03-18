@@ -380,14 +380,19 @@ class AgentApproval(Base):
 
 
 class AgentMemory(Base):
-    """Persistent memory entries for agents across runs."""
+    """Persistent memory entries for agents across runs.
+
+    Shared scratchpad: entries with agent_id=NULL are visible to ALL agents,
+    enabling inter-agent collaboration without direct communication.
+    Use key prefixes like 'collab:' for shared context between agents.
+    """
     __tablename__ = "agent_memories"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    agent_id = Column(UUID(as_uuid=True), ForeignKey("agent_configs.id", ondelete="CASCADE"), nullable=False)
+    agent_id = Column(UUID(as_uuid=True), ForeignKey("agent_configs.id", ondelete="CASCADE"), nullable=True)
     key = Column(String(255), nullable=False)
     value = Column(Text, nullable=False)
-    memory_type = Column(String(50), default="general")  # general, preference, fact, decision
+    memory_type = Column(String(50), default="general")  # general, preference, fact, decision, shared
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

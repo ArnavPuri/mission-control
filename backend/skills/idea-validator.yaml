@@ -53,3 +53,9 @@ prompt_template: |
 
 requires_approval: false
 max_actions_per_run: 10
+
+# Auto-run when a new idea is added (from any source)
+triggers:
+  - entity_type: idea
+    event: created
+    description: Auto-validate when a new idea is captured

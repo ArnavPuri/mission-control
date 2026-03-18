@@ -41,6 +41,16 @@ async def create_idea(data: IdeaCreate, db: AsyncSession = Depends(get_db)):
     idea = Idea(**data.model_dump())
     db.add(idea)
     await db.flush()
+
+    # Evaluate conditional triggers
+    try:
+        from app.api.triggers import evaluate_triggers
+        await evaluate_triggers("idea", "created", {
+            "text": idea.text, "tags": idea.tags or [], "source": idea.source,
+        }, db)
+    except Exception:
+        pass  # triggers are best-effort
+
     return {"id": str(idea.id), "text": idea.text}
 
 
