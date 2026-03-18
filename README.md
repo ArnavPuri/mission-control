@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.svg" alt="Mission Control — Your AI-Powered Command Center" width="100%" />
+  <img src="assets/banner.png" alt="Mission Control — Your AI-Powered Command Center" width="100%" />
 </p>
 
 <h3 align="center">Your personal AI-powered command center</h3>
