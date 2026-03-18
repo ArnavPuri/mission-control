@@ -18,7 +18,7 @@ data:
 
 schedule:
   type: interval
-  every: 6h
+  every: 12h
 
 prompt_template: |
   Find Reddit threads where the following products could be naturally

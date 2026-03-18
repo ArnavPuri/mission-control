@@ -78,7 +78,7 @@ Every agent has a `max_budget_usd` safety cap (default $0.50, most set $0.05-$0.
 | Sage (daily check-in) | Haiku | Daily 8 AM | 30 | $0.005 | $0.15 |
 | Luna (evening reflection) | Haiku | Daily 9 PM | 30 | $0.005 | $0.15 |
 | Radar (feedback collector) | Haiku | Daily | 30 | $0.013 | $0.39 |
-| Pulse (reddit scout) | Sonnet | Every 6h | 120 | $0.069 | $8.28 |
+| Pulse (reddit scout) | Sonnet | Every 12h | 60 | $0.069 | $4.14 |
 | Atlas (weekly review) | Sonnet | Sundays 10 AM | 4 | $0.024 | $0.10 |
 | Razor (weekly prioritizer) | Sonnet | Weekly | 4 | $0.024 | $0.10 |
 | Forge (goal decomposer) | Sonnet | On goal created | ~10 | $0.069 | $0.69 |
@@ -99,25 +99,25 @@ Run only the daily check-in and evening reflection agents.
 | Hosting (self-hosted) | $0 |
 | **Total** | **~$0.30/mo** |
 
-### Tier 2 — Typical ($12/mo API)
+### Tier 2 — Typical ($8/mo API)
 
 All scheduled agents active, moderate manual triggers.
 
 | | Cost |
 |--|------|
-| LLM API | ~$12 |
+| LLM API | ~$8 |
 | Hosting (Hetzner CX22) | ~$5 |
-| **Total** | **~$17/mo** |
+| **Total** | **~$13/mo** |
 
-### Tier 3 — Heavy ($20/mo API)
+### Tier 3 — Heavy ($16/mo API)
 
 All agents active, frequent manual triggers, Telegram chat sessions.
 
 | | Cost |
 |--|------|
-| LLM API | ~$20 |
+| LLM API | ~$16 |
 | Hosting (DigitalOcean) | ~$18 |
-| **Total** | **~$38/mo** |
+| **Total** | **~$34/mo** |
 
 ---
 
@@ -125,15 +125,15 @@ All agents active, frequent manual triggers, Telegram chat sessions.
 
 | Tip | Savings |
 |-----|---------|
-| **Reduce Pulse frequency** — change `6h` to `24h` in `reddit-scout.yaml` | Saves ~$6/mo (biggest single win) |
-| **Disable Pulse entirely** — comment out its schedule | Saves ~$8/mo — it's 70% of API cost |
+| **Reduce Pulse frequency** — change `12h` to `24h` in `reddit-scout.yaml` | Saves ~$2/mo |
+| **Disable Pulse entirely** — comment out its schedule | Saves ~$4/mo — it's ~50% of API cost |
 | **Use Ollama** — set `OLLAMA_BASE_URL` for local models | $0 API cost (needs 8+ GB RAM, quality varies) |
 | **Use OpenRouter** — set `OPENROUTER_API_KEY` | Access cheaper models, some free tiers |
 | **Lower per-run budgets** — reduce `max_budget_usd` in skill YAML | Hard cap prevents runaway costs |
 
 ### Best-value setup
 
-> Hetzner CX22 ($5/mo) + Anthropic API + Pulse set to daily = **~$10/mo total** for a fully autonomous personal command center.
+> Hetzner CX22 ($5/mo) + Anthropic API with default settings = **~$13/mo total** for a fully autonomous personal command center.
 
 ---
 
