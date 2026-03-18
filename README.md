@@ -7,6 +7,7 @@
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> ·
+  <a href="docs/cost-and-requirements.md">Cost & Requirements</a> ·
   <a href="ROADMAP.md">Roadmap</a> ·
   <a href="CONTRIBUTING.md">Contributing</a> ·
   <a href="#creating-agents">Agents</a>
