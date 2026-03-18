@@ -10,7 +10,7 @@ from sqlalchemy import select, or_, cast, String, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.db.models import Task, Idea, ReadingItem, Goal, JournalEntry, Habit, Project
+from app.db.models import Task, Idea, ReadingItem, Goal, JournalEntry, Habit, Project, MarketingSignal, MarketingContent
 
 router = APIRouter()
 
@@ -28,7 +28,7 @@ async def search(
     """
     query_lower = f"%{q.lower()}%"
     types = set(entity_types.split(",")) if entity_types != "all" else {
-        "tasks", "ideas", "reading", "goals", "journal", "habits", "projects"
+        "tasks", "ideas", "reading", "goals", "journal", "habits", "projects", "signals", "content"
     }
     results = []
 
@@ -107,6 +107,32 @@ async def search(
             {"type": "project", "id": str(p.id), "title": p.name,
              "status": p.status.value, "created_at": p.created_at.isoformat()}
             for p in rows
+        ])
+
+    if "signals" in types:
+        stmt = select(MarketingSignal).where(
+            or_(func.lower(MarketingSignal.title).like(query_lower),
+                func.lower(MarketingSignal.body).like(query_lower))
+        ).order_by(MarketingSignal.created_at.desc()).limit(limit)
+        rows = (await db.execute(stmt)).scalars().all()
+        results.extend([
+            {"type": "signal", "id": str(s.id), "title": s.title,
+             "status": s.status.value, "source_type": s.source_type,
+             "created_at": s.created_at.isoformat()}
+            for s in rows
+        ])
+
+    if "content" in types:
+        stmt = select(MarketingContent).where(
+            or_(func.lower(MarketingContent.title).like(query_lower),
+                func.lower(MarketingContent.body).like(query_lower))
+        ).order_by(MarketingContent.created_at.desc()).limit(limit)
+        rows = (await db.execute(stmt)).scalars().all()
+        results.extend([
+            {"type": "content", "id": str(c.id), "title": c.title,
+             "status": c.status.value, "channel": c.channel,
+             "created_at": c.created_at.isoformat()}
+            for c in rows
         ])
 
     return {
