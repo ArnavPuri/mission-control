@@ -313,3 +313,68 @@ async def test_notifications(client: AsyncClient):
     r = await client.get("/api/notifications/count")
     assert r.status_code == 200
     assert "unread" in r.json()
+
+
+# ─── Marketing Signals ───────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_create_signal(client: AsyncClient):
+    resp = await client.post("/api/mkt-signals", json={
+        "title": "Reddit opportunity in r/SaaS",
+        "body": "User asking about SEO tools",
+        "source_type": "reddit",
+        "signal_type": "opportunity",
+        "source_url": "https://reddit.com/r/SaaS/123",
+        "relevance_score": 0.85,
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["title"] == "Reddit opportunity in r/SaaS"
+    assert data["status"] == "new"
+    assert "id" in data
+
+
+@pytest.mark.asyncio
+async def test_list_signals(client: AsyncClient):
+    await client.post("/api/mkt-signals", json={
+        "title": "Signal 1", "source_type": "reddit", "signal_type": "opportunity",
+    })
+    await client.post("/api/mkt-signals", json={
+        "title": "Signal 2", "source_type": "twitter", "signal_type": "trend",
+    })
+    resp = await client.get("/api/mkt-signals")
+    assert resp.status_code == 200
+    assert len(resp.json()) == 2
+
+
+@pytest.mark.asyncio
+async def test_list_signals_filter_status(client: AsyncClient):
+    await client.post("/api/mkt-signals", json={
+        "title": "New signal", "source_type": "reddit", "signal_type": "opportunity",
+    })
+    resp = await client.get("/api/mkt-signals?status=reviewed")
+    assert resp.status_code == 200
+    assert len(resp.json()) == 0
+
+
+@pytest.mark.asyncio
+async def test_update_signal_status(client: AsyncClient):
+    create = await client.post("/api/mkt-signals", json={
+        "title": "To review", "source_type": "reddit", "signal_type": "opportunity",
+    })
+    signal_id = create.json()["id"]
+    resp = await client.patch(f"/api/mkt-signals/{signal_id}", json={"status": "reviewed"})
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "reviewed"
+
+
+@pytest.mark.asyncio
+async def test_delete_signal(client: AsyncClient):
+    create = await client.post("/api/mkt-signals", json={
+        "title": "Delete me", "source_type": "reddit", "signal_type": "feedback",
+    })
+    signal_id = create.json()["id"]
+    resp = await client.delete(f"/api/mkt-signals/{signal_id}")
+    assert resp.status_code == 200
+    listing = await client.get("/api/mkt-signals")
+    assert len(listing.json()) == 0
