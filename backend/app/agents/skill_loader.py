@@ -102,6 +102,9 @@ async def sync_skills_to_db(skills_dir: str | None = None):
                 for key, val in agent_data.items():
                     setattr(existing, key, val)
                 logger.info(f"Updated agent: {name}")
+                # Track version changes
+                from app.api.agent_versions import auto_snapshot_on_sync
+                await auto_snapshot_on_sync(existing, db)
             else:
                 agent = AgentConfig(**agent_data)
                 db.add(agent)

@@ -21,16 +21,16 @@ Mission Control is an open-source personal productivity system powered by AI age
 
 **Built with:** Python/FastAPI · Next.js · PostgreSQL + pgvector · Claude Agent SDK
 
-### What's included (v0.5)
+### What's included (v0.6)
 
 - **25 database tables** — Projects, tasks, ideas, reading list, habits, goals, journal, notes, routines, workflows, and more
 - **10 AI agents** — Daily Standup, Reddit Scout, Idea Validator, Weekly Prioritizer, Daily Check-in, Goal Decomposer, Evening Reflection, Weekly Review, and more
 - **5-page dashboard** — Dashboard, Projects, Agents, Journal, Settings with Kanban board, calendar, timeline/Gantt, drag-and-drop, bulk actions, keyboard shortcuts
 - **4 input channels** — Telegram bot (11 commands + chat), Discord bot, MCP server (17 tools), REST API + push notifications
 - **Multi-auth** — Anthropic API, OAuth, OpenRouter, Ollama (fully local)
-- **Agent intelligence** — Memory, chaining, workflow DAGs, self-evaluation, time-aware context, conditional triggers, approval queue, auto-tagging, smart prioritization, analytics
+- **Agent intelligence** — Memory, chaining, workflow DAGs, self-evaluation, time-aware context, conditional triggers, approval queue, auto-tagging, smart prioritization, analytics, versioning
 - **Productivity suite** — Routines builder, calendar view, timeline/Gantt, quick capture, deduplication, journal search, auto-summarize reading
-- **Data safety** — Full JSON backup/restore API with duplicate detection
+- **Platform** — Rate limiting, webhook templates, user pattern learning, detailed health diagnostics, backup/restore
 - **Full test suites** — 14 backend (pytest) + 21 frontend (Vitest) tests
 
 ```
@@ -213,14 +213,14 @@ mission-control/
 │   ├── pyproject.toml
 │   ├── alembic.ini
 │   ├── app/
-│   │   ├── main.py              # FastAPI application (31 routers)
+│   │   ├── main.py              # FastAPI application (35 routers)
 │   │   ├── config.py            # Settings + multi-auth
 │   │   ├── db/
 │   │   │   ├── models.py        # 25 SQLAlchemy models
 │   │   │   ├── session.py       # DB connection
 │   │   │   ├── seed.py          # Example data for new installs
 │   │   │   └── migrations/      # Alembic migrations (6 versions)
-│   │   ├── api/                 # REST endpoints (31 routers)
+│   │   ├── api/                 # REST endpoints (35 routers)
 │   │   ├── orchestrator/        # Agent execution + scheduling + workflows + self-eval
 │   │   ├── agents/              # YAML skill loader
 │   │   └── integrations/        # Telegram, Discord, MCP
@@ -244,15 +244,15 @@ mission-control/
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for the full roadmap. Current progress: **68/145 features (47%)**.
+See [ROADMAP.md](ROADMAP.md) for the full roadmap. Current progress: **73/145 features (50%)**.
 
 | Phase | Progress |
 |-------|----------|
-| Foundation Hardening | 73% |
+| Foundation Hardening | 87% |
 | Intelligence Layer | **100%** |
 | Personal Productivity | 65% |
 | Dashboard 2.0 | **100%** |
-| Integrations | 39% |
+| Integrations | 50% |
 | Multi-Agent Intelligence | 25% |
 | Privacy & Scale | 0% |
 | Mobile & Desktop | 0% |

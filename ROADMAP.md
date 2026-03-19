@@ -72,6 +72,11 @@ What's already built:
 - **Timeline/Gantt view** — 4-week horizontal timeline with project grouping and priority bars
 - **Auto-summarize reading** — LLM summarization when articles marked as read
 - **Database backup/restore** — JSON backup/restore API with duplicate detection
+- **User pattern learning** — Activity analysis with hourly/daily distributions and agent schedule suggestions
+- **Health check diagnostics** — Per-component status with DB latency, agent stuck detection, skill files
+- **Webhook templates** — 8 pre-built templates for Slack, Discord, GitHub, Stripe, Linear, Sendgrid
+- **API rate limiting** — Sliding window rate limiter with per-key usage tracking
+- **Agent versioning** — Automatic config snapshots on sync with version history and diffs
 
 ---
 
@@ -79,16 +84,16 @@ What's already built:
 
 | Phase | Done | Total | Progress |
 |-------|------|-------|----------|
-| 1. Foundation Hardening | 11 | 15 | 73% |
+| 1. Foundation Hardening | 13 | 15 | 87% |
 | 2. Intelligence Layer | 13 | 13 | **100%** |
 | 3. Personal Productivity | 15 | 23 | 65% |
 | 4. Dashboard 2.0 | 18 | 18 | **100%** |
-| 5. Integrations | 7 | 18 | 39% |
+| 5. Integrations | 9 | 18 | 50% |
 | 6. Multi-Agent Intelligence | 4 | 16 | 25% |
 | 7. Privacy & Scale | 0 | 16 | 0% |
 | 8. Mobile & Desktop | 0 | 10 | 0% |
 | 9. Community | 0 | 16 | 0% |
-| **Total** | **68** | **145** | **47%** |
+| **Total** | **73** | **145** | **50%** |
 
 ---
 
@@ -113,7 +118,7 @@ _Make what exists rock-solid and easy to set up._
 - [x] Backend test suite (pytest) — 14 async tests covering all CRUD endpoints, SQLite in-memory
 - [x] Dashboard test suite (Vitest + React Testing Library) — 21 tests for components and API client
 - [x] Agent dry-run mode (preview actions without executing)
-- [ ] Health check improvements: detailed diagnostics per component
+- [x] Health check improvements: detailed diagnostics per component
 - [x] Graceful error handling for all LLM provider failures (auth, rate limit, timeout, network)
 
 ### 1.4 Agent Robustness
@@ -121,7 +126,7 @@ _Make what exists rock-solid and easy to set up._
 - [x] Retry logic with exponential backoff for transient LLM failures
 - [x] Agent timeout enforcement — configurable per-agent timeout with asyncio.wait_for
 - [x] Output validation — Pydantic schemas reject malformed agent responses gracefully
-- [ ] Agent versioning — track skill file changes over time
+- [x] Agent versioning — track skill file changes over time
 
 ---
 
@@ -148,7 +153,7 @@ _Make agents smarter and the system more context-aware._
 - [x] Smart prioritization — ML-based priority suggestions from patterns
 - [x] Project health scoring — aggregate metrics per project
 - [x] Time-based context — "morning brief" vs "evening review" agent behavior
-- [ ] User pattern learning — adapt agent schedules to user activity
+- [x] User pattern learning — adapt agent schedules to user activity
 
 ---
 
@@ -260,12 +265,12 @@ _Connect Mission Control to the tools people already use._
 ### 5.3 Webhook System
 - [x] Inbound webhooks — generic endpoint that agents can process
 - [x] Outbound webhooks — notify external services on events
-- [ ] Webhook templates for common services
+- [x] Webhook templates for common services
 - [x] Webhook log with replay capability
 
 ### 5.4 API & Developer Platform
 - [x] Public REST API with API key authentication (scoped, SHA-256 hashed)
-- [ ] API rate limiting and usage tracking
+- [x] API rate limiting and usage tracking
 - [x] OpenAPI/Swagger documentation auto-generated
 - [ ] SDK packages (Python, TypeScript) for programmatic access
 - [ ] Plugin system — community-contributed agents and integrations
@@ -472,15 +477,25 @@ All completed:
 4. ~~**Auto-summarize reading** — LLM summarizes articles when marked as read, manual summarize endpoint (Phase 3.5)~~
 5. ~~**Database backup/restore** — JSON backup/restore API with summary, duplicate detection on restore (Phase 1.2)~~
 
-### Sprint 14: Scale & Ecosystem (Recommended)
+### Sprint 14: Scale & Ecosystem ✅
+
+All completed:
+
+1. ~~**User pattern learning** — activity pattern analysis, hourly/daily distributions, agent schedule suggestions based on user behavior (Phase 2.3)~~
+2. ~~**Health check improvements** — detailed per-component diagnostics: DB latency, agent status, stuck detection, skill files, integrations (Phase 1.3)~~
+3. ~~**Webhook templates** — 8 pre-built templates for Slack, Discord, GitHub, Stripe, Linear, Sendgrid, and generic hooks (Phase 5.3)~~
+4. ~~**API rate limiting** — sliding window rate limiter (per-key/IP), usage tracking, rate limit headers on all responses (Phase 5.4)~~
+5. ~~**Agent versioning** — automatic config snapshots on sync, version history, diff between versions, manual snapshots (Phase 1.4)~~
+
+### Sprint 15: Productivity & Integrations (Recommended)
 
 Next high-impact features:
 
-1. **User pattern learning** — adapt agent schedules to user activity (Phase 2.3)
-2. **Health check improvements** — detailed diagnostics per component (Phase 1.3)
-3. **Webhook templates** — for common services (Phase 5.3)
-4. **API rate limiting** — and usage tracking (Phase 5.4)
-5. **Agent versioning** — track skill file changes over time (Phase 1.4)
+1. **Calendar integration** — Google Calendar / CalDAV sync (Phase 3.4)
+2. **Daily agenda agent** — morning briefing with today's priorities (Phase 3.4)
+3. **Deadline awareness** — agents factor in due dates for prioritization (Phase 3.4)
+4. **Spaced repetition** — Anki-style learning for reading items (Phase 3.5)
+5. **Web browsing agent** — research topics and summarize findings (Phase 6.2)
 
 ---
 

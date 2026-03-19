@@ -2,14 +2,14 @@
 
 ## What is this?
 
-Mission Control is a personal AI-powered command center (v0.5, 68/145 features).
+Mission Control is a personal AI-powered command center (v0.6, 73/145 features).
 One PostgreSQL database is the single source of truth. Agents (defined as YAML
 skill files) read from and write to the database. A dashboard shows the status.
 Telegram/Discord bots, MCP server, and push notifications provide input channels.
 
 ## Architecture
 
-- **Backend**: Python/FastAPI at `backend/app/` — 31 API routers
+- **Backend**: Python/FastAPI at `backend/app/` — 35 API routers
 - **Dashboard**: Next.js/TypeScript at `dashboard/` — 5 pages, fully complete
 - **Agent Skills**: YAML files at `backend/skills/`
 - **Database**: PostgreSQL with pgvector — 25 tables, 6 migrations
@@ -17,7 +17,7 @@ Telegram/Discord bots, MCP server, and push notifications provide input channels
 
 ## Key Files
 
-- `backend/app/main.py` — FastAPI app entry point (30 routers mounted)
+- `backend/app/main.py` — FastAPI app entry point (35 routers mounted)
 - `backend/app/db/models.py` — All 25 database models (SQLAlchemy)
 - `backend/app/config.py` — Settings with multi-auth support
 - `backend/app/orchestrator/runner.py` — Agent execution engine (retry, timeout, chaining, approval)
@@ -77,6 +77,7 @@ cd backend && alembic revision --autogenerate -m "description"
 - **Sprint 11**: Routine builder, project health scoring, calendar view, quick capture, deduplication
 - **Sprint 12**: Workflow DAGs, smart prioritization, drag-and-drop, push notifications, journal search
 - **Sprint 13**: Agent self-evaluation, time-based context, timeline/Gantt view, auto-summarize reading, backup/restore
+- **Sprint 14**: User pattern learning, health diagnostics, webhook templates, API rate limiting, agent versioning
 
 ## Auth
 

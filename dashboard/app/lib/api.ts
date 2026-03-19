@@ -664,6 +664,38 @@ export const dedup = {
     request<{ text: string; is_duplicate: boolean; matches: DuplicateMatch[] }>('/api/dedup/check', { method: 'POST', body: JSON.stringify({ text, entity_type: entityType }) }),
 };
 
+// --- User Patterns ---
+
+export const patterns = {
+  activityPatterns: (days = 30) => request<Record<string, unknown>>(`/api/patterns/activity-patterns?days=${days}`),
+  scheduleSuggestions: () => request<Record<string, unknown>>('/api/patterns/schedule-suggestions'),
+};
+
+// --- Webhook Templates ---
+
+export const webhookTemplates = {
+  list: () => request<Array<Record<string, unknown>>>('/api/webhooks/templates/templates'),
+  get: (id: string) => request<Record<string, unknown>>(`/api/webhooks/templates/templates/${id}`),
+  create: (data: { template_id: string; url?: string; secret?: string; events?: string[] }) =>
+    request<Record<string, unknown>>('/api/webhooks/templates/templates/create', { method: 'POST', body: JSON.stringify(data) }),
+};
+
+// --- Rate Limit ---
+
+export const rateLimit = {
+  usage: (key?: string) => request<Record<string, unknown>>(`/api/rate-limit/usage${key ? `?key=${key}` : ''}`),
+  limits: () => request<Record<string, unknown>>('/api/rate-limit/limits'),
+};
+
+// --- Agent Versions ---
+
+export const agentVersions = {
+  list: (agentId: string) => request<Record<string, unknown>>(`/api/agents/${agentId}/versions`),
+  get: (agentId: string, version: number) => request<Record<string, unknown>>(`/api/agents/${agentId}/versions/${version}`),
+  diff: (agentId: string, v1: number, v2: number) => request<Record<string, unknown>>(`/api/agents/${agentId}/versions/${v1}/diff/${v2}`),
+  snapshot: (agentId: string) => request<Record<string, unknown>>(`/api/agents/${agentId}/snapshot`, { method: 'POST' }),
+};
+
 // --- Backup ---
 
 export const backup = {
