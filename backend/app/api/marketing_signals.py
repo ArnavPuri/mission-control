@@ -116,8 +116,9 @@ async def create_signal(data: SignalCreate, db: AsyncSession = Depends(get_db)):
             "signal_type": signal.signal_type, "relevance_score": signal.relevance_score,
             "tags": signal.tags or [],
         }, db)
-    except Exception:
-        pass  # triggers are best-effort
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Trigger evaluation failed: {e}")
 
     return _serialize(signal)
 

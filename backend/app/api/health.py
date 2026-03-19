@@ -55,16 +55,21 @@ async def detailed_health_check(db: AsyncSession = Depends(get_db)):
     try:
         result = await db.execute(text("SELECT 1"))
         db_latency = (time.monotonic() - db_start) * 1000
-        # Check table count
-        table_result = await db.execute(text(
-            "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'"
-        ))
+        # Check table count (compatible with both PostgreSQL and SQLite)
+        is_sqlite = settings.is_sqlite
+        if is_sqlite:
+            table_result = await db.execute(text(
+                "SELECT count(*) FROM sqlite_master WHERE type='table'"
+            ))
+        else:
+            table_result = await db.execute(text(
+                "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'"
+            ))
         table_count = table_result.scalar() or 0
         components["database"] = {
             "status": "ok",
             "latency_ms": round(db_latency, 1),
             "tables": table_count,
-            "url": settings.database_url.split("@")[-1] if "@" in settings.database_url else "configured",
         }
     except Exception as e:
         db_latency = (time.monotonic() - db_start) * 1000

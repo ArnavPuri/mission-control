@@ -187,8 +187,10 @@ async def agent_gallery(
 @router.post("/install")
 async def install_agent(data: AgentInstall, db: AsyncSession = Depends(get_db)):
     """Install an agent from the skills directory by re-syncing skill files."""
-    skills_dir = Path(settings.skills_dir)
-    skill_path = skills_dir / data.skill_file
+    skills_dir = Path(settings.skills_dir).resolve()
+    skill_path = (skills_dir / data.skill_file).resolve()
+    if not skill_path.is_relative_to(skills_dir):
+        raise HTTPException(status_code=400, detail="Invalid skill file path")
     if not skill_path.exists():
         raise HTTPException(status_code=404, detail=f"Skill file not found: {data.skill_file}")
 

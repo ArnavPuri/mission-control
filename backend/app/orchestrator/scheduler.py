@@ -139,6 +139,7 @@ class Scheduler:
             agents = result.scalars().all()
             now = datetime.now(timezone.utc)
 
+            due_agents = []
             for agent in agents:
                 is_due = False
 
@@ -155,21 +156,24 @@ class Scheduler:
                 elif agent.schedule_type == "cron":
                     is_due = cron_is_due(agent.schedule_value, now, agent.last_run_at)
 
-                if not is_due:
-                    continue
+                if is_due:
+                    due_agents.append(agent)
 
-                # Add jitter to prevent thundering herd
+            # Launch all due agents concurrently with jitter
+            async def _run_with_jitter(agent):
                 jitter = random.uniform(0, self.max_jitter)
                 if jitter > 1:
                     await asyncio.sleep(jitter)
-
                 logger.info(
                     f"Scheduling agent: {agent.name} "
                     f"({agent.schedule_type}: {agent.schedule_value})"
                 )
                 try:
-                    await self.runner.start_run(agent, trigger="schedule", db=db)
-                    await db.commit()
+                    async with async_session() as agent_db:
+                        await self.runner.start_run(agent, trigger="schedule", db=agent_db)
+                        await agent_db.commit()
                 except Exception as e:
                     logger.error(f"Failed to run agent {agent.name}: {e}")
-                    await db.rollback()
+
+            if due_agents:
+                await asyncio.gather(*[_run_with_jitter(a) for a in due_agents])

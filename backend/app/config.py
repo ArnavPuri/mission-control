@@ -71,6 +71,7 @@ class Settings(BaseSettings):
 
     # --- Service Integrations ---
     linear_api_key: str | None = None
+    linear_webhook_secret: str | None = None  # For verifying Linear webhook signatures
     notion_api_key: str | None = None
     todoist_api_key: str | None = None
     openai_api_key: str | None = None  # for Whisper voice transcription

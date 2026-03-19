@@ -98,8 +98,9 @@ async def create_goal(data: GoalCreate, db: AsyncSession = Depends(get_db)):
         await evaluate_triggers("goal", "created", {
             "title": goal.title, "description": goal.description, "tags": goal.tags or [],
         }, db)
-    except Exception:
-        pass  # triggers are best-effort
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Trigger evaluation failed: {e}")
 
     return {"id": str(goal.id), "title": goal.title}
 

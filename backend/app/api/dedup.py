@@ -30,11 +30,12 @@ class CheckDuplicateRequest(BaseModel):
 @router.get("/tasks")
 async def find_duplicate_tasks(
     threshold: float = Query(0.7, ge=0.5, le=1.0),
+    limit: int = Query(200, ge=10, le=500),
     db: AsyncSession = Depends(get_db),
 ):
     """Find groups of near-duplicate tasks."""
     result = await db.execute(
-        select(Task).where(Task.status != TaskStatus.DONE).order_by(Task.created_at.desc())
+        select(Task).where(Task.status != TaskStatus.DONE).order_by(Task.created_at.desc()).limit(limit)
     )
     tasks = result.scalars().all()
 
@@ -74,10 +75,11 @@ async def find_duplicate_tasks(
 @router.get("/ideas")
 async def find_duplicate_ideas(
     threshold: float = Query(0.7, ge=0.5, le=1.0),
+    limit: int = Query(200, ge=10, le=500),
     db: AsyncSession = Depends(get_db),
 ):
     """Find groups of near-duplicate ideas."""
-    result = await db.execute(select(Idea).order_by(Idea.created_at.desc()))
+    result = await db.execute(select(Idea).order_by(Idea.created_at.desc()).limit(limit))
     ideas = result.scalars().all()
 
     seen: set[str] = set()
@@ -121,7 +123,7 @@ async def check_duplicate(data: CheckDuplicateRequest, db: AsyncSession = Depend
 
     if data.entity_type == "task":
         result = await db.execute(
-            select(Task).where(Task.status != TaskStatus.DONE).order_by(Task.created_at.desc())
+            select(Task).where(Task.status != TaskStatus.DONE).order_by(Task.created_at.desc()).limit(200)
         )
         for t in result.scalars().all():
             sim = _similarity(data.text, t.text)
@@ -133,7 +135,7 @@ async def check_duplicate(data: CheckDuplicateRequest, db: AsyncSession = Depend
                     "entity_type": "task",
                 })
     else:
-        result = await db.execute(select(Idea).order_by(Idea.created_at.desc()))
+        result = await db.execute(select(Idea).order_by(Idea.created_at.desc()).limit(200))
         for idea in result.scalars().all():
             sim = _similarity(data.text, idea.text)
             if sim >= threshold:

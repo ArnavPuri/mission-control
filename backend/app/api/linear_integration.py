@@ -196,6 +196,20 @@ async def sync_linear(team_id: str | None = None, db: AsyncSession = Depends(get
 @router.post("/webhook")
 async def linear_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     """Receive Linear webhook events for issue updates."""
+    # Verify webhook signature if secret is configured
+    if settings.linear_webhook_secret:
+        import hashlib
+        import hmac
+        body = await request.body()
+        signature = request.headers.get("linear-signature", "")
+        expected = hmac.new(
+            settings.linear_webhook_secret.encode(),
+            body,
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(signature, expected):
+            raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
     try:
         payload = await request.json()
     except Exception:

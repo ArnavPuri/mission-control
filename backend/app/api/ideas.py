@@ -48,8 +48,9 @@ async def create_idea(data: IdeaCreate, db: AsyncSession = Depends(get_db)):
         await evaluate_triggers("idea", "created", {
             "text": idea.text, "tags": idea.tags or [], "source": idea.source,
         }, db)
-    except Exception:
-        pass  # triggers are best-effort
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Trigger evaluation failed: {e}")
 
     return {"id": str(idea.id), "text": idea.text}
 

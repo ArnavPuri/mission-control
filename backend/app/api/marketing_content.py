@@ -111,8 +111,9 @@ async def create_content(data: ContentCreate, db: AsyncSession = Depends(get_db)
         await evaluate_triggers("content", "created", {
             "title": content.title, "channel": content.channel, "tags": content.tags or [],
         }, db)
-    except Exception:
-        pass  # triggers are best-effort
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Trigger evaluation failed: {e}")
 
     return _serialize(content)
 

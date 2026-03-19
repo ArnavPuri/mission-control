@@ -69,8 +69,9 @@ async def create_entry(data: JournalCreate, db: AsyncSession = Depends(get_db)):
             "content": entry.content[:200], "mood": entry.mood.value if entry.mood else None,
             "energy": entry.energy, "tags": entry.tags or [], "source": entry.source,
         }, db)
-    except Exception:
-        pass  # triggers are best-effort
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Trigger evaluation failed: {e}")
 
     return {"id": str(entry.id), "created": True}
 

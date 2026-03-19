@@ -50,7 +50,7 @@ class AgentAction(BaseModel):
         allowed = {
             "create_task", "create_idea", "update_task",
             "save_memory", "save_shared_memory",
-            "create_note",
+            "create_note", "create_journal", "create_goal",
             "create_signal", "create_content",
         }
         if v not in allowed:

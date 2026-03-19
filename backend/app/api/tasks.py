@@ -71,8 +71,9 @@ async def create_task(data: TaskCreate, db: AsyncSession = Depends(get_db)):
             "text": task.text, "priority": task.priority.value, "status": task.status.value,
             "tags": task.tags or [], "source": task.source,
         }, db)
-    except Exception:
-        pass  # triggers are best-effort
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Trigger evaluation failed: {e}")
 
     return {"id": str(task.id), "text": task.text}
 
