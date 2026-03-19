@@ -19,6 +19,7 @@ from app.integrations.commands import (
 )
 from app.db.session import async_session
 from app.integrations.chat import handle_chat
+from app.integrations.voice import transcribe_voice
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,42 @@ async def handle_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
 
 
+async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle voice messages by transcribing and passing to the chat handler."""
+    if not is_allowed(update.effective_user.id):
+        return
+
+    await update.message.chat.send_action("typing")
+
+    try:
+        # Download the voice file
+        voice = update.message.voice
+        file = await context.bot.get_file(voice.file_id)
+        audio_bytes = await file.download_as_bytearray()
+
+        # Transcribe
+        text = await transcribe_voice(bytes(audio_bytes), filename="voice.ogg")
+        if not text:
+            await update.message.reply_text("Could not transcribe the voice message. Please try again.")
+            return
+
+        # Show what was heard
+        await update.message.reply_text(f"Heard: {text}")
+
+        # Pass transcribed text through the chat handler
+        async with async_session() as db:
+            replies = await handle_chat(update.effective_user.id, text, db)
+        for reply in replies:
+            await update.message.reply_text(reply)
+
+    except Exception as e:
+        logger.error(f"Voice handler error: {e}", exc_info=True)
+        await update.message.reply_text(
+            f"Sorry, I couldn't process that voice message.\n"
+            f"Error: {str(e)[:100]}"
+        )
+
+
 async def start_telegram_bot():
     """Start the Telegram bot."""
     if not settings.telegram_bot_token:
@@ -135,6 +172,7 @@ async def start_telegram_bot():
     app.add_handler(CommandHandler("help", _make_handler(cmd_help, needs_args=False)))
     app.add_handler(CommandHandler("start", _make_handler(cmd_help, needs_args=False)))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_chat_message))
+    app.add_handler(MessageHandler(filters.VOICE, handle_voice_message))
 
     # Set bot commands menu
     await app.bot.set_my_commands([

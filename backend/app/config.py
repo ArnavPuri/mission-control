@@ -51,12 +51,29 @@ class Settings(BaseSettings):
     discord_bot_token: str | None = None
     discord_allowed_channels: str | None = None  # comma-separated channel IDs
 
+    # --- Slack ---
+    slack_bot_token: str | None = None
+    slack_app_token: str | None = None  # for Socket Mode (xapp-...)
+
     # --- GitHub ---
     github_token: str | None = None  # for API access (optional, enhances sync)
 
     # --- Identity ---
     bot_name: str = "MC"
     identity_file: str = "workspace/identity.md"
+
+    # --- Email Ingestion ---
+    email_imap_host: str | None = None
+    email_imap_user: str | None = None
+    email_imap_password: str | None = None
+    email_imap_folder: str = "INBOX"
+    email_poll_interval_seconds: int = 300
+
+    # --- Service Integrations ---
+    linear_api_key: str | None = None
+    notion_api_key: str | None = None
+    todoist_api_key: str | None = None
+    openai_api_key: str | None = None  # for Whisper voice transcription
 
     # --- Paths ---
     agent_workdir: str = "/app/workdir"

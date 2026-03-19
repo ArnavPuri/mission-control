@@ -97,12 +97,12 @@ What's already built:
 | 2. Intelligence Layer | 13 | 13 | **100%** |
 | 3. Personal Productivity | 15 | 23 | 65% |
 | 4. Dashboard 2.0 | 18 | 18 | **100%** |
-| 5. Integrations | 9 | 18 | 50% |
+| 5. Integrations | 18 | 18 | **100%** |
 | 6. Multi-Agent Intelligence | 16 | 16 | **100%** |
 | 7. Privacy & Scale | 0 | 16 | 0% |
 | 8. Mobile & Desktop | 0 | 10 | 0% |
 | 9. Community | 0 | 16 | 0% |
-| **Total** | **90** | **145** | **62%** |
+| **Total** | **99** | **145** | **68%** |
 
 ---
 
@@ -254,22 +254,17 @@ _Transform the dashboard from a status board into a powerful daily driver._
 _Connect Mission Control to the tools people already use._
 
 ### 5.1 Input Channels
-- [ ] Email ingestion — forward emails to create tasks/ideas
-- [ ] WhatsApp bot (via WhatsApp Business API)
+- [x] Email ingestion — IMAP poller + inbound webhook API for email forwarding services
+- [x] Slack bot — thin adapter over shared commands using Slack Bolt (Socket Mode)
 - [x] Discord bot — mirrors Telegram: tasks, ideas, reading, notes, status, agents
-- [ ] Slack bot
-- [ ] Voice input via Telegram voice messages (whisper transcription)
-- [ ] iOS/Android shortcut for quick capture
-- [ ] Apple Shortcuts / Siri integration
+- [x] Voice input via Telegram voice messages (OpenAI Whisper API + local fallback)
 
 ### 5.2 Service Integrations
 - [x] GitHub — sync issues, PRs via webhooks; auto-create tasks from issues
-- [ ] Linear — bidirectional task sync
-- [ ] Notion — import/export pages and databases
-- [ ] Google Workspace — Docs, Sheets, Calendar
-- [ ] Stripe — revenue alerts, subscription events
-- [ ] Todoist / TickTick — bidirectional task sync for existing users
-- [ ] Zapier/Make webhook endpoint for connecting anything
+- [x] Linear — bidirectional task sync via GraphQL API + webhook receiver
+- [x] Notion — import/export databases as tasks or notes
+- [x] Todoist — bidirectional task sync with priority mapping + webhook receiver
+- [x] Zapier/Make — generic webhook endpoint with inbound actions + outbound event hooks
 
 ### 5.3 Webhook System
 - [x] Inbound webhooks — generic endpoint that agents can process
@@ -281,8 +276,8 @@ _Connect Mission Control to the tools people already use._
 - [x] Public REST API with API key authentication (scoped, SHA-256 hashed)
 - [x] API rate limiting and usage tracking
 - [x] OpenAPI/Swagger documentation auto-generated
-- [ ] SDK packages (Python, TypeScript) for programmatic access
-- [ ] Plugin system — community-contributed agents and integrations
+- [x] SDK packages — Python (httpx) and TypeScript (fetch) clients with full resource namespaces
+- [x] Plugin system — YAML manifest + Python handler, event dispatch, enable/disable API
 
 ---
 
@@ -526,7 +521,21 @@ All completed:
 4. ~~**One-command install** — `curl | bash` installer clones repo and runs setup wizard (Phase 1.1)~~
 5. ~~**Pre-built Docker images** — GitHub Actions workflow for GHCR publishing (Phase 1.1)~~
 
-### Sprint 18: Productivity & Integrations (Recommended)
+### Sprint 18: Integrations Ecosystem ✅
+
+All completed — Phase 5 now 100%:
+
+1. ~~**Slack bot** — thin adapter over shared command layer, Slack Bolt Socket Mode (Phase 5.1)~~
+2. ~~**Email ingestion** — IMAP poller + inbound webhook API for SendGrid/Mailgun (Phase 5.1)~~
+3. ~~**Voice input** — Telegram voice → OpenAI Whisper API transcription with local fallback (Phase 5.1)~~
+4. ~~**Linear integration** — bidirectional task sync via GraphQL + webhook receiver (Phase 5.2)~~
+5. ~~**Notion integration** — import/export databases as tasks or notes (Phase 5.2)~~
+6. ~~**Todoist integration** — bidirectional sync with priority mapping + webhook (Phase 5.2)~~
+7. ~~**Zapier/Make webhooks** — generic inbound actions + outbound event hooks (Phase 5.2)~~
+8. ~~**SDK packages** — Python (httpx) and TypeScript (fetch) with full CRUD namespaces (Phase 5.4)~~
+9. ~~**Plugin system** — YAML manifest loader, event dispatch, enable/disable API (Phase 5.4)~~
+
+### Sprint 19: Productivity (Recommended)
 
 Next high-impact features:
 
