@@ -26,7 +26,7 @@ router = APIRouter()
 class SlidingWindowLimiter:
     """Sliding window rate limiter with per-key tracking."""
 
-    def __init__(self, default_rpm: int = 60, default_rph: int = 1000):
+    def __init__(self, default_rpm: int = 300, default_rph: int = 5000):
         self.default_rpm = default_rpm  # requests per minute
         self.default_rph = default_rph  # requests per hour
         self._requests: dict[str, list[float]] = defaultdict(list)
