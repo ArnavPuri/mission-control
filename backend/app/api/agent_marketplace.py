@@ -227,7 +227,11 @@ async def install_agent(data: AgentInstall, db: AsyncSession = Depends(get_db)):
 @router.post("/rate")
 async def rate_agent(data: AgentRating, db: AsyncSession = Depends(get_db)):
     """Rate an installed agent (1-5 stars)."""
-    agent = await db.get(AgentConfig, UUID(data.agent_id))
+    try:
+        agent_uuid = UUID(data.agent_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid agent_id format")
+    agent = await db.get(AgentConfig, agent_uuid)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 

@@ -2,7 +2,7 @@
 
 ## What is this?
 
-Mission Control is a personal AI-powered command center (v1.0, 99/145 features).
+Mission Control is a personal AI-powered command center (v0.6, 99/145 features).
 One PostgreSQL (or SQLite) database is the single source of truth. Agents (defined
 as YAML skill files or created via the Agent Builder UI) read from and write to
 the database. A dashboard shows the status.

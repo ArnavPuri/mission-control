@@ -6,7 +6,7 @@
 
 ---
 
-## Current State (v0.3)
+## Current State (v0.6)
 
 What's already built:
 
@@ -578,4 +578,4 @@ These principles guide every decision:
 
 ---
 
-*Last updated: 2026-03-18 · v0.4*
+*Last updated: 2026-03-19 · v0.6*

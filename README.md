@@ -21,7 +21,7 @@ Mission Control is an open-source personal productivity system powered by AI age
 
 **Built with:** Python/FastAPI · Next.js · PostgreSQL + pgvector · Claude Agent SDK
 
-### What's included (v0.8)
+### What's included (v0.6 — 99/145 features)
 
 - **10 AI agents** — Daily Standup, Reddit Scout, Idea Validator, Weekly Prioritizer, Weekly Review, Web Researcher, Code Reviewer, Opportunity Scout, Content Drafter, Competitor Monitor
 - **5-page dashboard** — Dashboard, Projects, Agents, Notes, Settings with Kanban board, calendar, timeline/Gantt, drag-and-drop, bulk actions, keyboard shortcuts
@@ -245,7 +245,7 @@ mission-control/
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for the full roadmap. Current progress: **85/145 features (59%)**.
+See [ROADMAP.md](ROADMAP.md) for the full roadmap. Current progress: **99/145 features (68%)**.
 
 | Phase | Progress |
 |-------|----------|

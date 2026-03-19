@@ -66,7 +66,11 @@ async def create_ab_test(data: ABTestCreate, db: AsyncSession = Depends(get_db))
 
     Variants are stored in the agent's config and randomly selected on each run.
     """
-    agent = await db.get(AgentConfig, UUID(data.agent_id))
+    try:
+        agent_uuid = UUID(data.agent_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid agent_id format")
+    agent = await db.get(AgentConfig, agent_uuid)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 

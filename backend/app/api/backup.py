@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse
-from sqlalchemy import select, text
+from sqlalchemy import select, text, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -158,7 +158,6 @@ async def backup_summary(db: AsyncSession = Depends(get_db)):
     """Get a summary of what would be backed up."""
     summary = {}
     for table_name, model in BACKUP_TABLES:
-        result = await db.execute(select(model))
-        rows = result.scalars().all()
-        summary[table_name] = len(rows)
+        result = await db.execute(select(func.count()).select_from(model))
+        summary[table_name] = result.scalar() or 0
     return {"total_rows": sum(summary.values()), "tables": summary}
