@@ -140,9 +140,9 @@ async def _fetch_and_import(feed: RSSFeed, db: AsyncSession) -> int:
             if not url:
                 continue
 
-            # Check if already imported (by matching title)
+            # Check if already imported (by matching URL in content)
             existing = await db.execute(
-                select(Note).where(Note.title == title, Note.source == "rss")
+                select(Note).where(Note.content.contains(url), Note.source == "rss")
             )
             if existing.scalar_one_or_none():
                 continue

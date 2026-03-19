@@ -95,6 +95,7 @@ async def restore_backup(file: UploadFile = File(...), db: AsyncSession = Depend
 
     restored = {}
     skipped = {}
+    errors: list[str] = []
 
     for table_name, model in BACKUP_TABLES:
         rows = backup["tables"].get(table_name, [])
@@ -102,12 +103,23 @@ async def restore_backup(file: UploadFile = File(...), db: AsyncSession = Depend
         skip = 0
         for row_data in rows:
             try:
+                if not isinstance(row_data, dict):
+                    skip += 1
+                    errors.append(f"{table_name}: row is not a dict")
+                    continue
+
                 # Check if row already exists
                 pk_col = model.__table__.primary_key.columns.values()[0]
                 pk_val = row_data.get(pk_col.name)
                 if pk_val:
                     from uuid import UUID as PyUUID
-                    existing = await db.get(model, PyUUID(pk_val))
+                    try:
+                        pk_uuid = PyUUID(pk_val)
+                    except (ValueError, AttributeError):
+                        skip += 1
+                        errors.append(f"{table_name}: invalid UUID '{pk_val}'")
+                        continue
+                    existing = await db.get(model, pk_uuid)
                     if existing:
                         skip += 1
                         continue
@@ -120,7 +132,8 @@ async def restore_backup(file: UploadFile = File(...), db: AsyncSession = Depend
                 count += 1
             except Exception as e:
                 skip += 1
-                logger.debug(f"Skipped row in {table_name}: {e}")
+                errors.append(f"{table_name}: {e}")
+                logger.warning(f"Skipped row in {table_name}: {e}")
 
         restored[table_name] = count
         skipped[table_name] = skip
@@ -133,6 +146,7 @@ async def restore_backup(file: UploadFile = File(...), db: AsyncSession = Depend
     return {
         "restored": restored,
         "skipped": skipped,
+        "errors": errors[:50],  # Cap error list to prevent huge responses
         "source_version": backup.get("version", "unknown"),
         "source_date": backup.get("created_at", "unknown"),
     }

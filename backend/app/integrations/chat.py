@@ -125,30 +125,34 @@ class SessionStore:
     def _key(self, user_id: int, platform: str = "telegram") -> str:
         return f"{platform}:{user_id}"
 
-    async def load(self, user_id: int, platform: str = "telegram"):
+    async def load(self, user_id: int, platform: str = "telegram", db: AsyncSession | None = None):
         """Load session from DB into cache if not already loaded."""
         key = self._key(user_id, platform)
         if key in self._cache:
             return
 
-        from app.db.session import async_session
         from app.db.models import ChatSession
-        async with async_session() as db:
-            result = await db.execute(
+
+        async def _do_load(session: AsyncSession):
+            result = await session.execute(
                 select(ChatSession).where(
                     ChatSession.user_id == str(user_id),
                     ChatSession.platform == platform,
                 )
             )
-            session = result.scalar_one_or_none()
-            if session and session.messages:
-                self._cache[key] = session.messages
-            else:
-                self._cache[key] = []
+            row = result.scalar_one_or_none()
+            self._cache[key] = row.messages if row and row.messages else []
 
-    async def add(self, user_id: int, role: str, content: str, platform: str = "telegram"):
+        if db:
+            await _do_load(db)
+        else:
+            from app.db.session import async_session
+            async with async_session() as fallback_db:
+                await _do_load(fallback_db)
+
+    async def add(self, user_id: int, role: str, content: str, platform: str = "telegram", db: AsyncSession | None = None):
         """Add a message and persist to DB."""
-        await self.load(user_id, platform)
+        await self.load(user_id, platform, db=db)
         key = self._key(user_id, platform)
 
         self._cache[key].append({
@@ -159,7 +163,7 @@ class SessionStore:
 
         # Prune and save
         self._prune(key)
-        await self._save(user_id, platform)
+        await self._save(user_id, platform, db=db)
 
     def _prune(self, key: str):
         """Remove expired messages and enforce max count."""
@@ -171,43 +175,51 @@ class SessionStore:
         if len(self._cache[key]) > self.max_messages:
             self._cache[key] = self._cache[key][-self.max_messages:]
 
-    async def _save(self, user_id: int, platform: str = "telegram"):
+    async def _save(self, user_id: int, platform: str = "telegram", db: AsyncSession | None = None):
         """Persist current session to database."""
         key = self._key(user_id, platform)
         messages = self._cache.get(key, [])
 
-        from app.db.session import async_session
         from app.db.models import ChatSession
         from datetime import datetime, timezone as tz
-        async with async_session() as db:
-            result = await db.execute(
+
+        async def _do_save(session: AsyncSession, should_commit: bool):
+            result = await session.execute(
                 select(ChatSession).where(
                     ChatSession.user_id == str(user_id),
                     ChatSession.platform == platform,
                 )
             )
-            session = result.scalar_one_or_none()
-            if session:
-                session.messages = messages
-                session.last_active = datetime.now(tz.utc)
+            chat_session = result.scalar_one_or_none()
+            if chat_session:
+                chat_session.messages = messages
+                chat_session.last_active = datetime.now(tz.utc)
             else:
-                db.add(ChatSession(
+                session.add(ChatSession(
                     user_id=str(user_id),
                     platform=platform,
                     messages=messages,
                 ))
-            await db.commit()
+            if should_commit:
+                await session.commit()
 
-    async def get(self, user_id: int, platform: str = "telegram") -> list[dict]:
+        if db:
+            await _do_save(db, should_commit=False)
+        else:
+            from app.db.session import async_session
+            async with async_session() as fallback_db:
+                await _do_save(fallback_db, should_commit=True)
+
+    async def get(self, user_id: int, platform: str = "telegram", db: AsyncSession | None = None) -> list[dict]:
         """Get active session messages."""
-        await self.load(user_id, platform)
+        await self.load(user_id, platform, db=db)
         key = self._key(user_id, platform)
         self._prune(key)
         return self._cache.get(key, [])
 
-    async def get_api_messages(self, user_id: int, platform: str = "telegram") -> list[dict]:
+    async def get_api_messages(self, user_id: int, platform: str = "telegram", db: AsyncSession | None = None) -> list[dict]:
         """Get messages formatted for the Anthropic Messages API."""
-        messages = await self.get(user_id, platform)
+        messages = await self.get(user_id, platform, db=db)
         return [
             {"role": msg["role"], "content": msg["content"]}
             for msg in messages
@@ -519,15 +531,15 @@ async def handle_chat(user_id: int, user_message: str, db: AsyncSession) -> list
     Uses the Messages API with tool_use if an API key is available.
     Falls back to the Agent SDK (plain text, no tools) for OAuth auth.
     """
-    # Add user message to session
-    await session_store.add(user_id, "user", user_message)
+    # Add user message to session (reuse db session)
+    await session_store.add(user_id, "user", user_message, db=db)
 
     # Build context
     db_context = await build_db_context(db)
     system_prompt = build_system_prompt(db_context)
 
     # Get conversation history
-    messages = await session_store.get_api_messages(user_id)
+    messages = await session_store.get_api_messages(user_id, db=db)
 
     # Choose execution path based on available auth
     if settings.anthropic_api_key:
@@ -537,7 +549,7 @@ async def handle_chat(user_id: int, user_message: str, db: AsyncSession) -> list
         reply_text = await call_anthropic_via_sdk(messages, system_prompt)
 
     # Store assistant reply in session
-    await session_store.add(user_id, "assistant", reply_text)
+    await session_store.add(user_id, "assistant", reply_text, db=db)
 
     return split_message(reply_text)
 

@@ -16,8 +16,9 @@ from app.db.session import get_db
 
 router = APIRouter()
 
-# In-memory subscription store (persists for server lifetime)
-# For production, this should be a DB table
+# In-memory subscription store (persists for server lifetime only).
+# WARNING: Subscriptions are lost on server restart. For production use,
+# migrate to a DB-backed store (e.g. PushSubscription table).
 _subscriptions: dict[str, dict] = {}
 
 

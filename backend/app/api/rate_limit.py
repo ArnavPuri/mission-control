@@ -198,6 +198,11 @@ async def get_rate_limits():
 
 @router.post("/reset")
 async def reset_rate_limit(key: str | None = None):
-    """Reset rate limit counters for a specific key or all keys."""
+    """Reset rate limit counters for a specific key or all keys.
+
+    WARNING: This endpoint has no authentication. In production,
+    gate this behind admin auth or remove it entirely.
+    """
+    logger.warning(f"Rate limit reset requested for key={key or 'ALL'}")
     limiter.reset(key)
     return {"reset": True, "key": key or "all"}

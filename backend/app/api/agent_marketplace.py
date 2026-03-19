@@ -13,6 +13,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
+from sqlalchemy import func as sqlfunc, case
+
 from app.config import settings
 from app.db.session import get_db
 from app.db.models import AgentConfig, AgentRun, AgentRunStatus
@@ -109,6 +111,32 @@ async def agent_gallery(
     result = await db.execute(select(AgentConfig))
     installed = {a.slug: a for a in result.scalars().all()}
 
+    # Pre-fetch run stats for all agents in a single query (avoids N+1)
+    agent_ids = [a.id for a in installed.values()]
+    run_stats_map: dict[str, dict] = {}
+    if agent_ids:
+        stats_query = (
+            select(
+                AgentRun.agent_id,
+                sqlfunc.count(AgentRun.id).label("total"),
+                sqlfunc.sum(case(
+                    (AgentRun.status == AgentRunStatus.COMPLETED, 1),
+                    else_=0,
+                )).label("successes"),
+                sqlfunc.coalesce(sqlfunc.sum(AgentRun.cost_usd), 0).label("total_cost"),
+            )
+            .where(AgentRun.agent_id.in_(agent_ids))
+            .group_by(AgentRun.agent_id)
+        )
+        stats_result = await db.execute(stats_query)
+        for row in stats_result.all():
+            aid, total, successes, total_cost = row
+            run_stats_map[str(aid)] = {
+                "total_runs": total,
+                "success_rate": round((successes or 0) / total, 2) if total > 0 else 0,
+                "total_cost_usd": round(float(total_cost or 0), 4),
+            }
+
     gallery = []
     for path in skill_files:
         if path.name.startswith("_"):  # skip templates
@@ -139,21 +167,8 @@ async def agent_gallery(
         if installed_only and not is_installed:
             continue
 
-        # Get run stats if installed
-        stats = None
-        if db_agent:
-            runs_result = await db.execute(
-                select(AgentRun).where(AgentRun.agent_id == db_agent.id)
-            )
-            runs = runs_result.scalars().all()
-            total_runs = len(runs)
-            successes = sum(1 for r in runs if r.status == AgentRunStatus.COMPLETED)
-            total_cost = sum(r.cost_usd or 0 for r in runs)
-            stats = {
-                "total_runs": total_runs,
-                "success_rate": round(successes / total_runs, 2) if total_runs > 0 else 0,
-                "total_cost_usd": round(total_cost, 4),
-            }
+        # Get run stats from pre-fetched map
+        stats = run_stats_map.get(str(db_agent.id)) if db_agent else None
 
         # Read rating from config
         rating_data = (db_agent.config or {}).get("_rating") if db_agent else None
