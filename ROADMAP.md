@@ -93,7 +93,7 @@ What's already built:
 
 | Phase | Done | Total | Progress |
 |-------|------|-------|----------|
-| 1. Foundation Hardening | 13 | 15 | 87% |
+| 1. Foundation Hardening | 15 | 15 | **100%** |
 | 2. Intelligence Layer | 13 | 13 | **100%** |
 | 3. Personal Productivity | 15 | 23 | 65% |
 | 4. Dashboard 2.0 | 18 | 18 | **100%** |
@@ -102,7 +102,7 @@ What's already built:
 | 7. Privacy & Scale | 0 | 16 | 0% |
 | 8. Mobile & Desktop | 0 | 10 | 0% |
 | 9. Community | 0 | 16 | 0% |
-| **Total** | **85** | **145** | **59%** |
+| **Total** | **90** | **145** | **62%** |
 
 ---
 
@@ -111,11 +111,11 @@ What's already built:
 _Make what exists rock-solid and easy to set up._
 
 ### 1.1 Setup & Onboarding
-- [ ] One-command install script (`curl | bash` or `npx create-mission-control`)
-- [ ] Interactive setup wizard that walks through DB, auth, and Telegram config
-- [ ] Pre-built Docker images on GitHub Container Registry (no local build needed)
-- [ ] `.env` generator with validation and provider health checks
-- [ ] SQLite mode for zero-config local development (no Postgres required)
+- [x] One-command install script (`curl | bash` — install.sh clones repo and runs setup)
+- [x] Interactive setup wizard (DB, LLM, Telegram, Discord, GitHub config with validation)
+- [x] Pre-built Docker images on GitHub Container Registry (GitHub Actions workflow)
+- [x] `.env` generator with validation and provider health checks
+- [x] SQLite mode for zero-config local development (no Postgres required)
 
 ### 1.2 Database & Migrations
 - [x] Alembic migration pipeline with async PostgreSQL support
@@ -510,7 +510,23 @@ All completed — entire Phase 6 now 100%:
 8. ~~**A/B testing for prompts** — Weighted variant selection, automatic scoring, winner lock-in (Phase 6.3)~~
 9. ~~**Agent budget dashboard** — Per-agent limits (daily/weekly/monthly), spending history, pre-run budget checks (Phase 6.3)~~
 
-### Sprint 16: Productivity & Integrations (Recommended)
+### Sprint 16: Streamline ✅
+
+All completed:
+
+1. ~~**Streamline** — removed Journal, Habits, Goals, Reading; consolidated into Notes~~
+
+### Sprint 17: Foundation Complete ✅
+
+All completed:
+
+1. ~~**SQLite mode** — zero-config local dev, `USE_SQLITE=true` env var, no Postgres needed (Phase 1.1)~~
+2. ~~**Interactive setup wizard** — 4-step wizard: DB, LLM, integrations, .env generation (Phase 1.1)~~
+3. ~~**.env generator with validation** — API key format checks, provider health checks (Phase 1.1)~~
+4. ~~**One-command install** — `curl | bash` installer clones repo and runs setup wizard (Phase 1.1)~~
+5. ~~**Pre-built Docker images** — GitHub Actions workflow for GHCR publishing (Phase 1.1)~~
+
+### Sprint 18: Productivity & Integrations (Recommended)
 
 Next high-impact features:
 
@@ -518,7 +534,7 @@ Next high-impact features:
 2. **Daily agenda agent** — morning briefing with today's priorities (Phase 3.4)
 3. **Deadline awareness** — agents factor in due dates for prioritization (Phase 3.4)
 4. **Spaced repetition** — Anki-style learning for reading items (Phase 3.5)
-5. **One-command install** — curl | bash setup script (Phase 1.1)
+5. **Agent Builder UI** — create/edit agents from the dashboard (Phase 6.1)
 
 ---
 

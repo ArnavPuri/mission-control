@@ -2,9 +2,10 @@
 
 ## What is this?
 
-Mission Control is a personal AI-powered command center (v0.8, 85/145 features).
-One PostgreSQL database is the single source of truth. Agents (defined as YAML
-skill files) read from and write to the database. A dashboard shows the status.
+Mission Control is a personal AI-powered command center (v0.9, 90/145 features).
+One PostgreSQL (or SQLite) database is the single source of truth. Agents (defined
+as YAML skill files or created via the Agent Builder UI) read from and write to
+the database. A dashboard shows the status.
 Telegram/Discord bots, MCP server, and push notifications provide input channels.
 
 ## Architecture
@@ -84,6 +85,7 @@ Notes (markdown) replaces Journal. Reading items can be tracked as notes with ta
 - **Sprint 14**: User pattern learning, health diagnostics, webhook templates, API rate limiting, agent versioning
 - **Sprint 15**: Web researcher, code reviewer, opportunity scout agents, marketplace, pipeline builder, A/B testing, budget management
 - **Sprint 16**: Streamline — removed Journal, Habits, Goals, Reading; consolidated into Notes
+- **Sprint 17**: Foundation — SQLite mode, setup wizard, install script, GHCR Docker images
 
 ## Auth
 

@@ -1,0 +1,36 @@
+# Lightweight Docker Compose for SQLite mode (no Postgres/Redis required)
+# Usage: docker compose -f docker-compose.sqlite.yml up -d
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      USE_SQLITE: "true"
+      SQLITE_PATH: /app/data/mission_control.db
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./backend:/app
+      - sqlite-data:/app/data
+      - agent-workdir:/app/workdir
+
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${DASHBOARD_PORT:-3000}:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:${API_PORT:-8000}
+
+volumes:
+  sqlite-data:
+  agent-workdir:

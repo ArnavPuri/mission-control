@@ -24,6 +24,8 @@ class LLMProvider(str, Enum):
 class Settings(BaseSettings):
     # --- Database ---
     database_url: str = "postgresql+asyncpg://missionctl:missionctl@localhost:5432/missioncontrol"
+    use_sqlite: bool = False  # Set True for zero-config local dev (no Postgres needed)
+    sqlite_path: str = "data/mission_control.db"
     redis_url: str = "redis://localhost:6379/0"
 
     # --- LLM Auth (multiple options) ---
@@ -64,6 +66,17 @@ class Settings(BaseSettings):
         env_file = "../.env"
         env_file_encoding = "utf-8"
         extra = "ignore"
+
+    @property
+    def effective_database_url(self) -> str:
+        """Return the actual database URL, considering SQLite mode."""
+        if self.use_sqlite or self.database_url.startswith("sqlite"):
+            return f"sqlite+aiosqlite:///{self.sqlite_path}"
+        return self.database_url
+
+    @property
+    def is_sqlite(self) -> bool:
+        return self.use_sqlite or self.database_url.startswith("sqlite")
 
     @property
     def llm_provider(self) -> LLMProvider:

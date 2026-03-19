@@ -9,6 +9,7 @@
 set -euo pipefail
 
 BOLD='\033[1m'
+DIM='\033[2m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 RED='\033[0;31m'
@@ -22,7 +23,7 @@ echo "  ║   Personal AI Command Center         ║"
 echo "  ╚══════════════════════════════════════╝"
 echo -e "${NC}"
 
-# --- Check prerequisites ---
+# ─── Prerequisites ────────────────────────────────────────
 
 check_command() {
     if ! command -v "$1" &> /dev/null; then
@@ -35,7 +36,6 @@ check_command() {
 
 echo -e "${BOLD}Checking prerequisites...${NC}"
 check_command "docker" "https://docs.docker.com/get-docker/"
-check_command "docker" "https://docs.docker.com/compose/install/"
 
 # Check Docker Compose (v2 plugin or standalone)
 if docker compose version &> /dev/null; then
@@ -57,8 +57,9 @@ fi
 echo -e "${GREEN}✓${NC} Docker daemon running"
 echo ""
 
-# --- Generate .env ---
+# ─── .env Generation ─────────────────────────────────────
 
+SKIP_ENV=false
 if [ -f ".env" ]; then
     echo -e "${YELLOW}⚠ .env file already exists.${NC}"
     read -p "  Overwrite? (y/N): " overwrite
@@ -68,25 +69,84 @@ if [ -f ".env" ]; then
     fi
 fi
 
-if [ "${SKIP_ENV:-false}" = "false" ]; then
-    echo -e "${BOLD}LLM Provider Configuration${NC}"
+# Initialize variables
+API_KEY=""
+OAUTH_TOKEN=""
+OPENROUTER_KEY=""
+OLLAMA_URL=""
+USE_SQLITE="false"
+PG_USER="missionctl"
+PG_PASS="missionctl"
+PG_DB="missioncontrol"
+TG_TOKEN=""
+TG_USERS=""
+DISCORD_TOKEN=""
+DISCORD_CHANNELS=""
+GITHUB_TOKEN=""
+
+if [ "$SKIP_ENV" = "false" ]; then
+
+    # ── Step 1: Database ──────────────────────────────────
+
+    echo -e "${BOLD}Step 1/4: Database${NC}"
     echo ""
-    echo "  1) Anthropic API Key (recommended)"
-    echo "  2) Claude Code OAuth Token (Pro/Max subscription)"
-    echo "  3) OpenRouter API Key"
-    echo "  4) Ollama (local, no key needed)"
-    echo "  5) Skip (configure later)"
+    echo "  1) PostgreSQL (recommended for production)"
+    echo "  2) SQLite (zero-config, great for trying out)"
+    echo ""
+    read -p "  Choose database [1-2]: " db_choice
+
+    case "${db_choice:-1}" in
+        2)
+            USE_SQLITE="true"
+            echo -e "  ${GREEN}✓${NC} SQLite mode — no database setup needed!"
+            ;;
+        *)
+            USE_SQLITE="false"
+            read -p "  Database password [missionctl]: " custom_pass
+            PG_PASS="${custom_pass:-missionctl}"
+            echo -e "  ${GREEN}✓${NC} PostgreSQL with password set"
+            ;;
+    esac
+    echo ""
+
+    # ── Step 2: LLM Provider ─────────────────────────────
+
+    echo -e "${BOLD}Step 2/4: LLM Provider${NC}"
+    echo ""
+    echo "  1) Anthropic API Key ${DIM}(recommended — stable, no expiry)${NC}"
+    echo "  2) Claude Code OAuth Token ${DIM}(Pro/Max subscription)${NC}"
+    echo "  3) OpenRouter API Key ${DIM}(multi-provider)${NC}"
+    echo "  4) Ollama ${DIM}(local, no key needed)${NC}"
+    echo "  5) Skip ${DIM}(configure later)${NC}"
     echo ""
     read -p "  Choose provider [1-5]: " provider_choice
-
-    API_KEY=""
-    OAUTH_TOKEN=""
-    OPENROUTER_KEY=""
-    OLLAMA_URL=""
 
     case "${provider_choice:-1}" in
         1)
             read -p "  Anthropic API Key: " API_KEY
+            if [ -n "$API_KEY" ]; then
+                # Validate key format
+                if [[ ! "$API_KEY" =~ ^sk-ant- ]]; then
+                    echo -e "  ${YELLOW}⚠ Key doesn't match expected format (sk-ant-...). Continuing anyway.${NC}"
+                fi
+                # Health check
+                echo -n "  Checking API key..."
+                HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+                    -H "x-api-key: $API_KEY" \
+                    -H "anthropic-version: 2023-06-01" \
+                    -H "Content-Type: application/json" \
+                    -d '{"model":"claude-haiku-4-5","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}' \
+                    https://api.anthropic.com/v1/messages 2>/dev/null || echo "000")
+                if [ "$HTTP_CODE" = "200" ]; then
+                    echo -e " ${GREEN}✓ Valid!${NC}"
+                elif [ "$HTTP_CODE" = "401" ]; then
+                    echo -e " ${RED}✗ Invalid key (401 Unauthorized). Double-check your key.${NC}"
+                elif [ "$HTTP_CODE" = "000" ]; then
+                    echo -e " ${YELLOW}⚠ Could not reach API (network issue). Key saved anyway.${NC}"
+                else
+                    echo -e " ${YELLOW}⚠ Got HTTP $HTTP_CODE. Key saved, but verify it works.${NC}"
+                fi
+            fi
             ;;
         2)
             read -p "  OAuth Token: " OAUTH_TOKEN
@@ -96,30 +156,66 @@ if [ "${SKIP_ENV:-false}" = "false" ]; then
             ;;
         4)
             OLLAMA_URL="${OLLAMA_URL:-http://host.docker.internal:11434}"
-            echo "  Using Ollama at: $OLLAMA_URL"
+            echo -n "  Checking Ollama..."
+            if curl -sf "$OLLAMA_URL/api/version" > /dev/null 2>&1; then
+                echo -e " ${GREEN}✓ Ollama is running!${NC}"
+            else
+                echo -e " ${YELLOW}⚠ Ollama not reachable at $OLLAMA_URL. Start it before running agents.${NC}"
+            fi
             ;;
         5)
-            echo "  Skipping LLM config (set it in .env later)"
+            echo -e "  ${DIM}Skipping LLM config — set it in .env later${NC}"
             ;;
     esac
-
-    # Database credentials
     echo ""
-    PG_USER="missionctl"
-    PG_PASS="missionctl"
-    PG_DB="missioncontrol"
-    read -p "  Database password [missionctl]: " custom_pass
-    PG_PASS="${custom_pass:-missionctl}"
 
-    # Telegram bot (optional)
+    # ── Step 3: Integrations (optional) ──────────────────
+
+    echo -e "${BOLD}Step 3/4: Integrations ${DIM}(all optional, press Enter to skip)${NC}"
     echo ""
-    read -p "  Telegram Bot Token (optional, press Enter to skip): " TG_TOKEN
-    TG_USERS=""
+
+    # Telegram
+    read -p "  Telegram Bot Token: " TG_TOKEN
     if [ -n "$TG_TOKEN" ]; then
-        read -p "  Allowed Telegram user IDs (comma-separated, or Enter for all): " TG_USERS
+        # Validate Telegram token
+        echo -n "  Checking Telegram bot..."
+        TG_RESP=$(curl -sf "https://api.telegram.org/bot${TG_TOKEN}/getMe" 2>/dev/null || echo '{"ok":false}')
+        if echo "$TG_RESP" | grep -q '"ok":true'; then
+            BOT_NAME=$(echo "$TG_RESP" | grep -o '"username":"[^"]*"' | cut -d'"' -f4)
+            echo -e " ${GREEN}✓ @${BOT_NAME}${NC}"
+        else
+            echo -e " ${YELLOW}⚠ Token not valid or bot API unreachable${NC}"
+        fi
+        read -p "  Allowed Telegram user IDs (comma-separated, Enter for all): " TG_USERS
     fi
 
-    # Write .env
+    # Discord
+    read -p "  Discord Bot Token: " DISCORD_TOKEN
+    if [ -n "$DISCORD_TOKEN" ]; then
+        read -p "  Allowed Discord channel IDs (comma-separated, Enter for all): " DISCORD_CHANNELS
+    fi
+
+    # GitHub
+    read -p "  GitHub Personal Access Token: " GITHUB_TOKEN
+    if [ -n "$GITHUB_TOKEN" ]; then
+        echo -n "  Checking GitHub token..."
+        GH_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            https://api.github.com/user 2>/dev/null || echo "000")
+        if [ "$GH_CODE" = "200" ]; then
+            echo -e " ${GREEN}✓ Valid!${NC}"
+        elif [ "$GH_CODE" = "401" ]; then
+            echo -e " ${YELLOW}⚠ Invalid token. Saved anyway.${NC}"
+        else
+            echo -e " ${YELLOW}⚠ Could not verify (HTTP $GH_CODE). Saved anyway.${NC}"
+        fi
+    fi
+    echo ""
+
+    # ── Step 4: Write .env ────────────────────────────────
+
+    echo -e "${BOLD}Step 4/4: Writing configuration...${NC}"
+
     cat > .env << ENVEOF
 # Mission Control - Generated by setup.sh
 # $(date -u +"%Y-%m-%d %H:%M:%S UTC")
@@ -131,6 +227,8 @@ OPENROUTER_API_KEY=${OPENROUTER_KEY}
 OLLAMA_BASE_URL=${OLLAMA_URL}
 
 # --- Database ---
+USE_SQLITE=${USE_SQLITE}
+SQLITE_PATH=data/mission_control.db
 POSTGRES_USER=${PG_USER}
 POSTGRES_PASSWORD=${PG_PASS}
 POSTGRES_DB=${PG_DB}
@@ -138,6 +236,13 @@ POSTGRES_DB=${PG_DB}
 # --- Telegram Bot ---
 TELEGRAM_BOT_TOKEN=${TG_TOKEN}
 TELEGRAM_ALLOWED_USERS=${TG_USERS}
+
+# --- Discord Bot ---
+DISCORD_BOT_TOKEN=${DISCORD_TOKEN}
+DISCORD_ALLOWED_CHANNELS=${DISCORD_CHANNELS}
+
+# --- GitHub ---
+GITHUB_TOKEN=${GITHUB_TOKEN}
 
 # --- Ports ---
 API_PORT=8000
@@ -154,17 +259,26 @@ ENVEOF
     echo -e "${GREEN}✓${NC} .env file created"
 fi
 
-# --- Start services ---
+# ─── Start Services ──────────────────────────────────────
 
 echo ""
 echo -e "${BOLD}Starting Mission Control...${NC}"
-$COMPOSE_CMD up -d --build
+
+# Use SQLite compose if configured
+if grep -q "USE_SQLITE=true" .env 2>/dev/null; then
+    echo -e "  ${DIM}Using SQLite mode (lightweight)${NC}"
+    COMPOSE_FILE="docker-compose.sqlite.yml"
+else
+    COMPOSE_FILE="docker-compose.yml"
+fi
+
+$COMPOSE_CMD -f "$COMPOSE_FILE" up -d --build
 
 # Wait for backend health
 echo ""
 echo -n "  Waiting for backend"
 for i in {1..30}; do
-    if curl -sf http://localhost:${API_PORT:-8000}/api/health > /dev/null 2>&1; then
+    if curl -sf http://localhost:${API_PORT:-8000}/health > /dev/null 2>&1; then
         echo ""
         echo -e "${GREEN}✓${NC} Backend is healthy"
         break
@@ -173,7 +287,7 @@ for i in {1..30}; do
     sleep 2
 done
 
-# Check if dashboard is up
+# Check dashboard
 if curl -sf http://localhost:${DASHBOARD_PORT:-3000} > /dev/null 2>&1; then
     echo -e "${GREEN}✓${NC} Dashboard is running"
 fi
@@ -182,12 +296,11 @@ echo ""
 echo -e "${GREEN}${BOLD}Mission Control is ready!${NC}"
 echo ""
 echo -e "  Dashboard:  ${CYAN}http://localhost:${DASHBOARD_PORT:-3000}${NC}"
-echo -e "  API:        ${CYAN}http://localhost:${API_PORT:-8000}/api/health${NC}"
+echo -e "  API:        ${CYAN}http://localhost:${API_PORT:-8000}/health${NC}"
 echo -e "  API Docs:   ${CYAN}http://localhost:${API_PORT:-8000}/docs${NC}"
 echo ""
-echo -e "  Useful commands:"
-echo "    make status    — check service status"
-echo "    make logs      — view logs"
-echo "    make stop      — stop all services"
-echo "    make test      — run tests"
+echo -e "  ${DIM}Commands:${NC}"
+echo "    docker compose logs -f    — view logs"
+echo "    docker compose stop       — stop services"
+echo "    docker compose restart    — restart services"
 echo ""
