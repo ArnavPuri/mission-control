@@ -237,8 +237,10 @@ def record_variant_result(agent: AgentConfig, variant_name: str, success: bool, 
     """Record the result of running a variant.
 
     Called by the agent runner after execution.
+    Must reassign agent.config with a new dict to trigger SQLAlchemy
+    mutation tracking on the JSON column.
     """
-    config = agent.config or {}
+    config = dict(agent.config or {})
     ab_tests = config.get("_ab_tests", [])
 
     for test in ab_tests:
@@ -253,4 +255,4 @@ def record_variant_result(agent: AgentConfig, variant_name: str, success: bool, 
                 break
 
     config["_ab_tests"] = ab_tests
-    agent.config = config
+    agent.config = config  # new dict triggers change detection

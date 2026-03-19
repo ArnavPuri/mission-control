@@ -18,6 +18,7 @@ from app.db.models import (
     Routine, RoutineItem, RoutineCompletion,
     EventLog, Notification,
 )
+from app.api.api_keys import require_admin
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ def _serialize_row(row) -> dict:
     return data
 
 
-@router.get("/backup")
+@router.get("/backup", dependencies=[Depends(require_admin)])
 async def create_backup(db: AsyncSession = Depends(get_db)):
     """Create a full JSON backup of all user data."""
     backup = {
@@ -77,7 +78,7 @@ async def create_backup(db: AsyncSession = Depends(get_db)):
     return JSONResponse(content=backup)
 
 
-@router.post("/restore")
+@router.post("/restore", dependencies=[Depends(require_admin)])
 async def restore_backup(file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
     """Restore data from a JSON backup file.
 

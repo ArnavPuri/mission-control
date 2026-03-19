@@ -14,6 +14,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+from app.api.api_keys import require_admin
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +197,7 @@ async def get_rate_limits():
     }
 
 
-@router.post("/reset")
+@router.post("/reset", dependencies=[Depends(require_admin)])
 async def reset_rate_limit(key: str | None = None):
     """Reset rate limit counters for a specific key or all keys.
 

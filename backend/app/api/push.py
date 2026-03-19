@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from app.db.session import get_db
+from app.api.api_keys import require_admin
 
 router = APIRouter()
 
@@ -62,7 +63,7 @@ async def list_subscriptions():
     return {"count": len(_subscriptions), "subscriptions": list(_subscriptions.values())}
 
 
-@router.post("/send")
+@router.post("/send", dependencies=[Depends(require_admin)])
 async def send_push(data: PushMessage):
     """Send a push notification to all subscribers.
 

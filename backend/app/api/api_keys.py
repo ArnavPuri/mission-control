@@ -74,6 +74,22 @@ def require_scope(scope: str):
     return checker
 
 
+async def require_admin(key: ApiKey | None = Depends(verify_api_key)):
+    """Strict auth dependency for sensitive endpoints.
+
+    Requires a valid API key with 'admin' scope. Unlike require_scope(),
+    this NEVER falls through — no key = 401.
+    """
+    if key is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Admin API key required. Pass X-API-Key header.",
+        )
+    if "admin" not in (key.scopes or []):
+        raise HTTPException(status_code=403, detail="Admin scope required")
+    return key
+
+
 @router.get("", dependencies=[Depends(require_scope("admin"))])
 async def list_api_keys(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(ApiKey).order_by(ApiKey.created_at.desc()))

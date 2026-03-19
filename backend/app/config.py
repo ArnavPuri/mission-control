@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     identity_file: str = "workspace/identity.md"
 
     # --- Email Ingestion ---
+    email_webhook_secret: str | None = None  # Shared secret for inbound email webhooks
     email_imap_host: str | None = None
     email_imap_user: str | None = None
     email_imap_password: str | None = None

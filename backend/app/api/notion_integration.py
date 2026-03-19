@@ -17,6 +17,7 @@ from app.db.session import get_db
 from app.db.models import EventLog, Task, Note, TaskStatus, TaskPriority
 from app.api.ws import broadcast
 from app.config import settings
+from app.api.api_keys import require_admin
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -112,7 +113,7 @@ def _extract_tags(properties: dict) -> list[str]:
 
 # ─── Connect ───
 
-@router.post("/connect")
+@router.post("/connect", dependencies=[Depends(require_admin)])
 async def connect_notion(data: NotionConnect):
     """Save and validate Notion API key."""
     import httpx
@@ -130,6 +131,7 @@ async def connect_notion(data: NotionConnect):
     settings.notion_api_key = data.api_key
     bot_name = result.get("name", "Unknown")
     logger.info(f"Notion connected as: {bot_name}")
+    logger.warning("Notion API key stored in memory only — will be lost on restart. Set NOTION_API_KEY in .env for persistence.")
     return {"connected": True, "bot_name": bot_name}
 
 

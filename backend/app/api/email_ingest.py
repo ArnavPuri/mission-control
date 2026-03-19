@@ -9,10 +9,11 @@ Mounted at /api/email/inbound
 """
 
 import logging
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.db.session import get_db
 from app.db.models import Task, Idea, Note, EventLog
 from app.integrations.email_ingest import parse_subject_prefix
@@ -41,13 +42,18 @@ class InboundEmail(BaseModel):
 
 
 @router.post("/inbound")
-async def inbound_email(payload: InboundEmail, db: AsyncSession = Depends(get_db)):
+async def inbound_email(payload: InboundEmail, request: Request, db: AsyncSession = Depends(get_db)):
     """Process an inbound email webhook and create the appropriate entity.
 
     Accepts JSON with fields: from, subject, body_plain, body_html.
     Parses subject for type prefixes (task:/t:, idea:/i:, note:/n:).
+    Requires EMAIL_WEBHOOK_SECRET to be set; pass it as ?secret= query param.
     Returns the created entity ID and type.
     """
+    if settings.email_webhook_secret:
+        provided = request.query_params.get("secret", "")
+        if provided != settings.email_webhook_secret:
+            raise HTTPException(status_code=401, detail="Invalid webhook secret")
     entity_type, cleaned_subject = parse_subject_prefix(payload.subject)
     body = payload.body_plain or payload.body_html or ""
     sender = payload.from_ or "unknown"

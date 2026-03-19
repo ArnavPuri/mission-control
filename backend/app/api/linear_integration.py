@@ -18,6 +18,7 @@ from app.db.session import get_db
 from app.db.models import EventLog, Task, TaskStatus, TaskPriority
 from app.api.ws import broadcast
 from app.config import settings
+from app.api.api_keys import require_admin
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -64,7 +65,7 @@ def _get_api_key() -> str:
 
 # ─── Connect ───
 
-@router.post("/connect")
+@router.post("/connect", dependencies=[Depends(require_admin)])
 async def connect_linear(data: LinearConnect):
     """Save Linear API key to settings."""
     import httpx
@@ -86,6 +87,7 @@ async def connect_linear(data: LinearConnect):
     settings.linear_api_key = data.api_key
     viewer = result.get("data", {}).get("viewer", {})
     logger.info(f"Linear connected as: {viewer.get('name', 'unknown')}")
+    logger.warning("Linear API key stored in memory only — will be lost on restart. Set LINEAR_API_KEY in .env for persistence.")
     return {"connected": True, "user": viewer.get("name")}
 
 
