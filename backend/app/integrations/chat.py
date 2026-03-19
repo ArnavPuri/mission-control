@@ -108,50 +108,121 @@ CHAT_TOOLS = [
 ]
 
 
-# --- Session Store ---
+# --- Session Store (DB-backed with in-memory cache) ---
 
 class SessionStore:
-    """In-memory session storage for chat conversations, keyed by Telegram user ID."""
+    """Chat session storage backed by the database with in-memory cache.
+
+    Sessions are loaded from DB on first access and written back after changes.
+    Survives backend restarts unlike the previous in-memory-only approach.
+    """
 
     def __init__(self, timeout_minutes: int = 30, max_messages: int = 20):
         self.timeout_minutes = timeout_minutes
         self.max_messages = max_messages
-        self._sessions: dict[int, list[dict]] = {}
+        self._cache: dict[str, list[dict]] = {}
 
-    def add(self, user_id: int, role: str, content: str):
-        """Add a message to the user's session."""
-        if user_id not in self._sessions:
-            self._sessions[user_id] = []
+    def _key(self, user_id: int, platform: str = "telegram") -> str:
+        return f"{platform}:{user_id}"
 
-        self._sessions[user_id].append({
+    async def load(self, user_id: int, platform: str = "telegram", db: AsyncSession | None = None):
+        """Load session from DB into cache if not already loaded."""
+        key = self._key(user_id, platform)
+        if key in self._cache:
+            return
+
+        from app.db.models import ChatSession
+
+        async def _do_load(session: AsyncSession):
+            result = await session.execute(
+                select(ChatSession).where(
+                    ChatSession.user_id == str(user_id),
+                    ChatSession.platform == platform,
+                )
+            )
+            row = result.scalar_one_or_none()
+            self._cache[key] = row.messages if row and row.messages else []
+
+        if db:
+            await _do_load(db)
+        else:
+            from app.db.session import async_session
+            async with async_session() as fallback_db:
+                await _do_load(fallback_db)
+
+    async def add(self, user_id: int, role: str, content: str, platform: str = "telegram", db: AsyncSession | None = None):
+        """Add a message and persist to DB."""
+        await self.load(user_id, platform, db=db)
+        key = self._key(user_id, platform)
+
+        self._cache[key].append({
             "role": role,
             "content": content,
             "timestamp": time.time(),
         })
 
-    def get(self, user_id: int) -> list[dict]:
-        """Get active session messages, pruning expired ones."""
-        if user_id not in self._sessions:
-            return []
+        # Prune and save
+        self._prune(key)
+        await self._save(user_id, platform, db=db)
 
+    def _prune(self, key: str):
+        """Remove expired messages and enforce max count."""
         cutoff = time.time() - (self.timeout_minutes * 60)
-        # Prune old messages
-        self._sessions[user_id] = [
-            msg for msg in self._sessions[user_id]
+        self._cache[key] = [
+            msg for msg in self._cache[key]
             if msg["timestamp"] > cutoff
         ]
+        if len(self._cache[key]) > self.max_messages:
+            self._cache[key] = self._cache[key][-self.max_messages:]
 
-        # Cap at max messages (keep most recent)
-        if len(self._sessions[user_id]) > self.max_messages:
-            self._sessions[user_id] = self._sessions[user_id][-self.max_messages:]
+    async def _save(self, user_id: int, platform: str = "telegram", db: AsyncSession | None = None):
+        """Persist current session to database."""
+        key = self._key(user_id, platform)
+        messages = self._cache.get(key, [])
 
-        return self._sessions[user_id]
+        from app.db.models import ChatSession
+        from datetime import datetime, timezone as tz
 
-    def get_api_messages(self, user_id: int) -> list[dict]:
+        async def _do_save(session: AsyncSession, should_commit: bool):
+            result = await session.execute(
+                select(ChatSession).where(
+                    ChatSession.user_id == str(user_id),
+                    ChatSession.platform == platform,
+                )
+            )
+            chat_session = result.scalar_one_or_none()
+            if chat_session:
+                chat_session.messages = messages
+                chat_session.last_active = datetime.now(tz.utc)
+            else:
+                session.add(ChatSession(
+                    user_id=str(user_id),
+                    platform=platform,
+                    messages=messages,
+                ))
+            if should_commit:
+                await session.commit()
+
+        if db:
+            await _do_save(db, should_commit=False)
+        else:
+            from app.db.session import async_session
+            async with async_session() as fallback_db:
+                await _do_save(fallback_db, should_commit=True)
+
+    async def get(self, user_id: int, platform: str = "telegram", db: AsyncSession | None = None) -> list[dict]:
+        """Get active session messages."""
+        await self.load(user_id, platform, db=db)
+        key = self._key(user_id, platform)
+        self._prune(key)
+        return self._cache.get(key, [])
+
+    async def get_api_messages(self, user_id: int, platform: str = "telegram", db: AsyncSession | None = None) -> list[dict]:
         """Get messages formatted for the Anthropic Messages API."""
+        messages = await self.get(user_id, platform, db=db)
         return [
             {"role": msg["role"], "content": msg["content"]}
-            for msg in self.get(user_id)
+            for msg in messages
         ]
 
 
@@ -165,10 +236,28 @@ session_store = SessionStore(
 # --- System Prompt ---
 
 def build_system_prompt(db_context: dict) -> str:
-    """Build the system prompt for the chat assistant."""
-    return f"""You are Mission Control, a personal AI assistant.
-You help manage projects, tasks, ideas, and a reading list.
+    """Build the system prompt for the chat assistant using configurable identity."""
+    personality = settings.bot_personality
+    bot_name = personality.get("name", "MC")
+    tone = personality.get("tone", "")
+    style = personality.get("style", "")
 
+    # Build identity section
+    identity_section = ""
+    identity = settings.identity
+    if identity:
+        # Extract the "About Me" section for concise context
+        identity_section = f"\n## About the User\n{identity}\n"
+
+    tone_section = ""
+    if tone:
+        tone_section = f"\nPersonality: {tone}"
+    if style:
+        tone_section += f"\nStyle: {style}"
+
+    return f"""You are {bot_name}, a personal AI command center assistant.
+You help manage projects, tasks, ideas, habits, goals, and more.{tone_section}
+{identity_section}
 ## Current Data
 
 ### Projects
@@ -190,7 +279,7 @@ You help manage projects, tasks, ideas, and a reading list.
 - Act immediately on clear intents and confirm what you did
 - Ask for clarification on ambiguous requests
 - Always confirm before destructive actions (marking tasks done, changing priorities)
-- Keep replies concise — this is Telegram, not email
+- Keep replies concise — this is a chat, not an email
 - When listing items, use compact formatting
 - Match tasks by text content, not by ID
 - Check agent status before triggering (don't start already-running agents)"""
@@ -442,15 +531,15 @@ async def handle_chat(user_id: int, user_message: str, db: AsyncSession) -> list
     Uses the Messages API with tool_use if an API key is available.
     Falls back to the Agent SDK (plain text, no tools) for OAuth auth.
     """
-    # Add user message to session
-    session_store.add(user_id, "user", user_message)
+    # Add user message to session (reuse db session)
+    await session_store.add(user_id, "user", user_message, db=db)
 
     # Build context
     db_context = await build_db_context(db)
     system_prompt = build_system_prompt(db_context)
 
     # Get conversation history
-    messages = session_store.get_api_messages(user_id)
+    messages = await session_store.get_api_messages(user_id, db=db)
 
     # Choose execution path based on available auth
     if settings.anthropic_api_key:
@@ -460,7 +549,7 @@ async def handle_chat(user_id: int, user_message: str, db: AsyncSession) -> list
         reply_text = await call_anthropic_via_sdk(messages, system_prompt)
 
     # Store assistant reply in session
-    session_store.add(user_id, "assistant", reply_text)
+    await session_store.add(user_id, "assistant", reply_text, db=db)
 
     return split_message(reply_text)
 

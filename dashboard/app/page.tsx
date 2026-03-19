@@ -13,10 +13,11 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Tabs from '@radix-ui/react-tabs';
 import {
   Search, Bell, Plus, Play, Square, Check, X, ChevronRight,
-  Zap, FolderOpen, ListTodo, Lightbulb, BookOpen, Target,
-  Flame, PenLine, Clock, DollarSign, Activity, Shield,
-  ExternalLink, CircleDot, Loader2, Sun, Moon, Filter,
-  Pencil, Calendar, TrendingUp, BarChart3, FileText, Pin,
+  Zap, FolderOpen, ListTodo, Lightbulb,
+  Clock, DollarSign, Activity, Shield,
+  CircleDot, Loader2, Sun, Moon, Filter,
+  Pencil, Calendar, BarChart3, FileText, Pin,
+  GripVertical, Sparkles, BellRing, GitBranch,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -146,6 +147,42 @@ function StatusIndicator({ status }: { status: string }) {
 
 // ─── Panels ──────────────────────────────────────────────
 
+function HealthBadge({ projectId }: { projectId: string }) {
+  const [health, setHealth] = useState<api.ProjectHealth | null>(null);
+  useEffect(() => {
+    api.projects.health(projectId).then(setHealth).catch(() => {});
+  }, [projectId]);
+  if (!health) return null;
+  const colors: Record<string, string> = {
+    healthy: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
+    needs_attention: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400',
+    at_risk: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400',
+  };
+  return (
+    <Tooltip.Provider>
+      <Tooltip.Root>
+        <Tooltip.Trigger asChild>
+          <span className={clsx('inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold tabular-nums', colors[health.status])}>
+            {health.score}
+          </span>
+        </Tooltip.Trigger>
+        <Tooltip.Portal>
+          <Tooltip.Content
+            className="bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-[11px] px-3 py-2 rounded-lg shadow-lg max-w-[200px] z-50"
+            sideOffset={5}
+          >
+            <div className="font-medium mb-1">{health.status.replace('_', ' ')}</div>
+            <div>Done: {health.metrics.completion_rate}%</div>
+            <div>Velocity: {health.metrics.weekly_velocity}/wk</div>
+            {health.metrics.overdue_tasks > 0 && <div className="text-red-300 dark:text-red-600">Overdue: {health.metrics.overdue_tasks}</div>}
+            <Tooltip.Arrow className="fill-gray-900 dark:fill-gray-100" />
+          </Tooltip.Content>
+        </Tooltip.Portal>
+      </Tooltip.Root>
+    </Tooltip.Provider>
+  );
+}
+
 function ProjectsPanel({ projects }: { projects: api.Project[] }) {
   if (projects.length === 0) return <EmptyState icon={FolderOpen} message="No projects yet" />;
   return (
@@ -159,6 +196,7 @@ function ProjectsPanel({ projects }: { projects: api.Project[] }) {
           <div className="flex items-center gap-2 mb-1.5">
             <StatusIndicator status={p.status} />
             <span className="text-sm font-semibold text-mc-text dark:text-gray-100 truncate">{p.name}</span>
+            <HealthBadge projectId={p.id} />
           </div>
           <p className="text-xs text-mc-muted dark:text-gray-500 leading-relaxed truncate mb-3">{p.description}</p>
           <div className="flex items-center gap-2">
@@ -363,16 +401,18 @@ function KanbanColumn({ title, tasks, color, onToggle, onUpdate, onDelete }: {
   );
 }
 
-function TasksPanel({ tasks, projects, onToggle, onUpdate, onAdd, showInput, setShowInput, onDelete }: {
+function TasksPanel({ tasks, projects, onToggle, onUpdate, onAdd, showInput, setShowInput, onDelete, onReorder }: {
   tasks: api.Task[]; projects: api.Project[];
   onToggle: (id: string) => void; onUpdate: (id: string, data: Partial<api.Task>) => void;
   onAdd: (text: string) => void;
   showInput: boolean; setShowInput: (v: boolean) => void; onDelete: (id: string) => void;
+  onReorder: (taskIds: string[]) => void;
 }) {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [dragId, setDragId] = useState<string | null>(null);
 
   const filtered = tasks.filter((t) => {
     if (filterStatus !== 'all' && t.status !== filterStatus) return false;
@@ -533,7 +573,28 @@ function TasksPanel({ tasks, projects, onToggle, onUpdate, onAdd, showInput, set
       {viewMode === 'list' ? (
         <div className="flex flex-col gap-0.5">
           {filtered.map((t) => (
-            <div key={t.id} className="flex items-center gap-0.5">
+            <div
+              key={t.id}
+              draggable
+              onDragStart={() => setDragId(t.id)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => {
+                if (dragId && dragId !== t.id) {
+                  const ids = filtered.map((x) => x.id);
+                  const fromIdx = ids.indexOf(dragId);
+                  const toIdx = ids.indexOf(t.id);
+                  if (fromIdx >= 0 && toIdx >= 0) {
+                    ids.splice(fromIdx, 1);
+                    ids.splice(toIdx, 0, dragId);
+                    onReorder(ids);
+                  }
+                }
+                setDragId(null);
+              }}
+              onDragEnd={() => setDragId(null)}
+              className={clsx('flex items-center gap-0.5', dragId === t.id && 'opacity-40')}
+            >
+              <GripVertical size={12} className="text-mc-dim cursor-grab shrink-0 hover:text-mc-muted" />
               <input
                 type="checkbox"
                 checked={selected.has(t.id)}
@@ -610,144 +671,6 @@ function IdeasPanel({ ideas, onAdd, showInput, setShowInput, onDelete }: {
   );
 }
 
-function ReadingPanel({ items, onToggle, onAdd, showInput, setShowInput, onDelete }: {
-  items: api.ReadingItem[]; onToggle: (id: string) => void; onAdd: (text: string) => void;
-  showInput: boolean; setShowInput: (v: boolean) => void; onDelete: (id: string) => void;
-}) {
-  return (
-    <div>
-      {showInput && <InlineInput placeholder="Title or URL..." onSubmit={onAdd} onCancel={() => setShowInput(false)} />}
-      <div className="flex flex-col gap-1">
-        {items.map((r) => (
-          <div key={r.id} className={clsx('flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-mc-subtle dark:hover:bg-gray-800 transition-colors group', r.is_read && 'opacity-50')}>
-            <Checkbox.Root
-              checked={r.is_read}
-              onCheckedChange={() => onToggle(r.id)}
-              className={clsx(
-                'w-[18px] h-[18px] rounded border-2 flex items-center justify-center transition-all cursor-pointer shrink-0',
-                r.is_read ? 'bg-mc-accent border-mc-accent' : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 hover:border-mc-accent',
-              )}
-            >
-              <Checkbox.Indicator><Check size={12} className="text-white" strokeWidth={3} /></Checkbox.Indicator>
-            </Checkbox.Root>
-            <span className={clsx('flex-1 text-sm truncate', r.is_read ? 'text-mc-dim line-through' : 'text-mc-secondary dark:text-gray-300')}>
-              {r.url ? (
-                <a href={r.url} target="_blank" rel="noopener noreferrer" className="hover:text-mc-accent transition-colors inline-flex items-center gap-1">
-                  {r.title} <ExternalLink size={11} className="text-mc-dim" />
-                </a>
-              ) : r.title}
-            </span>
-            <button onClick={() => onDelete(r.id)} className="opacity-0 group-hover:opacity-100 text-mc-dim hover:text-mc-red transition-all cursor-pointer bg-transparent border-none p-0.5">
-              <X size={13} />
-            </button>
-          </div>
-        ))}
-        {items.length === 0 && !showInput && <EmptyState icon={BookOpen} message="Reading list empty" small />}
-      </div>
-    </div>
-  );
-}
-
-function HabitsPanel({ habits, onToggle, onAdd, showInput, setShowInput }: {
-  habits: api.Habit[]; onToggle: (id: string) => void; onAdd: (name: string) => void;
-  showInput: boolean; setShowInput: (v: boolean) => void;
-}) {
-  return (
-    <div>
-      {showInput && <InlineInput placeholder="New habit..." onSubmit={onAdd} onCancel={() => setShowInput(false)} />}
-      <div className="flex flex-col gap-2">
-        {habits.map((h) => (
-          <div key={h.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-mc-subtle dark:hover:bg-gray-800 transition-colors">
-            <button
-              onClick={() => onToggle(h.id)}
-              className={clsx(
-                'w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer shrink-0',
-                h.completed_today
-                  ? 'border-emerald-500 bg-emerald-500'
-                  : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-emerald-400',
-              )}
-            >
-              {h.completed_today && <Check size={13} className="text-white" strokeWidth={3} />}
-            </button>
-            <div className="flex-1 min-w-0">
-              <span className="text-sm text-mc-secondary dark:text-gray-300 font-medium">{h.name}</span>
-            </div>
-            {h.current_streak > 0 && (
-              <div className="flex items-center gap-1 shrink-0">
-                <Flame size={13} className="text-orange-400" />
-                <span className="text-sm font-semibold text-orange-500">{h.current_streak}</span>
-              </div>
-            )}
-          </div>
-        ))}
-        {habits.length === 0 && !showInput && <EmptyState icon={Flame} message="No habits yet" small />}
-      </div>
-    </div>
-  );
-}
-
-// ─── Habit Analytics ─────────────────────────────────────
-
-function HabitAnalyticsPanel({ analytics }: { analytics: api.HabitAnalytics | null }) {
-  if (!analytics || analytics.habits.length === 0) {
-    return <EmptyState icon={BarChart3} message="No habit data yet" small />;
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      {analytics.habits.map((h) => {
-        const pct = Math.round(h.completion_rate * 100);
-        return (
-          <div key={h.id} className="space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full" style={{ background: h.color }} />
-                <span className="text-sm font-medium text-mc-text dark:text-gray-200">{h.name}</span>
-              </div>
-              <div className="flex items-center gap-3 text-xs">
-                <span className="text-mc-muted dark:text-gray-500">{pct}% rate</span>
-                <div className="flex items-center gap-1">
-                  <Flame size={11} className="text-orange-400" />
-                  <span className="font-semibold text-orange-500">{h.current_streak}d</span>
-                </div>
-                <span className="text-mc-dim dark:text-gray-600">best {h.best_streak}d</span>
-              </div>
-            </div>
-            {/* Weekly mini bar chart */}
-            <div className="flex items-end gap-1 h-8">
-              {h.weekly_data.map((w, i) => {
-                const maxVal = 7;
-                const height = Math.max(2, (w.completions / maxVal) * 32);
-                return (
-                  <Tooltip.Root key={i}>
-                    <Tooltip.Trigger asChild>
-                      <div
-                        className="flex-1 rounded-t transition-all"
-                        style={{
-                          height,
-                          background: w.completions >= 5 ? '#059669' : w.completions >= 3 ? '#2563eb' : w.completions > 0 ? '#93c5fd' : '#e5e7eb',
-                        }}
-                      />
-                    </Tooltip.Trigger>
-                    <Tooltip.Content className="bg-mc-text text-white text-xs px-2 py-1 rounded-md" sideOffset={5}>
-                      Week {i + 1}: {w.completions}/7 days
-                    </Tooltip.Content>
-                  </Tooltip.Root>
-                );
-              })}
-            </div>
-            <Progress.Root className="h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden" value={pct}>
-              <Progress.Indicator
-                className="h-full rounded-full transition-all duration-500"
-                style={{ width: `${pct}%`, background: h.color }}
-              />
-            </Progress.Root>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 function NotesPanel({ notes, onAdd, onDelete, onTogglePin, showInput, setShowInput }: {
   notes: api.Note[]; onAdd: (title: string) => void; onDelete: (id: string) => void;
@@ -853,97 +776,6 @@ function AgentAnalyticsPanel({ analytics, agents }: { analytics: api.AgentAnalyt
   );
 }
 
-function GoalsPanel({ goals, onAdd, showInput, setShowInput }: {
-  goals: api.Goal[]; onAdd: (title: string) => void;
-  showInput: boolean; setShowInput: (v: boolean) => void;
-}) {
-  return (
-    <div>
-      {showInput && <InlineInput placeholder="Set a goal..." onSubmit={onAdd} onCancel={() => setShowInput(false)} />}
-      <div className="flex flex-col gap-3">
-        {goals.map((g) => {
-          const pct = Math.round(g.progress * 100);
-          return (
-            <div key={g.id} className="bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-800 rounded-xl p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-mc-text dark:text-gray-100 flex-1">{g.title}</span>
-                <span className="text-sm font-semibold text-mc-accent ml-2">{pct}%</span>
-              </div>
-              <Progress.Root className="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden" value={pct}>
-                <Progress.Indicator
-                  className="h-full rounded-full transition-all duration-500 ease-out"
-                  style={{ width: `${pct}%`, background: pct >= 75 ? '#059669' : pct >= 40 ? '#d97706' : '#2563eb' }}
-                />
-              </Progress.Root>
-              {g.key_results.length > 0 && (
-                <div className="mt-3 flex flex-col gap-1.5">
-                  {g.key_results.map((kr) => (
-                    <div key={kr.id} className="flex items-center gap-2 text-xs">
-                      <ChevronRight size={11} className="text-mc-dim shrink-0" />
-                      <span className="text-mc-muted dark:text-gray-500 flex-1 truncate">{kr.title}</span>
-                      <span className="text-mc-dim font-mono">{kr.current_value}/{kr.target_value} {kr.unit}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {(g.tags?.length > 0 || g.target_date) && (
-                <div className="flex gap-1.5 mt-2 items-center">
-                  {g.tags?.map((tag) => <Badge key={tag} variant="warning">{tag}</Badge>)}
-                  {g.target_date && (
-                    <span className="text-[11px] text-mc-dim ml-auto">
-                      Due {new Date(g.target_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-        {goals.length === 0 && !showInput && <EmptyState icon={Target} message="No goals yet" small />}
-      </div>
-    </div>
-  );
-}
-
-function JournalPanel({ entries, onAdd, showInput, setShowInput, onDelete }: {
-  entries: api.JournalEntry[]; onAdd: (content: string) => void;
-  showInput: boolean; setShowInput: (v: boolean) => void; onDelete: (id: string) => void;
-}) {
-  const moodEmoji: Record<string, string> = { great: '😊', good: '🙂', okay: '😐', low: '😔', bad: '😢' };
-  return (
-    <div>
-      {showInput && <InlineInput placeholder="What's on your mind..." onSubmit={onAdd} onCancel={() => setShowInput(false)} />}
-      <div className="flex flex-col gap-2">
-        {entries.slice(0, 5).map((e) => (
-          <div key={e.id} className="bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-800 rounded-lg px-3.5 py-3 hover:shadow-card-hover transition-all group">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1.5">
-                  {e.mood && <span className="text-sm">{moodEmoji[e.mood]}</span>}
-                  <span className="text-xs text-mc-dim dark:text-gray-600 font-medium">
-                    {new Date(e.created_at).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
-                  </span>
-                  {e.energy != null && <Badge variant="default">Energy {e.energy}/5</Badge>}
-                </div>
-                <p className="text-sm text-mc-secondary dark:text-gray-300 leading-relaxed line-clamp-2">{e.content.substring(0, 150)}{e.content.length > 150 ? '...' : ''}</p>
-              </div>
-              <button onClick={() => onDelete(e.id)} className="opacity-0 group-hover:opacity-100 text-mc-dim hover:text-mc-red transition-all cursor-pointer bg-transparent border-none p-0.5 ml-2">
-                <X size={13} />
-              </button>
-            </div>
-            {(e.wins.length > 0 || e.gratitude.length > 0) && (
-              <div className="flex gap-1.5 mt-2">
-                {e.wins.length > 0 && <Badge variant="success">{e.wins.length} wins</Badge>}
-                {e.gratitude.length > 0 && <Badge variant="purple">{e.gratitude.length} gratitude</Badge>}
-              </div>
-            )}
-          </div>
-        ))}
-        {entries.length === 0 && !showInput && <EmptyState icon={PenLine} message="No journal entries" small />}
-      </div>
-    </div>
-  );
-}
 
 function ApprovalsPanel({ approvals, onApprove, onReject }: {
   approvals: api.Approval[]; onApprove: (id: string) => void; onReject: (id: string) => void;
@@ -1037,7 +869,7 @@ function NotificationBell({ notifications, unreadCount, onMarkRead, onMarkAllRea
 
 // ─── Activity Heatmap ────────────────────────────────────
 
-function ActivityHeatmap({ tasks, journal }: { tasks: api.Task[]; journal: api.JournalEntry[] }) {
+function ActivityHeatmap({ tasks }: { tasks: api.Task[] }) {
   const today = new Date();
   const days: { date: string; count: number; level: number }[] = [];
   for (let i = 83; i >= 0; i--) {
@@ -1046,7 +878,6 @@ function ActivityHeatmap({ tasks, journal }: { tasks: api.Task[]; journal: api.J
     const dateStr = d.toISOString().split('T')[0];
     let count = 0;
     count += tasks.filter((t) => t.created_at.startsWith(dateStr)).length;
-    count += journal.filter((j) => j.created_at.startsWith(dateStr)).length;
     const level = count === 0 ? 0 : count <= 2 ? 1 : count <= 5 ? 2 : count <= 10 ? 3 : 4;
     days.push({ date: dateStr, count, level });
   }
@@ -1103,10 +934,7 @@ function CommandPalette({ open, onClose, onAction }: {
   const commands = [
     { label: 'Add Task', key: '/task', Icon: ListTodo },
     { label: 'Add Idea', key: '/idea', Icon: Lightbulb },
-    { label: 'Add Habit', key: '/habit', Icon: Flame },
-    { label: 'Set Goal', key: '/goal', Icon: Target },
-    { label: 'Write Journal', key: '/journal', Icon: PenLine },
-    { label: 'Add Reading', key: '/reading', Icon: BookOpen },
+    { label: 'Add Note', key: '/note', Icon: FileText },
   ];
 
   const filteredCommands = query.startsWith('/')
@@ -1116,7 +944,7 @@ function CommandPalette({ open, onClose, onAction }: {
   const handleSelect = (cmd: typeof commands[0]) => { onAction(cmd.key.slice(1), ''); onClose(); };
 
   const typeIcons: Record<string, React.ElementType> = {
-    task: ListTodo, idea: Lightbulb, reading: BookOpen, goal: Target, journal: PenLine, habit: Flame, project: FolderOpen,
+    task: ListTodo, idea: Lightbulb, project: FolderOpen, note: FileText,
   };
 
   return (
@@ -1216,6 +1044,417 @@ function StatCard({ label, value, accent }: { label: string; value: string | num
   );
 }
 
+// ─── Quick Capture ───────────────────────────────────────
+
+const CAPTURE_PREFIXES: Record<string, { label: string; Icon: React.ElementType }> = {
+  't:': { label: 'Task', Icon: ListTodo },
+  'i:': { label: 'Idea', Icon: Lightbulb },
+  'n:': { label: 'Note', Icon: FileText },
+};
+
+function QuickCapture({ open, onClose, onCapture }: {
+  open: boolean;
+  onClose: () => void;
+  onCapture: (type: string, text: string) => Promise<void>;
+}) {
+  const [input, setInput] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [lastCapture, setLastCapture] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) { setInput(''); setLastCapture(null); setTimeout(() => inputRef.current?.focus(), 50); }
+  }, [open]);
+
+  // Detect type from prefix
+  const detectedPrefix = Object.keys(CAPTURE_PREFIXES).find((p) => input.toLowerCase().startsWith(p));
+  const detected = detectedPrefix ? CAPTURE_PREFIXES[detectedPrefix] : null;
+  const cleanText = detected ? input.slice(detectedPrefix!.length).trim() : input.trim();
+
+  const handleSubmit = async () => {
+    if (!cleanText) return;
+    setSubmitting(true);
+    try {
+      const type = detected ? detectedPrefix!.charAt(0) : 't'; // default to task
+      await onCapture(type, cleanText);
+      const label = detected?.label || 'Task';
+      setLastCapture(`${label} added: ${cleanText.slice(0, 50)}`);
+      setInput('');
+      setTimeout(() => inputRef.current?.focus(), 50);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog.Root open={open} onOpenChange={(v) => !v && onClose()}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 bg-black/20 dark:bg-black/50 backdrop-blur-sm z-50" />
+        <Dialog.Content className="fixed top-[18vh] left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-lg bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-700 rounded-xl shadow-dropdown overflow-hidden z-50">
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-mc-border dark:border-gray-800">
+            <Zap size={16} className="text-mc-accent" />
+            <input
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Quick capture — type t: i: n: or just text..."
+              className="flex-1 bg-transparent text-sm text-mc-text dark:text-gray-200 outline-none placeholder:text-mc-dim"
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') onClose();
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); }
+              }}
+            />
+            {submitting && <Loader2 size={14} className="text-mc-dim animate-spin" />}
+            <kbd className="text-[11px] text-mc-dim border border-mc-border dark:border-gray-700 rounded px-1.5 py-0.5 font-mono">c</kbd>
+          </div>
+          <div className="px-4 py-3">
+            {detected ? (
+              <div className="flex items-center gap-2 text-xs text-mc-muted dark:text-gray-400">
+                <detected.Icon size={13} />
+                <span>Creating <strong className="text-mc-text dark:text-gray-200">{detected.label}</strong></span>
+                {cleanText && <span className="text-mc-dim ml-auto">Enter to save</span>}
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2 text-[11px] text-mc-dim">
+                {Object.entries(CAPTURE_PREFIXES).map(([prefix, { label, Icon }]) => (
+                  <button
+                    key={prefix}
+                    onClick={() => { setInput(prefix + ' '); inputRef.current?.focus(); }}
+                    className="flex items-center gap-1 px-2 py-1 rounded-md bg-mc-subtle dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer border-none"
+                  >
+                    <Icon size={11} />
+                    <span>{prefix}</span>
+                    <span className="text-mc-muted">{label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {lastCapture && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400">
+                <Check size={13} />
+                <span>{lastCapture}</span>
+              </div>
+            )}
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+// ─── Timeline / Gantt View ───────────────────────────────
+
+function TimelineView({ tasks, projects }: { tasks: api.Task[]; projects: api.Project[] }) {
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+
+  // Show tasks with due dates, grouped by project
+  const tasksWithDue = tasks.filter((t) => t.due_date && t.status !== 'done');
+
+  // Build a 4-week window
+  const startDate = new Date(today);
+  startDate.setDate(startDate.getDate() - 3); // start 3 days ago
+  const totalDays = 28;
+  const days: string[] = [];
+  for (let i = 0; i < totalDays; i++) {
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + i);
+    days.push(d.toISOString().split('T')[0]);
+  }
+
+  // Group tasks by project
+  const grouped: Record<string, { project: api.Project | null; tasks: api.Task[] }> = {};
+  for (const t of tasksWithDue) {
+    const key = t.project_id || '_none';
+    if (!grouped[key]) {
+      grouped[key] = { project: projects.find((p) => p.id === t.project_id) || null, tasks: [] };
+    }
+    grouped[key].tasks.push(t);
+  }
+
+  const priorityColors: Record<string, string> = { critical: '#ef4444', high: '#f97316', medium: '#3b82f6', low: '#9ca3af' };
+
+  if (tasksWithDue.length === 0) {
+    return <p className="text-xs text-mc-dim text-center py-4">No tasks with due dates to show on timeline</p>;
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      {/* Header: day labels */}
+      <div className="flex mb-1 min-w-[700px]">
+        <div className="w-28 shrink-0" />
+        {days.map((d) => {
+          const date = new Date(d + 'T00:00:00');
+          const isToday = d === todayStr;
+          const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+          return (
+            <div key={d} className={clsx(
+              'flex-1 text-center text-[9px] py-0.5 min-w-[22px]',
+              isToday ? 'text-mc-accent font-bold' : isWeekend ? 'text-mc-dim/50' : 'text-mc-dim',
+            )}>
+              {date.getDate()}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Rows: one per project group */}
+      {Object.entries(grouped).map(([key, group]) => (
+        <div key={key} className="mb-2">
+          <div className="text-[10px] font-medium text-mc-muted dark:text-gray-500 mb-0.5 px-1">
+            {group.project ? group.project.name : 'No project'}
+          </div>
+          {group.tasks.map((t) => {
+            const dueDateStr = t.due_date!.split('T')[0];
+            const dayIdx = days.indexOf(dueDateStr);
+            const createdStr = t.created_at.split('T')[0];
+            const startIdx = Math.max(0, days.indexOf(createdStr));
+            const endIdx = dayIdx >= 0 ? dayIdx : totalDays - 1;
+            const barStart = Math.min(startIdx, endIdx);
+            const barEnd = endIdx;
+
+            return (
+              <div key={t.id} className="flex items-center min-w-[700px]">
+                <div className="w-28 shrink-0 text-[10px] text-mc-secondary dark:text-gray-400 truncate pr-2">
+                  {t.text.slice(0, 20)}{t.text.length > 20 ? '…' : ''}
+                </div>
+                <div className="flex flex-1 relative h-5">
+                  {days.map((d, i) => (
+                    <div key={d} className={clsx('flex-1 border-r border-mc-border/20 dark:border-gray-800/30 min-w-[22px]', d === todayStr && 'bg-mc-accent/5')} />
+                  ))}
+                  {/* Gantt bar */}
+                  {dayIdx >= 0 && (
+                    <Tooltip.Root>
+                      <Tooltip.Trigger asChild>
+                        <div
+                          className="absolute top-1 h-3 rounded-full opacity-80 hover:opacity-100 transition-opacity"
+                          style={{
+                            left: `${(barStart / totalDays) * 100}%`,
+                            width: `${(Math.max(1, barEnd - barStart + 1) / totalDays) * 100}%`,
+                            background: priorityColors[t.priority] || '#3b82f6',
+                          }}
+                        />
+                      </Tooltip.Trigger>
+                      <Tooltip.Portal>
+                        <Tooltip.Content className="bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-[11px] px-3 py-2 rounded-lg shadow-lg max-w-[250px] z-50" sideOffset={5}>
+                          <div className="font-medium">{t.text}</div>
+                          <div className="text-gray-400 dark:text-gray-600 mt-0.5">Due: {new Date(t.due_date!).toLocaleDateString()}</div>
+                          <div className="text-gray-400 dark:text-gray-600">Priority: {t.priority}</div>
+                          <Tooltip.Arrow className="fill-gray-900 dark:fill-gray-100" />
+                        </Tooltip.Content>
+                      </Tooltip.Portal>
+                    </Tooltip.Root>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+
+      {/* Today marker label */}
+      <div className="flex mt-1 min-w-[700px]">
+        <div className="w-28 shrink-0" />
+        {days.map((d) => (
+          <div key={d} className="flex-1 min-w-[22px] text-center">
+            {d === todayStr && <span className="text-[9px] text-mc-accent font-bold">Today</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
+// ─── Routines Panel ──────────────────────────────────────
+
+function RoutinesPanel({ routines, onComplete, onAdd, showInput, setShowInput }: {
+  routines: api.Routine[]; onComplete: (routineId: string, completedItems: string[]) => void;
+  onAdd: (name: string) => void; showInput: boolean; setShowInput: (v: boolean) => void;
+}) {
+  const [checked, setChecked] = useState<Record<string, Set<string>>>({});
+
+  const toggle = (routineId: string, itemId: string) => {
+    setChecked((prev) => {
+      const next = { ...prev };
+      const set = new Set(prev[routineId] || []);
+      if (set.has(itemId)) set.delete(itemId); else set.add(itemId);
+      next[routineId] = set;
+      return next;
+    });
+  };
+
+  const typeIcons: Record<string, string> = { morning: '🌅', evening: '🌙', custom: '📋' };
+
+  return (
+    <div>
+      {showInput && <InlineInput placeholder="Routine name..." onSubmit={onAdd} onCancel={() => setShowInput(false)} />}
+      <div className="flex flex-col gap-3">
+        {routines.map((r) => {
+          const completedSet = checked[r.id] || new Set();
+          const allDone = r.items.length > 0 && completedSet.size === r.items.length;
+          const estMinutes = r.items.reduce((sum, it) => sum + (it.duration_minutes || 0), 0);
+          return (
+            <div key={r.id} className="bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-800 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">{typeIcons[r.routine_type] || '📋'}</span>
+                  <span className="text-sm font-semibold text-mc-text dark:text-gray-100">{r.name}</span>
+                  <Badge variant={r.routine_type === 'morning' ? 'warning' : r.routine_type === 'evening' ? 'purple' : 'default'}>
+                    {r.routine_type}
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-2">
+                  {estMinutes > 0 && (
+                    <span className="text-[11px] text-mc-dim flex items-center gap-1">
+                      <Clock size={10} /> {estMinutes}m
+                    </span>
+                  )}
+                  <span className="text-[11px] text-mc-dim">{completedSet.size}/{r.items.length}</span>
+                </div>
+              </div>
+              {r.items.length > 0 && (
+                <div className="flex flex-col gap-1">
+                  {r.items.map((item) => {
+                    const isDone = completedSet.has(item.id);
+                    return (
+                      <div key={item.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-mc-subtle dark:hover:bg-gray-800 transition-colors">
+                        <Checkbox.Root
+                          checked={isDone}
+                          onCheckedChange={() => toggle(r.id, item.id)}
+                          className={clsx(
+                            'w-[16px] h-[16px] rounded border-2 flex items-center justify-center transition-all cursor-pointer shrink-0',
+                            isDone ? 'bg-emerald-500 border-emerald-500' : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 hover:border-emerald-400',
+                          )}
+                        >
+                          <Checkbox.Indicator>
+                            <Check size={10} className="text-white" strokeWidth={3} />
+                          </Checkbox.Indicator>
+                        </Checkbox.Root>
+                        <span className={clsx('text-sm flex-1', isDone ? 'text-mc-dim line-through' : 'text-mc-secondary dark:text-gray-300')}>
+                          {item.text}
+                        </span>
+                        {item.duration_minutes && (
+                          <span className="text-[10px] text-mc-dim">{item.duration_minutes}m</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {allDone && r.items.length > 0 && (
+                <button
+                  onClick={() => { onComplete(r.id, Array.from(completedSet)); setChecked((prev) => ({ ...prev, [r.id]: new Set() })); }}
+                  className="mt-2 w-full py-1.5 rounded-lg text-xs font-medium bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 transition-colors cursor-pointer"
+                >
+                  <Check size={12} className="inline mr-1" /> Complete Routine
+                </button>
+              )}
+              {r.items.length === 0 && (
+                <p className="text-xs text-mc-dim text-center py-3">No items yet — add steps via API</p>
+              )}
+            </div>
+          );
+        })}
+        {routines.length === 0 && !showInput && <EmptyState icon={Clock} message="No routines yet" small />}
+      </div>
+    </div>
+  );
+}
+
+// ─── Calendar View ───────────────────────────────────────
+
+function CalendarView({ tasks }: { tasks: api.Task[] }) {
+  const today = new Date();
+  const [viewMonth, setViewMonth] = useState(today.getMonth());
+  const [viewYear, setViewYear] = useState(today.getFullYear());
+
+  const tasksWithDue = tasks.filter((t) => t.due_date);
+
+  const firstDay = new Date(viewYear, viewMonth, 1);
+  const lastDay = new Date(viewYear, viewMonth + 1, 0);
+  const startPad = firstDay.getDay(); // 0=Sun
+  const totalDays = lastDay.getDate();
+
+  const cells: { day: number; tasks: api.Task[] }[] = [];
+  // Padding for days before month starts
+  for (let i = 0; i < startPad; i++) cells.push({ day: 0, tasks: [] });
+  for (let d = 1; d <= totalDays; d++) {
+    const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const dayTasks = tasksWithDue.filter((t) => t.due_date!.startsWith(dateStr));
+    cells.push({ day: d, tasks: dayTasks });
+  }
+
+  const prevMonth = () => {
+    if (viewMonth === 0) { setViewMonth(11); setViewYear(viewYear - 1); }
+    else setViewMonth(viewMonth - 1);
+  };
+  const nextMonth = () => {
+    if (viewMonth === 11) { setViewMonth(0); setViewYear(viewYear + 1); }
+    else setViewMonth(viewMonth + 1);
+  };
+
+  const monthName = new Date(viewYear, viewMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const priorityColors: Record<string, string> = { critical: 'bg-red-500', high: 'bg-orange-400', medium: 'bg-blue-400', low: 'bg-gray-300' };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <button onClick={prevMonth} className="px-2 py-1 rounded text-xs text-mc-muted hover:bg-mc-subtle dark:hover:bg-gray-800 cursor-pointer bg-transparent border-none transition-colors">&lt;</button>
+        <span className="text-sm font-semibold text-mc-text dark:text-gray-100">{monthName}</span>
+        <button onClick={nextMonth} className="px-2 py-1 rounded text-xs text-mc-muted hover:bg-mc-subtle dark:hover:bg-gray-800 cursor-pointer bg-transparent border-none transition-colors">&gt;</button>
+      </div>
+      <div className="grid grid-cols-7 gap-px text-center">
+        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
+          <div key={d} className="text-[10px] text-mc-dim font-medium py-1">{d}</div>
+        ))}
+        {cells.map((cell, idx) => {
+          if (cell.day === 0) return <div key={`pad-${idx}`} />;
+          const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(cell.day).padStart(2, '0')}`;
+          const isToday = dateStr === todayStr;
+          const hasTasks = cell.tasks.length > 0;
+          return (
+            <Tooltip.Root key={idx}>
+              <Tooltip.Trigger asChild>
+                <div className={clsx(
+                  'relative rounded-lg py-1.5 text-xs transition-colors',
+                  isToday ? 'bg-mc-accent text-white font-bold' : hasTasks ? 'bg-blue-50 dark:bg-blue-950 text-mc-text dark:text-gray-200 font-medium' : 'text-mc-secondary dark:text-gray-400 hover:bg-mc-subtle dark:hover:bg-gray-800',
+                )}>
+                  {cell.day}
+                  {hasTasks && (
+                    <div className="flex justify-center gap-0.5 mt-0.5">
+                      {cell.tasks.slice(0, 3).map((t) => (
+                        <span key={t.id} className={clsx('w-1 h-1 rounded-full', priorityColors[t.priority] || 'bg-gray-300')} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </Tooltip.Trigger>
+              {hasTasks && (
+                <Tooltip.Portal>
+                  <Tooltip.Content className="bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-[11px] px-3 py-2 rounded-lg shadow-lg max-w-[220px] z-50" sideOffset={5}>
+                    {cell.tasks.map((t) => (
+                      <div key={t.id} className="flex items-center gap-1.5 py-0.5">
+                        <span className={clsx('w-1.5 h-1.5 rounded-full shrink-0', priorityColors[t.priority])} />
+                        <span className="truncate">{t.text}</span>
+                      </div>
+                    ))}
+                    <Tooltip.Arrow className="fill-gray-900 dark:fill-gray-100" />
+                  </Tooltip.Content>
+                </Tooltip.Portal>
+              )}
+            </Tooltip.Root>
+          );
+        })}
+      </div>
+      {tasksWithDue.length === 0 && (
+        <p className="text-xs text-mc-dim text-center mt-4">No tasks with due dates</p>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Dashboard ──────────────────────────────────────
 
 export default function Dashboard() {
@@ -1224,16 +1463,12 @@ export default function Dashboard() {
   const [agentsList, setAgents] = useState<api.Agent[]>([]);
   const [tasksList, setTasks] = useState<api.Task[]>([]);
   const [ideasList, setIdeas] = useState<api.Idea[]>([]);
-  const [readingList, setReading] = useState<api.ReadingItem[]>([]);
-  const [habitsList, setHabits] = useState<api.Habit[]>([]);
-  const [goalsList, setGoals] = useState<api.Goal[]>([]);
-  const [journalList, setJournal] = useState<api.JournalEntry[]>([]);
   const [approvalsList, setApprovals] = useState<api.Approval[]>([]);
   const [notificationsList, setNotifications] = useState<api.Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [habitAnalytics, setHabitAnalytics] = useState<api.HabitAnalytics | null>(null);
   const [notesList, setNotes] = useState<api.Note[]>([]);
   const [agentAnalytics, setAgentAnalytics] = useState<api.AgentAnalyticsOverview | null>(null);
+  const [routinesList, setRoutines] = useState<api.Routine[]>([]);
   const [healthStatus, setHealth] = useState<api.HealthStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1241,12 +1476,10 @@ export default function Dashboard() {
 
   const [showTaskInput, setShowTaskInput] = useState(false);
   const [showIdeaInput, setShowIdeaInput] = useState(false);
-  const [showReadingInput, setShowReadingInput] = useState(false);
-  const [showHabitInput, setShowHabitInput] = useState(false);
-  const [showGoalInput, setShowGoalInput] = useState(false);
-  const [showJournalInput, setShowJournalInput] = useState(false);
   const [showNoteInput, setShowNoteInput] = useState(false);
+  const [showRoutineInput, setShowRoutineInput] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [showQuickCapture, setShowQuickCapture] = useState(false);
 
   const router = useRouter();
 
@@ -1276,15 +1509,10 @@ export default function Dashboard() {
           case 'gd': router.push('/'); return;
           case 'gp': router.push('/projects'); return;
           case 'ga': router.push('/agents'); return;
-          case 'gj': router.push('/journal'); return;
           case 'gs': router.push('/settings'); return;
           case 'nt': e.preventDefault(); setShowTaskInput(true); return;
           case 'ni': e.preventDefault(); setShowIdeaInput(true); return;
           case 'no': e.preventDefault(); setShowNoteInput(true); return;
-          case 'nr': e.preventDefault(); setShowReadingInput(true); return;
-          case 'nh': e.preventDefault(); setShowHabitInput(true); return;
-          case 'ng': e.preventDefault(); setShowGoalInput(true); return;
-          case 'nj': e.preventDefault(); setShowJournalInput(true); return;
         }
         return;
       }
@@ -1296,6 +1524,7 @@ export default function Dashboard() {
       }
 
       // Single-key shortcuts
+      if (e.key === 'c') { e.preventDefault(); setShowQuickCapture(true); return; }
       if (e.key === '?') setShowCommandPalette(true);
     };
     window.addEventListener('keydown', handler);
@@ -1304,8 +1533,7 @@ export default function Dashboard() {
 
   const handleCommandAction = (action: string, _value: string) => {
     const map: Record<string, (v: boolean) => void> = {
-      task: setShowTaskInput, idea: setShowIdeaInput, reading: setShowReadingInput,
-      habit: setShowHabitInput, goal: setShowGoalInput, journal: setShowJournalInput, note: setShowNoteInput,
+      task: setShowTaskInput, idea: setShowIdeaInput, note: setShowNoteInput,
     };
     map[action]?.(true);
   };
@@ -1314,27 +1542,23 @@ export default function Dashboard() {
 
   const loadData = useCallback(async () => {
     try {
-      const [p, a, t, i, r, h, hab, g, j, ap, notifs, unread, hAnalytics, aAnalytics, n] = await Promise.all([
+      const [p, a, t, i, h, ap, notifs, unread, aAnalytics, n, rout] = await Promise.all([
         api.projects.list(),
         api.agents.list(),
         api.tasks.list(),
         api.ideas.list(),
-        api.reading.list(),
         api.health.check(),
-        api.habits.list().catch(() => []),
-        api.goals.list().catch(() => []),
-        api.journal.list().catch(() => []),
         api.approvals.list().catch(() => []),
         api.notifications.list().catch(() => []),
         api.notifications.unreadCount().catch(() => ({ unread: 0 })),
-        api.habits.analytics().catch(() => null),
         api.agentAnalytics.overview().catch(() => null),
         api.notes.list().catch(() => []),
+        api.routines.list().catch(() => []),
       ]);
-      setProjects(p); setAgents(a); setTasks(t); setIdeas(i); setReading(r); setHealth(h);
-      setHabits(hab); setGoals(g); setJournal(j); setApprovals(ap);
-      setNotifications(notifs); setUnreadCount(unread.unread); setHabitAnalytics(hAnalytics);
-      setAgentAnalytics(aAnalytics); setNotes(n);
+      setProjects(p); setAgents(a); setTasks(t); setIdeas(i); setHealth(h);
+      setApprovals(ap);
+      setNotifications(notifs); setUnreadCount(unread.unread);
+      setAgentAnalytics(aAnalytics); setNotes(n); setRoutines(rout);
       setError(null);
     } catch (e: any) {
       setError(e.message || 'Failed to connect to backend');
@@ -1348,7 +1572,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     const ws = api.connectWebSocket((event) => {
-      if (['agent.', 'task.', 'idea.', 'approval.', 'journal.', 'goal.', 'notification.', 'habit.'].some((p) => event.type.startsWith(p))) {
+      if (['agent.', 'task.', 'idea.', 'approval.', 'notification.'].some((p) => event.type.startsWith(p))) {
         loadData();
       }
     });
@@ -1366,32 +1590,31 @@ export default function Dashboard() {
   const updateTask = async (id: string, data: Partial<api.Task>) => {
     await api.tasks.update(id, data); loadData();
   };
-  const toggleReading = async (id: string) => {
-    const item = readingList.find((r) => r.id === id); if (!item) return;
-    await api.reading.update(id, { is_read: !item.is_read }); loadData();
-  };
-  const toggleHabit = async (id: string) => {
-    const habit = habitsList.find((h) => h.id === id); if (!habit) return;
-    try { if (habit.completed_today) await api.habits.uncomplete(id); else await api.habits.complete(id); loadData(); } catch {}
-  };
-
   const addTask = async (text: string) => { await api.tasks.create({ text }); setShowTaskInput(false); loadData(); };
   const addIdea = async (text: string) => { await api.ideas.create({ text }); setShowIdeaInput(false); loadData(); };
-  const addReading = async (text: string) => {
-    const isUrl = text.startsWith('http');
-    await api.reading.create({ title: text, url: isUrl ? text : undefined });
-    setShowReadingInput(false); loadData();
-  };
-  const addHabit = async (name: string) => { await api.habits.create({ name }); setShowHabitInput(false); loadData(); };
-  const addGoal = async (title: string) => { await api.goals.create({ title }); setShowGoalInput(false); loadData(); };
-  const addJournal = async (content: string) => { await api.journal.create({ content }); setShowJournalInput(false); loadData(); };
-
   const deleteTask = async (id: string) => { await api.tasks.delete(id); loadData(); };
   const deleteIdea = async (id: string) => { await api.ideas.delete(id); loadData(); };
-  const deleteReading = async (id: string) => { await api.reading.delete(id); loadData(); };
-  const deleteJournal = async (id: string) => { await api.journal.delete(id); loadData(); };
   const addNote = async (title: string) => { await api.notes.create({ title }); setShowNoteInput(false); loadData(); };
   const deleteNote = async (id: string) => { await api.notes.delete(id); loadData(); };
+  const reorderTasks = async (taskIds: string[]) => { await api.taskReorder.reorder(taskIds); loadData(); };
+
+  const handleQuickCapture = async (type: string, text: string) => {
+    const handlers: Record<string, (text: string) => Promise<void>> = {
+      t: async (t) => { await api.tasks.create({ text: t }); },
+      i: async (t) => { await api.ideas.create({ text: t }); },
+      n: async (t) => { await api.notes.create({ title: t }); },
+    };
+    await (handlers[type] || handlers.t)(text);
+    loadData();
+  };
+  const addRoutine = async (name: string) => {
+    await api.routines.create({ name, routine_type: 'custom' });
+    setShowRoutineInput(false); loadData();
+  };
+  const completeRoutine = async (routineId: string, completedItems: string[]) => {
+    await api.routines.complete(routineId, completedItems); loadData();
+  };
+
   const toggleNotePin = async (id: string) => {
     const note = notesList.find((n) => n.id === id); if (!note) return;
     await api.notes.update(id, { is_pinned: !note.is_pinned }); loadData();
@@ -1406,8 +1629,6 @@ export default function Dashboard() {
   const runningAgents = agentsList.filter((a) => a.status === 'running').length;
   const activeProjects = projectsList.filter((p) => p.status === 'active').length;
   const openTasks = tasksList.filter((t) => t.status !== 'done').length;
-  const activeGoals = goalsList.filter((g) => g.status === 'active').length;
-  const todayHabits = habitsList.filter((h) => h.completed_today).length;
 
   if (loading) {
     return (
@@ -1457,8 +1678,6 @@ export default function Dashboard() {
               <StatCard label="Projects" value={activeProjects} accent />
               <StatCard label="Agents" value={`${runningAgents}/${agentsList.length}`} accent={runningAgents > 0} />
               <StatCard label="Tasks" value={openTasks} />
-              <StatCard label="Habits" value={`${todayHabits}/${habitsList.length}`} accent={todayHabits === habitsList.length && habitsList.length > 0} />
-              <StatCard label="Goals" value={activeGoals} />
             </div>
             <div className="text-sm text-mc-muted dark:text-gray-500 font-mono tabular-nums hidden md:block">
               {now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
@@ -1491,25 +1710,18 @@ export default function Dashboard() {
                 <TasksPanel
                   tasks={tasksList} projects={projectsList} onToggle={toggleTask} onUpdate={updateTask}
                   onAdd={addTask} showInput={showTaskInput} setShowInput={setShowTaskInput} onDelete={deleteTask}
+                  onReorder={reorderTasks}
                 />
               </Card>
 
               <div className="flex flex-col gap-4 sm:gap-6">
                 <Card className="p-4">
-                  <SectionHeader icon={Flame} title="Habits" count={habitsList.length} onAdd={() => setShowHabitInput(true)} />
-                  <HabitsPanel habits={habitsList} onToggle={toggleHabit} onAdd={addHabit} showInput={showHabitInput} setShowInput={setShowHabitInput} />
-                </Card>
-                <Card className="p-4">
-                  <SectionHeader icon={Target} title="Goals" count={activeGoals} onAdd={() => setShowGoalInput(true)} />
-                  <GoalsPanel goals={goalsList} onAdd={addGoal} showInput={showGoalInput} setShowInput={setShowGoalInput} />
+                  <SectionHeader icon={Clock} title="Routines" count={routinesList.length} onAdd={() => setShowRoutineInput(true)} />
+                  <RoutinesPanel routines={routinesList} onComplete={completeRoutine} onAdd={addRoutine} showInput={showRoutineInput} setShowInput={setShowRoutineInput} />
                 </Card>
               </div>
 
               <div className="flex flex-col gap-4 sm:gap-6">
-                <Card className="p-4">
-                  <SectionHeader icon={PenLine} title="Journal" count={journalList.length} onAdd={() => setShowJournalInput(true)} />
-                  <JournalPanel entries={journalList} onAdd={addJournal} showInput={showJournalInput} setShowInput={setShowJournalInput} onDelete={deleteJournal} />
-                </Card>
                 <Card className="p-4">
                   <SectionHeader icon={Lightbulb} title="Ideas" count={ideasList.length} onAdd={() => setShowIdeaInput(true)} />
                   <IdeasPanel ideas={ideasList} onAdd={addIdea} showInput={showIdeaInput} setShowInput={setShowIdeaInput} onDelete={deleteIdea} />
@@ -1518,23 +1730,27 @@ export default function Dashboard() {
                   <SectionHeader icon={FileText} title="Notes" count={notesList.length} onAdd={() => setShowNoteInput(true)} />
                   <NotesPanel notes={notesList} onAdd={addNote} onDelete={deleteNote} onTogglePin={toggleNotePin} showInput={showNoteInput} setShowInput={setShowNoteInput} />
                 </Card>
-                <Card className="p-4">
-                  <SectionHeader icon={BookOpen} title="Reading List" count={readingList.filter((r) => !r.is_read).length} onAdd={() => setShowReadingInput(true)} />
-                  <ReadingPanel items={readingList} onToggle={toggleReading} onAdd={addReading} showInput={showReadingInput} setShowInput={setShowReadingInput} onDelete={deleteReading} />
-                </Card>
               </div>
             </div>
 
-            {/* Bottom Row: Analytics + Activity + Costs */}
+            {/* Timeline Row */}
+            {tasksList.some((t) => t.due_date && t.status !== 'done') && (
+              <Card className="p-4">
+                <SectionHeader icon={GitBranch} title="Timeline" count={tasksList.filter((t) => t.due_date && t.status !== 'done').length} />
+                <TimelineView tasks={tasksList} projects={projectsList} />
+              </Card>
+            )}
+
+            {/* Bottom Row: Calendar + Activity + Agent Analytics */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
               <Card className="p-4">
-                <SectionHeader icon={TrendingUp} title="Habit Analytics" count={habitsList.length} />
-                <HabitAnalyticsPanel analytics={habitAnalytics} />
+                <SectionHeader icon={Calendar} title="Calendar" count={tasksList.filter((t) => t.due_date).length} />
+                <CalendarView tasks={tasksList} />
               </Card>
 
               <Card className="p-4">
-                <SectionHeader icon={Activity} title="Activity" count={tasksList.length + journalList.length} />
-                <ActivityHeatmap tasks={tasksList} journal={journalList} />
+                <SectionHeader icon={Activity} title="Activity" count={tasksList.length} />
+                <ActivityHeatmap tasks={tasksList} />
               </Card>
 
               <Card className="p-4">
@@ -1546,6 +1762,7 @@ export default function Dashboard() {
         </main>
 
         <CommandPalette open={showCommandPalette} onClose={() => setShowCommandPalette(false)} onAction={handleCommandAction} />
+        <QuickCapture open={showQuickCapture} onClose={() => setShowQuickCapture(false)} onCapture={handleQuickCapture} />
       </div>
     </Tooltip.Provider>
   );

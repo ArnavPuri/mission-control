@@ -7,6 +7,7 @@
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> ·
+  <a href="docs/cost-and-requirements.md">Cost & Requirements</a> ·
   <a href="ROADMAP.md">Roadmap</a> ·
   <a href="CONTRIBUTING.md">Contributing</a> ·
   <a href="#creating-agents">Agents</a>
@@ -20,25 +21,29 @@ Mission Control is an open-source personal productivity system powered by AI age
 
 **Built with:** Python/FastAPI · Next.js · PostgreSQL + pgvector · Claude Agent SDK
 
-### What's included (v0.3)
+### What's included (v0.6 — 99/145 features)
 
-- **19 database tables** — Projects, tasks, ideas, reading list, habits, goals, journal, notes, and more
-- **9 AI agents** — Reddit Scout, Idea Validator, Weekly Prioritizer, Daily Check-in, Goal Decomposer, Evening Reflection, Weekly Review, and more
-- **5-page dashboard** — Dashboard, Projects, Agents, Journal, Settings with Kanban board, bulk actions, keyboard shortcuts
-- **4 input channels** — Telegram bot (11 commands + chat), Discord bot, MCP server (17 tools), REST API
+- **10 AI agents** — Daily Standup, Reddit Scout, Idea Validator, Weekly Prioritizer, Weekly Review, Web Researcher, Code Reviewer, Opportunity Scout, Content Drafter, Competitor Monitor
+- **5-page dashboard** — Dashboard, Projects, Agents, Notes, Settings with Kanban board, calendar, timeline/Gantt, drag-and-drop, bulk actions, keyboard shortcuts
+- **4 input channels** — Telegram bot, Discord bot, MCP server (17 tools), REST API + push notifications
 - **Multi-auth** — Anthropic API, OAuth, OpenRouter, Ollama (fully local)
-- **Agent intelligence** — Memory, chaining, conditional triggers, approval queue, auto-tagging, analytics
+- **Agent intelligence** — Memory, chaining, workflow DAGs, self-evaluation, time-aware context, conditional triggers, approval queue, auto-tagging, smart prioritization, analytics, versioning, A/B testing
+- **Agent marketplace** — Gallery with 8 categories, search, one-click install, ratings, pipeline builder
+- **Budget management** — Per-agent limits (daily/weekly/monthly), spending history, pre-run checks, alerts
+- **Productivity suite** — Notes (markdown), routines builder, calendar view, timeline/Gantt, quick capture, deduplication
+- **Platform** — Rate limiting, webhook templates, user pattern learning, detailed health diagnostics, backup/restore
 - **Full test suites** — 14 backend (pytest) + 21 frontend (Vitest) tests
 
 ```
 ┌──────────────────┐     ┌──────────────┐     ┌──────────────┐
 │  Telegram         │────▶│  Orchestrator │────▶│  Agent Pool   │
-│  Discord          │     │  (scheduler)  │     │  (9 agents)   │
-│  MCP / Claude Code│     └──────┬───────┘     └──────┬───────┘
-│  REST API         │            │                     │
+│  Discord          │     │  (scheduler)  │     │  (10 agents)  │
+│  MCP / Claude Code│     │  + Workflows  │     │  + DAGs       │
+│  REST API         │     └──────┬───────┘     └──────┬───────┘
+│  Push Notifs      │            │                     │
 └──────────────────┘      ┌─────▼─────────────────────▼──────┐
                           │       PostgreSQL + pgvector       │
-                          │  19 tables · event log · vectors  │
+                          │  25 tables · event log · vectors  │
                           └──────────────┬──────────────────┘
                                          │
                                   ┌──────▼──────┐
@@ -164,13 +169,13 @@ The Next.js dashboard includes 5 pages:
 
 | Page | Features |
 |------|----------|
-| **Dashboard** | Task list + Kanban board, ideas, reading, habits, goals, activity heatmap, agent status |
-| **Projects** | Project list with per-project dashboards (tasks, goals, agents, notes) |
-| **Agents** | Agent overview, per-agent detail with schedule, cost charts, recent runs |
-| **Journal** | Timeline grouped by date, mood tracking, wins/challenges/gratitude |
-| **Settings** | System status, API key management, GitHub repos, RSS feeds |
+| **Dashboard** | Tasks (drag-and-drop + Kanban), ideas, notes (markdown), routines, calendar, timeline/Gantt, activity heatmap, agent analytics |
+| **Projects** | Project list with health scores, per-project dashboards (tasks, goals, agents, notes) |
+| **Agents** | Agent overview, per-agent detail with schedule, cost charts, recent runs, workflow DAGs |
+| **Journal** | Timeline grouped by date, mood tracking, wins/challenges/gratitude, semantic search |
+| **Settings** | System status, API key management, GitHub repos, RSS feeds, push notifications |
 
-**Power user features:** Vim-style keyboard shortcuts (`g+d/p/a/j/s` nav, `n+t/i/o` create), command palette (`Cmd+K`), bulk task actions, dark/light mode.
+**Power user features:** Vim-style keyboard shortcuts (`g+d/p/a/j/s` nav, `n+t/i/o` create), command palette (`Cmd+K`), quick capture (`c`), bulk task actions, drag-and-drop reordering, dark/light mode.
 
 ---
 
@@ -203,21 +208,21 @@ cd backend && alembic revision --autogenerate -m "description"
 mission-control/
 ├── docker-compose.yml
 ├── .env.example
-├── ROADMAP.md                   # Full roadmap (51/145 features, 35%)
+├── ROADMAP.md                   # Full roadmap (65/145 features, 45%)
 ├── CONTRIBUTING.md              # How to contribute
 ├── backend/
 │   ├── pyproject.toml
 │   ├── alembic.ini
 │   ├── app/
-│   │   ├── main.py              # FastAPI application
+│   │   ├── main.py              # FastAPI application (39 routers)
 │   │   ├── config.py            # Settings + multi-auth
 │   │   ├── db/
-│   │   │   ├── models.py        # 19 SQLAlchemy models
+│   │   │   ├── models.py        # 25 SQLAlchemy models
 │   │   │   ├── session.py       # DB connection
 │   │   │   ├── seed.py          # Example data for new installs
-│   │   │   └── migrations/      # Alembic migrations
-│   │   ├── api/                 # REST endpoints (12 routers)
-│   │   ├── orchestrator/        # Agent execution + scheduling
+│   │   │   └── migrations/      # Alembic migrations (6 versions)
+│   │   ├── api/                 # REST endpoints (39 routers)
+│   │   ├── orchestrator/        # Agent execution + scheduling + workflows + self-eval + A/B + budget
 │   │   ├── agents/              # YAML skill loader
 │   │   └── integrations/        # Telegram, Discord, MCP
 │   ├── skills/                  # Agent YAML definitions
@@ -240,16 +245,16 @@ mission-control/
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for the full roadmap. Current progress: **51/145 features (35%)**.
+See [ROADMAP.md](ROADMAP.md) for the full roadmap. Current progress: **99/145 features (68%)**.
 
 | Phase | Progress |
 |-------|----------|
-| Foundation Hardening | 53% |
-| Intelligence Layer | 54% |
-| Personal Productivity | 52% |
-| Dashboard 2.0 | 83% |
-| Integrations | 39% |
-| Multi-Agent Intelligence | 13% |
+| Foundation Hardening | 87% |
+| Intelligence Layer | **100%** |
+| Personal Productivity | 65% |
+| Dashboard 2.0 | **100%** |
+| Integrations | 50% |
+| Multi-Agent Intelligence | **100%** |
 | Privacy & Scale | 0% |
 | Mobile & Desktop | 0% |
 | Community | 0% |

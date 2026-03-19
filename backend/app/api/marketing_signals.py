@@ -107,6 +107,19 @@ async def create_signal(data: SignalCreate, db: AsyncSession = Depends(get_db)):
     )
     db.add(event)
     await broadcast("signal.created", {"id": str(signal.id), "title": signal.title})
+
+    # Evaluate conditional triggers
+    try:
+        from app.api.triggers import evaluate_triggers
+        await evaluate_triggers("signal", "created", {
+            "title": signal.title, "source_type": signal.source_type,
+            "signal_type": signal.signal_type, "relevance_score": signal.relevance_score,
+            "tags": signal.tags or [],
+        }, db)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Trigger evaluation failed: {e}")
+
     return _serialize(signal)
 
 

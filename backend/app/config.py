@@ -7,6 +7,8 @@ Supports multiple LLM auth methods:
   3. OPENROUTER_API_KEY / OLLAMA_BASE_URL (alternative providers)
 """
 
+import re
+from pathlib import Path
 from pydantic_settings import BaseSettings
 from pydantic import Field
 from enum import Enum
@@ -22,6 +24,8 @@ class LLMProvider(str, Enum):
 class Settings(BaseSettings):
     # --- Database ---
     database_url: str = "postgresql+asyncpg://missionctl:missionctl@localhost:5432/missioncontrol"
+    use_sqlite: bool = False  # Set True for zero-config local dev (no Postgres needed)
+    sqlite_path: str = "data/mission_control.db"
     redis_url: str = "redis://localhost:6379/0"
 
     # --- LLM Auth (multiple options) ---
@@ -47,8 +51,31 @@ class Settings(BaseSettings):
     discord_bot_token: str | None = None
     discord_allowed_channels: str | None = None  # comma-separated channel IDs
 
+    # --- Slack ---
+    slack_bot_token: str | None = None
+    slack_app_token: str | None = None  # for Socket Mode (xapp-...)
+
     # --- GitHub ---
     github_token: str | None = None  # for API access (optional, enhances sync)
+
+    # --- Identity ---
+    bot_name: str = "MC"
+    identity_file: str = "workspace/identity.md"
+
+    # --- Email Ingestion ---
+    email_webhook_secret: str | None = None  # Shared secret for inbound email webhooks
+    email_imap_host: str | None = None
+    email_imap_user: str | None = None
+    email_imap_password: str | None = None
+    email_imap_folder: str = "INBOX"
+    email_poll_interval_seconds: int = 300
+
+    # --- Service Integrations ---
+    linear_api_key: str | None = None
+    linear_webhook_secret: str | None = None  # For verifying Linear webhook signatures
+    notion_api_key: str | None = None
+    todoist_api_key: str | None = None
+    openai_api_key: str | None = None  # for Whisper voice transcription
 
     # --- Paths ---
     agent_workdir: str = "/app/workdir"
@@ -58,6 +85,17 @@ class Settings(BaseSettings):
         env_file = "../.env"
         env_file_encoding = "utf-8"
         extra = "ignore"
+
+    @property
+    def effective_database_url(self) -> str:
+        """Return the actual database URL, considering SQLite mode."""
+        if self.use_sqlite or self.database_url.startswith("sqlite"):
+            return f"sqlite+aiosqlite:///{self.sqlite_path}"
+        return self.database_url
+
+    @property
+    def is_sqlite(self) -> bool:
+        return self.use_sqlite or self.database_url.startswith("sqlite")
 
     @property
     def llm_provider(self) -> LLMProvider:
@@ -86,6 +124,34 @@ class Settings(BaseSettings):
         if not self.telegram_allowed_users:
             return []
         return [int(uid.strip()) for uid in self.telegram_allowed_users.split(",") if uid.strip()]
+
+
+    @property
+    def identity(self) -> str:
+        """Load user identity from workspace/identity.md."""
+        for search_path in [self.identity_file, f"../{self.identity_file}"]:
+            path = Path(search_path)
+            if path.exists():
+                return path.read_text().strip()
+        return ""
+
+    @property
+    def bot_personality(self) -> dict:
+        """Extract bot personality fields from identity file."""
+        text = self.identity
+        if not text:
+            return {"name": self.bot_name, "tone": "", "style": ""}
+
+        result = {"name": self.bot_name, "tone": "", "style": ""}
+        for line in text.split("\n"):
+            line = line.strip()
+            if line.lower().startswith("name:"):
+                result["name"] = line.split(":", 1)[1].strip()
+            elif line.lower().startswith("tone:"):
+                result["tone"] = line.split(":", 1)[1].strip()
+            elif line.lower().startswith("style:"):
+                result["style"] = line.split(":", 1)[1].strip()
+        return result
 
 
 settings = Settings()

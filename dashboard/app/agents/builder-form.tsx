@@ -20,8 +20,8 @@ function slugify(name: string): string {
 // ─── Data Access Options ─────────────────────────────────
 
 const DATA_OPTIONS = [
-  'projects', 'tasks', 'ideas', 'reading', 'habits',
-  'goals', 'journal', 'marketing_signals', 'marketing_content',
+  'projects', 'tasks', 'ideas', 'notes',
+  'marketing_signals', 'marketing_content',
 ] as const;
 
 const TOOL_OPTIONS = ['web_search', 'bash', 'write'] as const;
@@ -37,10 +37,7 @@ const VARIABLE_MAP: Record<string, string> = {
   projects: '{{projects}}',
   tasks: '{{tasks}}',
   ideas: '{{ideas}}',
-  reading: '{{reading}}',
-  habits: '{{habits}}',
-  goals: '{{goals}}',
-  journal: '{{journal}}',
+  notes: '{{notes}}',
   marketing_signals: '{{marketing_signals}}',
   marketing_content: '{{marketing_content}}',
 };
@@ -49,10 +46,7 @@ const PREVIEW_MAP: Record<string, string> = {
   projects: '[3 projects]',
   tasks: '[5 tasks]',
   ideas: '[2 ideas]',
-  reading: '[4 reading items]',
-  habits: '[3 habits]',
-  goals: '[2 goals]',
-  journal: '[1 journal entry]',
+  notes: '[5 notes]',
   marketing_signals: '[6 signals]',
   marketing_content: '[3 content pieces]',
 };
@@ -96,7 +90,7 @@ Focus on threads from the last 24 hours. Prioritize high-engagement threads.`,
   },
   {
     name: 'Daily Check-in',
-    description: 'Morning review of tasks, habits, and goals with a summary and suggested focus.',
+    description: 'Morning review of tasks and projects with a summary and suggested focus.',
     category: 'productivity',
     icon: 'Sun',
     defaults: {
@@ -105,17 +99,16 @@ Focus on threads from the last 24 hours. Prioritize high-engagement threads.`,
       model: 'claude-haiku-4-5',
       max_budget_usd: 0.10,
       tools: [],
-      data_reads: ['tasks', 'habits', 'goals'],
+      data_reads: ['tasks', 'projects', 'notes'],
       data_writes: [],
       schedule_type: 'cron',
       schedule_value: '0 9 * * *',
-      prompt_template: `You are a daily check-in assistant. Every morning, review the current state of tasks, habits, and goals.
+      prompt_template: `You are a daily check-in assistant. Every morning, review the current state of tasks and projects.
 
 Produce a brief summary covering:
 1. Tasks due today or overdue
-2. Habit streaks at risk (not completed yesterday)
-3. Goals with upcoming deadlines
-4. Suggested top 3 focus items for today
+2. Projects that need attention
+3. Suggested top 3 focus items for today
 
 Keep it concise and actionable.`,
       config: { requires_approval: false, max_actions: 5 },

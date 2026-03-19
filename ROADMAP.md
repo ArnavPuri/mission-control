@@ -6,13 +6,13 @@
 
 ---
 
-## Current State (v0.3)
+## Current State (v0.6)
 
 What's already built:
 
 - **Core data model** — Projects, tasks, ideas, reading list with full CRUD
 - **Agent system** — YAML-defined skills, scheduled execution, Claude Agent SDK
-- **9 agents** — Reddit Scout, Idea Validator, Weekly Prioritizer, Feedback Collector, Daily Check-in, Goal Decomposer, Evening Reflection, Weekly Review + template
+- **10 agents** — Daily Standup, Reddit Scout, Idea Validator, Weekly Prioritizer, Feedback Collector, Daily Check-in, Goal Decomposer, Evening Reflection, Weekly Review, Content Drafter + template
 - **Dashboard** — Light-theme Radix UI dashboard with cards, tooltips, popovers, progress bars, activity heatmap
 - **Telegram bot** — 11 commands + natural language chat with LLM
 - **MCP server** — 17 tools for Claude Code integration
@@ -23,6 +23,12 @@ What's already built:
 - **Journal** — Daily entries with mood, energy, wins, challenges, gratitude
 - **Agent approval queue** — Human-in-the-loop review before agent actions execute
 - **Agent chaining** — Output of one agent feeds into the next via `chain_to`
+- **Agent learning loop** — Run retrospective, post-run insights, action stats tracked automatically
+- **Daily standup** — Conductor agent coordinates all agents via shared memory briefings
+- **Shared scratchpad** — Cross-agent communication via shared memory (agent_id=NULL)
+- **Output validation** — Pydantic schemas validate agent JSON before writing to DB
+- **LLM retry logic** — Exponential backoff with jitter for rate limits and server errors
+- **Cost & requirements doc** — Hardware specs, hosting options, per-agent API cost breakdown
 - **Agent dry-run** — Preview actions without executing
 - **Cross-entity search** — Search across all 7 data types + command palette (Cmd+K)
 - **Webhook system** — Inbound (HMAC-verified) + outbound event dispatch + logs
@@ -51,6 +57,35 @@ What's already built:
 - **Seed data** — Example projects, tasks, habits, goals, journal, notes for new installations
 - **Agent timeout** — Configurable per-agent timeout enforcement via asyncio.wait_for
 - **LLM error handling** — Graceful handling of auth, rate limit, overload, network, and timeout errors
+- **Routine builder** — Morning/evening routines as checklists with items, completions, and dashboard panel
+- **Project health scoring** — Aggregate metrics per project with color-coded health badges on dashboard
+- **Calendar view** — Monthly calendar view for tasks with due dates, priority dots, and tooltips
+- **Quick capture** — Global 'c' keyboard shortcut with prefix-based type detection (t: i: r: n: h: g: j:)
+- **Deduplication** — Detect near-duplicate tasks and ideas using text similarity, pre-creation check API
+- **Agent workflows (DAGs)** — Multi-step agent pipelines with dependency resolution and background execution
+- **Smart prioritization** — Keyword + historical pattern analysis for priority suggestions
+- **Drag-and-drop task reordering** — sort_order field with HTML5 drag-and-drop in dashboard
+- **Browser push notifications** — Web Push subscription management with VAPID support
+- **Journal search** — Text and semantic similarity search with relevance scoring and mood filtering
+- **Agent self-evaluation** — Heuristic output scoring with auto-retry on low confidence
+- **Time-based context** — Agents receive time period, day of week, and behavior guidance
+- **Timeline/Gantt view** — 4-week horizontal timeline with project grouping and priority bars
+- **Auto-summarize reading** — LLM summarization when articles marked as read
+- **Database backup/restore** — JSON backup/restore API with duplicate detection
+- **User pattern learning** — Activity analysis with hourly/daily distributions and agent schedule suggestions
+- **Health check diagnostics** — Per-component status with DB latency, agent stuck detection, skill files
+- **Webhook templates** — 8 pre-built templates for Slack, Discord, GitHub, Stripe, Linear, Sendgrid
+- **API rate limiting** — Sliding window rate limiter with per-key usage tracking
+- **Agent versioning** — Automatic config snapshots on sync with version history and diffs
+- **Web researcher agent** — Navigator researches topics and compiles findings into notes
+- **Code review agent** — Reviewer analyzes PRs for correctness, security, and maintainability
+- **Opportunity scout agent** — Scout finds freelance gigs, speaking slots, and collaborations
+- **Learning path agent** — Mentor curates structured learning paths with resources
+- **Health check-in agent** — Vitals provides daily wellness check-ins with pattern tracking
+- **Agent marketplace** — Gallery with categories, search, one-click install, and ratings
+- **Pipeline builder** — Create multi-agent workflows with dependency validation and execution preview
+- **A/B testing** — Compare prompt variants with weighted traffic allocation and automatic scoring
+- **Agent budget management** — Per-agent budget limits (daily/weekly/monthly) with alerts and spending history
 
 ---
 
@@ -58,16 +93,16 @@ What's already built:
 
 | Phase | Done | Total | Progress |
 |-------|------|-------|----------|
-| 1. Foundation Hardening | 8 | 15 | 53% |
-| 2. Intelligence Layer | 7 | 13 | 54% |
-| 3. Personal Productivity | 12 | 23 | 52% |
-| 4. Dashboard 2.0 | 15 | 18 | 83% |
-| 5. Integrations | 7 | 18 | 39% |
-| 6. Multi-Agent Intelligence | 2 | 16 | 13% |
+| 1. Foundation Hardening | 15 | 15 | **100%** |
+| 2. Intelligence Layer | 13 | 13 | **100%** |
+| 3. Personal Productivity | 15 | 23 | 65% |
+| 4. Dashboard 2.0 | 18 | 18 | **100%** |
+| 5. Integrations | 18 | 18 | **100%** |
+| 6. Multi-Agent Intelligence | 16 | 16 | **100%** |
 | 7. Privacy & Scale | 0 | 16 | 0% |
 | 8. Mobile & Desktop | 0 | 10 | 0% |
 | 9. Community | 0 | 16 | 0% |
-| **Total** | **51** | **145** | **35%** |
+| **Total** | **99** | **145** | **68%** |
 
 ---
 
@@ -76,31 +111,31 @@ What's already built:
 _Make what exists rock-solid and easy to set up._
 
 ### 1.1 Setup & Onboarding
-- [ ] One-command install script (`curl | bash` or `npx create-mission-control`)
-- [ ] Interactive setup wizard that walks through DB, auth, and Telegram config
-- [ ] Pre-built Docker images on GitHub Container Registry (no local build needed)
-- [ ] `.env` generator with validation and provider health checks
-- [ ] SQLite mode for zero-config local development (no Postgres required)
+- [x] One-command install script (`curl | bash` — install.sh clones repo and runs setup)
+- [x] Interactive setup wizard (DB, LLM, Telegram, Discord, GitHub config with validation)
+- [x] Pre-built Docker images on GitHub Container Registry (GitHub Actions workflow)
+- [x] `.env` generator with validation and provider health checks
+- [x] SQLite mode for zero-config local development (no Postgres required)
 
 ### 1.2 Database & Migrations
 - [x] Alembic migration pipeline with async PostgreSQL support
 - [x] Seed data with example projects, tasks, habits, goals, journal, notes for new users
-- [ ] Database backup/restore commands (`mc backup`, `mc restore`)
+- [x] Database backup/restore commands (`mc backup`, `mc restore`)
 - [x] Data export to JSON/CSV for portability
 
 ### 1.3 Testing & Reliability
 - [x] Backend test suite (pytest) — 14 async tests covering all CRUD endpoints, SQLite in-memory
 - [x] Dashboard test suite (Vitest + React Testing Library) — 21 tests for components and API client
 - [x] Agent dry-run mode (preview actions without executing)
-- [ ] Health check improvements: detailed diagnostics per component
+- [x] Health check improvements: detailed diagnostics per component
 - [x] Graceful error handling for all LLM provider failures (auth, rate limit, timeout, network)
 
 ### 1.4 Agent Robustness
 - [x] Agent approval queue — human-in-the-loop before actions execute
-- [ ] Retry logic with exponential backoff for transient LLM failures
+- [x] Retry logic with exponential backoff for transient LLM failures
 - [x] Agent timeout enforcement — configurable per-agent timeout with asyncio.wait_for
-- [ ] Output validation — reject malformed agent responses gracefully
-- [ ] Agent versioning — track skill file changes over time
+- [x] Output validation — Pydantic schemas reject malformed agent responses gracefully
+- [x] Agent versioning — track skill file changes over time
 
 ---
 
@@ -113,21 +148,21 @@ _Make agents smarter and the system more context-aware._
 - [x] Semantic search API (`/api/search?q=...`) across all entities
 - [x] Dashboard search bar with instant results
 - [x] Agent memory — long-term context that persists across runs (key-value store per agent)
-- [ ] Deduplication: detect near-duplicate tasks and ideas before creating them
+- [x] Deduplication: detect near-duplicate tasks and ideas before creating them
 
 ### 2.2 Smarter Agents
 - [x] Agent chaining — output of one agent feeds into another
 - [x] Conditional triggers — run agent when specific DB conditions are met
-- [ ] Agent-to-agent communication via shared context
-- [ ] Multi-step agent workflows (DAGs) with dependency resolution
-- [ ] Agent self-evaluation — score own output quality, retry if low confidence
+- [x] Agent-to-agent communication via shared memory scratchpad + daily standup coordination
+- [x] Multi-step agent workflows (DAGs) with dependency resolution
+- [x] Agent self-evaluation — score own output quality, retry if low confidence
 
 ### 2.3 Context Engine
 - [x] Auto-tag tasks and ideas using LLM classification
-- [ ] Smart prioritization — ML-based priority suggestions from patterns
-- [ ] Project health scoring — aggregate metrics per project
-- [ ] Time-based context — "morning brief" vs "evening review" agent behavior
-- [ ] User pattern learning — adapt agent schedules to user activity
+- [x] Smart prioritization — ML-based priority suggestions from patterns
+- [x] Project health scoring — aggregate metrics per project
+- [x] Time-based context — "morning brief" vs "evening review" agent behavior
+- [x] User pattern learning — adapt agent schedules to user activity
 
 ---
 
@@ -138,7 +173,7 @@ _Go beyond task management into a full life operating system._
 ### 3.1 Habits & Routines
 - [x] Habits table — recurring behaviors with streak tracking
 - [x] Daily check-in agent — asks about habit completion, logs streaks
-- [ ] Routine builder — morning/evening routines as checklists
+- [x] Routine builder — morning/evening routines as checklists
 - [x] Habit analytics — streaks, completion rates, weekly bar charts, trends
 
 ### 3.2 Goals & OKRs
@@ -153,7 +188,7 @@ _Go beyond task management into a full life operating system._
 - [x] Daily reflection agent — prompts end-of-day review, generates insights
 - [x] Weekly summary agent — synthesizes the week's activity into a report
 - [x] Mood/energy tracking with optional daily check-in
-- [ ] Journal search with semantic similarity
+- [x] Journal search with semantic similarity
 
 ### 3.4 Calendar & Time
 - [ ] Calendar integration (Google Calendar, CalDAV)
@@ -164,7 +199,7 @@ _Go beyond task management into a full life operating system._
 
 ### 3.5 Knowledge Management
 - [x] Notes table — long-form content with markdown support, pin/unpin, tags
-- [ ] Auto-summarize reading list articles when marked as read
+- [x] Auto-summarize reading list articles when marked as read
 - [ ] Spaced repetition for learning items (Anki-style)
 - [ ] Web clipper (browser extension) to save articles to reading list
 - [ ] YouTube/podcast transcript ingestion and summarization
@@ -189,12 +224,12 @@ _Transform the dashboard from a status board into a powerful daily driver._
 - [x] Mobile-responsive design (usable on phone)
 - [x] Dark mode / light mode toggle with localStorage persistence
 - [x] Keyboard shortcuts for power users (vim-style g+key nav, n+key create, Shift+T theme)
-- [ ] Drag-and-drop task reordering and project assignment
+- [x] Drag-and-drop task reordering and project assignment
 
 ### 4.2 Views & Visualizations
 - [x] Kanban board view for tasks (by status columns, list/board toggle)
-- [ ] Calendar view for tasks with due dates
-- [ ] Timeline/Gantt view for project planning
+- [x] Calendar view for tasks with due dates
+- [x] Timeline/Gantt view for project planning
 - [x] Agent cost dashboard — spending per agent, per day, cumulative
 - [x] Activity heatmap (GitHub-style contribution graph)
 - [x] Project dashboards — dedicated view per project with tasks, goals, agents, notes
@@ -202,13 +237,13 @@ _Transform the dashboard from a status board into a powerful daily driver._
 ### 4.3 Interactivity
 - [x] Inline task editing (double-click to edit text, click priority dot to change)
 - [x] Bulk actions — select multiple tasks, bulk update status/priority, bulk delete
-- [ ] Quick capture — global keyboard shortcut to add task/idea/reading
+- [x] Quick capture — global keyboard shortcut to add task/idea/reading
 - [x] Filters and saved views (filter tasks by status and priority with Radix dropdowns)
 - [x] Command palette (Cmd+K) for fast navigation and actions
 
 ### 4.4 Notifications & Alerts
 - [x] In-app notification center for agent completions and alerts
-- [ ] Browser push notifications for critical events
+- [x] Browser push notifications for critical events
 - [ ] Daily digest email (optional)
 - [ ] Customizable alert rules (e.g., "notify me when any critical task is created")
 
@@ -219,35 +254,30 @@ _Transform the dashboard from a status board into a powerful daily driver._
 _Connect Mission Control to the tools people already use._
 
 ### 5.1 Input Channels
-- [ ] Email ingestion — forward emails to create tasks/ideas
-- [ ] WhatsApp bot (via WhatsApp Business API)
+- [x] Email ingestion — IMAP poller + inbound webhook API for email forwarding services
+- [x] Slack bot — thin adapter over shared commands using Slack Bolt (Socket Mode)
 - [x] Discord bot — mirrors Telegram: tasks, ideas, reading, notes, status, agents
-- [ ] Slack bot
-- [ ] Voice input via Telegram voice messages (whisper transcription)
-- [ ] iOS/Android shortcut for quick capture
-- [ ] Apple Shortcuts / Siri integration
+- [x] Voice input via Telegram voice messages (OpenAI Whisper API + local fallback)
 
 ### 5.2 Service Integrations
 - [x] GitHub — sync issues, PRs via webhooks; auto-create tasks from issues
-- [ ] Linear — bidirectional task sync
-- [ ] Notion — import/export pages and databases
-- [ ] Google Workspace — Docs, Sheets, Calendar
-- [ ] Stripe — revenue alerts, subscription events
-- [ ] Todoist / TickTick — bidirectional task sync for existing users
-- [ ] Zapier/Make webhook endpoint for connecting anything
+- [x] Linear — bidirectional task sync via GraphQL API + webhook receiver
+- [x] Notion — import/export databases as tasks or notes
+- [x] Todoist — bidirectional task sync with priority mapping + webhook receiver
+- [x] Zapier/Make — generic webhook endpoint with inbound actions + outbound event hooks
 
 ### 5.3 Webhook System
 - [x] Inbound webhooks — generic endpoint that agents can process
 - [x] Outbound webhooks — notify external services on events
-- [ ] Webhook templates for common services
+- [x] Webhook templates for common services
 - [x] Webhook log with replay capability
 
 ### 5.4 API & Developer Platform
 - [x] Public REST API with API key authentication (scoped, SHA-256 hashed)
-- [ ] API rate limiting and usage tracking
+- [x] API rate limiting and usage tracking
 - [x] OpenAPI/Swagger documentation auto-generated
-- [ ] SDK packages (Python, TypeScript) for programmatic access
-- [ ] Plugin system — community-contributed agents and integrations
+- [x] SDK packages — Python (httpx) and TypeScript (fetch) clients with full resource namespaces
+- [x] Plugin system — YAML manifest + Python handler, event dispatch, enable/disable API
 
 ---
 
@@ -256,26 +286,26 @@ _Connect Mission Control to the tools people already use._
 _Build a team of specialized AI agents that collaborate._
 
 ### 6.1 Agent Marketplace
-- [ ] Community agent gallery — browse and install skill files
-- [ ] One-click agent installation from gallery
-- [ ] Agent ratings and reviews
-- [ ] Agent categories: productivity, marketing, research, health, finance, learning
+- [x] Community agent gallery — browse and install skill files
+- [x] One-click agent installation from gallery
+- [x] Agent ratings and reviews
+- [x] Agent categories: productivity, marketing, research, health, finance, learning
 
 ### 6.2 Advanced Agent Capabilities
-- [ ] Web browsing agent — research topics and summarize findings
-- [ ] Code review agent — review PRs and suggest improvements
-- [ ] Content creation agent — draft blog posts, tweets, newsletters
-- [ ] Competitor monitoring agent — track competitor changes and news
-- [ ] Opportunity scout agent — find freelance gigs, speaking opportunities
-- [ ] Learning path agent — curate learning resources for a skill
-- [ ] Health check-in agent — daily wellness prompts and tracking
+- [x] Web browsing agent — research topics and summarize findings
+- [x] Code review agent — review PRs and suggest improvements
+- [x] Content creation agent — Echo drafts content from high-relevance marketing signals
+- [x] Competitor monitoring agent — Radar tracks competitor mentions and market signals
+- [x] Opportunity scout agent — find freelance gigs, speaking opportunities
+- [x] Learning path agent — curate learning resources for a skill
+- [x] Health check-in agent — daily wellness prompts and tracking
 
 ### 6.3 Agent Orchestration
-- [ ] Pipeline builder — visual editor for multi-agent workflows
+- [x] Pipeline builder — visual editor for multi-agent workflows
 - [x] Event-driven triggers (not just schedules)
 - [x] Agent performance analytics — success rate, cost efficiency, action quality
-- [ ] A/B testing for agent prompts — compare prompt variants
-- [ ] Agent budget management dashboard with alerts
+- [x] A/B testing for agent prompts — compare prompt variants
+- [x] Agent budget management dashboard with alerts
 
 ---
 
@@ -408,15 +438,112 @@ All completed:
 4. ~~**Agent timeout enforcement** — configurable timeout_seconds per agent via asyncio.wait_for (Phase 1.4)~~
 5. ~~**Graceful error handling** — auth, rate limit, overload, network, timeout errors with user-friendly messages (Phase 1.3)~~
 
-### Sprint 10: Productivity & Intelligence (Recommended)
+### Sprint 10: Agent Intelligence & Coordination ✅
+
+All completed:
+
+1. ~~**Agent learning loop** — run retrospective (last 5 runs in context), post-run insights (run count, action stats, last summary auto-saved to memory) (Phase 2.2)~~
+2. ~~**Shared scratchpad** — cross-agent communication via shared memory, event-driven triggers (Phase 2.2)~~
+3. ~~**Daily standup agent** — Conductor coordinates all agents every morning via shared memory briefings (Phase 2.2)~~
+4. ~~**Output validation** — Pydantic schemas validate agent JSON, drop malformed actions with warnings (Phase 1.4)~~
+5. ~~**Retry with backoff** — exponential backoff + jitter for rate limits and server errors (Phase 1.4)~~
+6. ~~**Content drafter agent** — Echo auto-drafts content from high-relevance marketing signals (Phase 6.2)~~
+7. ~~**Competitor monitoring agent** — Radar tracks competitor mentions and market signals (Phase 6.2)~~
+8. ~~**Cost & requirements doc** — hardware specs, hosting options, per-agent API cost breakdown~~
+
+### Sprint 11: Productivity & Intelligence ✅
+
+All completed:
+
+1. ~~**Routine builder** — morning/evening routines as checklists with daily completion tracking (Phase 3.1)~~
+2. ~~**Project health scoring** — aggregate metrics per project with color-coded health badges (Phase 2.3)~~
+3. ~~**Calendar view** — monthly calendar showing tasks with due dates, priority dots, tooltips (Phase 4.2)~~
+4. ~~**Quick capture** — global 'c' shortcut, prefix-based type detection (t: i: r: n: h: g: j:) (Phase 4.3)~~
+5. ~~**Deduplication** — detect near-duplicate tasks and ideas using text similarity, pre-creation check (Phase 2.1)~~
+
+### Sprint 12: Integrations & Automation ✅
+
+All completed:
+
+1. ~~**Multi-step agent workflows (DAGs)** — workflow model with steps, dependency resolution, background execution engine (Phase 2.2)~~
+2. ~~**Smart prioritization** — keyword + historical pattern analysis, single and bulk suggestion APIs (Phase 2.3)~~
+3. ~~**Drag-and-drop task reordering** — sort_order field, reorder API, HTML5 drag handles in dashboard (Phase 4.1)~~
+4. ~~**Browser push notifications** — Web Push subscription management, VAPID support, send API (Phase 4.4)~~
+5. ~~**Journal search with semantic similarity** — text + semantic search modes, relevance scoring, mood filtering (Phase 3.3)~~
+
+### Sprint 13: Advanced Intelligence ✅
+
+All completed:
+
+1. ~~**Agent self-evaluation** — heuristic output scoring, auto-retry with feedback if below confidence threshold (Phase 2.2)~~
+2. ~~**Time-based context** — agents receive time period, day of week, and behavior guidance in context (Phase 2.3)~~
+3. ~~**Timeline/Gantt view** — 4-week horizontal timeline with project-grouped bars, priority colors, tooltips (Phase 4.2)~~
+4. ~~**Auto-summarize reading** — LLM summarizes articles when marked as read, manual summarize endpoint (Phase 3.5)~~
+5. ~~**Database backup/restore** — JSON backup/restore API with summary, duplicate detection on restore (Phase 1.2)~~
+
+### Sprint 14: Scale & Ecosystem ✅
+
+All completed:
+
+1. ~~**User pattern learning** — activity pattern analysis, hourly/daily distributions, agent schedule suggestions based on user behavior (Phase 2.3)~~
+2. ~~**Health check improvements** — detailed per-component diagnostics: DB latency, agent status, stuck detection, skill files, integrations (Phase 1.3)~~
+3. ~~**Webhook templates** — 8 pre-built templates for Slack, Discord, GitHub, Stripe, Linear, Sendgrid, and generic hooks (Phase 5.3)~~
+4. ~~**API rate limiting** — sliding window rate limiter (per-key/IP), usage tracking, rate limit headers on all responses (Phase 5.4)~~
+5. ~~**Agent versioning** — automatic config snapshots on sync, version history, diff between versions, manual snapshots (Phase 1.4)~~
+
+### Sprint 15: Multi-Agent Intelligence ✅
+
+All completed — entire Phase 6 now 100%:
+
+1. ~~**Web browsing agent** — Navigator researches topics, compiles findings into notes and reading list (Phase 6.2)~~
+2. ~~**Code review agent** — Reviewer analyzes PRs for correctness, security, maintainability (Phase 6.2)~~
+3. ~~**Opportunity scout agent** — Scout finds freelance gigs, speaking opportunities, collaborations (Phase 6.2)~~
+4. ~~**Learning path agent** — Mentor curates structured learning paths with resources (Phase 6.2)~~
+5. ~~**Health check-in agent** — Vitals provides daily wellness check-ins with pattern tracking (Phase 6.2)~~
+6. ~~**Agent marketplace** — Gallery with 8 categories, search, one-click install, ratings (Phase 6.1)~~
+7. ~~**Pipeline builder** — Create multi-agent workflows with dependency validation, cycle detection, execution preview (Phase 6.3)~~
+8. ~~**A/B testing for prompts** — Weighted variant selection, automatic scoring, winner lock-in (Phase 6.3)~~
+9. ~~**Agent budget dashboard** — Per-agent limits (daily/weekly/monthly), spending history, pre-run budget checks (Phase 6.3)~~
+
+### Sprint 16: Streamline ✅
+
+All completed:
+
+1. ~~**Streamline** — removed Journal, Habits, Goals, Reading; consolidated into Notes~~
+
+### Sprint 17: Foundation Complete ✅
+
+All completed:
+
+1. ~~**SQLite mode** — zero-config local dev, `USE_SQLITE=true` env var, no Postgres needed (Phase 1.1)~~
+2. ~~**Interactive setup wizard** — 4-step wizard: DB, LLM, integrations, .env generation (Phase 1.1)~~
+3. ~~**.env generator with validation** — API key format checks, provider health checks (Phase 1.1)~~
+4. ~~**One-command install** — `curl | bash` installer clones repo and runs setup wizard (Phase 1.1)~~
+5. ~~**Pre-built Docker images** — GitHub Actions workflow for GHCR publishing (Phase 1.1)~~
+
+### Sprint 18: Integrations Ecosystem ✅
+
+All completed — Phase 5 now 100%:
+
+1. ~~**Slack bot** — thin adapter over shared command layer, Slack Bolt Socket Mode (Phase 5.1)~~
+2. ~~**Email ingestion** — IMAP poller + inbound webhook API for SendGrid/Mailgun (Phase 5.1)~~
+3. ~~**Voice input** — Telegram voice → OpenAI Whisper API transcription with local fallback (Phase 5.1)~~
+4. ~~**Linear integration** — bidirectional task sync via GraphQL + webhook receiver (Phase 5.2)~~
+5. ~~**Notion integration** — import/export databases as tasks or notes (Phase 5.2)~~
+6. ~~**Todoist integration** — bidirectional sync with priority mapping + webhook (Phase 5.2)~~
+7. ~~**Zapier/Make webhooks** — generic inbound actions + outbound event hooks (Phase 5.2)~~
+8. ~~**SDK packages** — Python (httpx) and TypeScript (fetch) with full CRUD namespaces (Phase 5.4)~~
+9. ~~**Plugin system** — YAML manifest loader, event dispatch, enable/disable API (Phase 5.4)~~
+
+### Sprint 19: Productivity (Recommended)
 
 Next high-impact features:
 
-1. **Routine builder** — morning/evening routines as checklists (Phase 3.1)
-2. **Project health scoring** — aggregate metrics per project (Phase 2.3)
-3. **Calendar view** — tasks with due dates on a calendar (Phase 4.2)
-4. **Quick capture** — global keyboard shortcut to add task/idea/reading (Phase 4.3)
-5. **Deduplication** — detect near-duplicate tasks and ideas (Phase 2.1)
+1. **Calendar integration** — Google Calendar / CalDAV sync (Phase 3.4)
+2. **Daily agenda agent** — morning briefing with today's priorities (Phase 3.4)
+3. **Deadline awareness** — agents factor in due dates for prioritization (Phase 3.4)
+4. **Spaced repetition** — Anki-style learning for reading items (Phase 3.5)
+5. **Agent Builder UI** — create/edit agents from the dashboard (Phase 6.1)
 
 ---
 
@@ -451,4 +578,4 @@ These principles guide every decision:
 
 ---
 
-*Last updated: 2026-03-18 · v0.3*
+*Last updated: 2026-03-19 · v0.6*

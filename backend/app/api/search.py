@@ -10,7 +10,7 @@ from sqlalchemy import select, or_, cast, String, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.db.models import Task, Idea, ReadingItem, Goal, JournalEntry, Habit, Project, MarketingSignal, MarketingContent
+from app.db.models import Task, Idea, Project, Note, MarketingSignal, MarketingContent
 
 router = APIRouter()
 
@@ -18,7 +18,7 @@ router = APIRouter()
 @router.get("")
 async def search(
     q: str = Query(..., min_length=1, description="Search query"),
-    entity_types: str = Query("all", description="Comma-separated: tasks,ideas,reading,goals,journal,habits,projects"),
+    entity_types: str = Query("all", description="Comma-separated: tasks,ideas,notes,projects,signals,content"),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
@@ -28,7 +28,7 @@ async def search(
     """
     query_lower = f"%{q.lower()}%"
     types = set(entity_types.split(",")) if entity_types != "all" else {
-        "tasks", "ideas", "reading", "goals", "journal", "habits", "projects", "signals", "content"
+        "tasks", "ideas", "notes", "projects", "signals", "content"
     }
     results = []
 
@@ -50,51 +50,16 @@ async def search(
             for i in rows
         ])
 
-    if "reading" in types:
-        stmt = select(ReadingItem).where(
-            or_(func.lower(ReadingItem.title).like(query_lower),
-                func.lower(ReadingItem.notes).like(query_lower))
-        ).limit(limit)
+    if "notes" in types:
+        stmt = select(Note).where(
+            or_(func.lower(Note.title).like(query_lower),
+                func.lower(Note.content).like(query_lower))
+        ).order_by(Note.updated_at.desc()).limit(limit)
         rows = (await db.execute(stmt)).scalars().all()
         results.extend([
-            {"type": "reading", "id": str(r.id), "title": r.title, "url": r.url,
-             "is_read": r.is_read, "created_at": r.created_at.isoformat()}
-            for r in rows
-        ])
-
-    if "goals" in types:
-        stmt = select(Goal).where(
-            or_(func.lower(Goal.title).like(query_lower),
-                func.lower(Goal.description).like(query_lower))
-        ).limit(limit)
-        rows = (await db.execute(stmt)).scalars().all()
-        results.extend([
-            {"type": "goal", "id": str(g.id), "title": g.title, "progress": g.progress,
-             "status": g.status.value, "created_at": g.created_at.isoformat()}
-            for g in rows
-        ])
-
-    if "journal" in types:
-        stmt = select(JournalEntry).where(
-            func.lower(JournalEntry.content).like(query_lower)
-        ).order_by(JournalEntry.created_at.desc()).limit(limit)
-        rows = (await db.execute(stmt)).scalars().all()
-        results.extend([
-            {"type": "journal", "id": str(j.id), "title": j.content[:100],
-             "mood": j.mood.value if j.mood else None, "created_at": j.created_at.isoformat()}
-            for j in rows
-        ])
-
-    if "habits" in types:
-        stmt = select(Habit).where(
-            or_(func.lower(Habit.name).like(query_lower),
-                func.lower(Habit.description).like(query_lower))
-        ).limit(limit)
-        rows = (await db.execute(stmt)).scalars().all()
-        results.extend([
-            {"type": "habit", "id": str(h.id), "title": h.name,
-             "streak": h.current_streak, "created_at": h.created_at.isoformat()}
-            for h in rows
+            {"type": "note", "id": str(n.id), "title": n.title,
+             "tags": n.tags or [], "created_at": n.created_at.isoformat()}
+            for n in rows
         ])
 
     if "projects" in types:

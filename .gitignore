@@ -30,3 +30,6 @@ pgdata/
 
 # Agent workdir
 workdir/
+
+# SQLite test artifacts
+file::memory:

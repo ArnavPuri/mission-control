@@ -2,31 +2,40 @@
 
 ## What is this?
 
-Mission Control is a personal AI-powered command center. One PostgreSQL database
-is the single source of truth. Agents (defined as YAML skill files) read from
-and write to the database. A dashboard shows the status. A Telegram bot and
-MCP server provide additional input channels.
+Mission Control is a personal AI-powered command center (v0.6, 99/145 features).
+One PostgreSQL (or SQLite) database is the single source of truth. Agents (defined
+as YAML skill files or created via the Agent Builder UI) read from and write to
+the database. A dashboard shows the status.
+Telegram/Discord/Slack bots, MCP server, email ingestion, and push notifications provide input channels.
 
 ## Architecture
 
-- **Backend**: Python/FastAPI at `backend/app/`
-- **Dashboard**: Next.js/TypeScript at `dashboard/`
+- **Backend**: Python/FastAPI at `backend/app/` — 35 API routers
+- **Dashboard**: Next.js/TypeScript at `dashboard/` — 5 pages, fully complete
 - **Agent Skills**: YAML files at `backend/skills/`
-- **Database**: PostgreSQL with pgvector
+- **Database**: PostgreSQL with pgvector — 25 tables, 6 migrations
 - **Agent Runtime**: Claude Agent SDK (supports API key + OAuth)
 
 ## Key Files
 
-- `backend/app/main.py` — FastAPI app entry point
+- `backend/app/main.py` — FastAPI app entry point (35 routers mounted)
 - `backend/app/db/models.py` — All database models (SQLAlchemy)
 - `backend/app/config.py` — Settings with multi-auth support
-- `backend/app/orchestrator/runner.py` — Agent execution engine
+- `backend/app/orchestrator/runner.py` — Agent execution engine (retry, timeout, chaining, approval)
 - `backend/app/orchestrator/scheduler.py` — Interval-based scheduler
 - `backend/app/agents/skill_loader.py` — YAML → DB sync
+- `backend/app/api/workflows.py` — Agent workflow DAGs with dependency resolution
+- `backend/app/api/routines.py` — Routine builder API (morning/evening checklists)
+- `backend/app/api/dedup.py` — Deduplication detection for tasks/ideas
+- `backend/app/api/smart_priority.py` — Smart prioritization suggestions
+- `backend/app/api/push.py` — Browser push notification subscriptions
+- `backend/app/api/backup.py` — Database backup/restore API
+- `backend/app/api/notes.py` — Notes CRUD (markdown supported)
 - `backend/app/integrations/telegram.py` — Telegram bot
+- `backend/app/integrations/discord_bot.py` — Discord bot
 - `backend/app/integrations/mcp_server.py` — MCP server for Claude Code
-- `dashboard/app/page.tsx` — Main dashboard UI
-- `dashboard/app/lib/api.ts` — API client
+- `dashboard/app/page.tsx` — Main dashboard UI (tasks, calendar, routines, etc.)
+- `dashboard/app/lib/api.ts` — API client (all endpoints)
 
 ## Commands
 
@@ -55,6 +64,29 @@ cd backend && alembic revision --autogenerate -m "description"
 - Agent output must be JSON with `summary` and `actions` fields
 - The `event_log` table tracks all changes for audit
 - Use Haiku for cheap agents, Sonnet for smart ones
+- Migrations numbered sequentially: `001_initial_schema.py` through `006_workflows_and_sort_order.py`
+
+## Removed Features
+
+Journal, Habits, Goals/OKRs, and Reading List have been removed to keep the system focused.
+Notes (markdown) replaces Journal. Reading items can be tracked as notes with tags.
+
+## Completed Sprints
+
+- **Sprint 5**: Inline editing, filters, responsive design, dark mode
+- **Sprint 6**: pgvector, auto-tagging, triggers, agent memory, analytics
+- **Sprint 7**: GitHub integration, RSS feeds, notes, API keys, Discord bot
+- **Sprint 8**: Multi-page layout, Kanban board, bulk actions, keyboard shortcuts, project dashboards
+- **Sprint 9**: Test suites, Alembic migrations, seed data, agent timeout, error handling
+- **Sprint 10**: Agent learning loop, shared scratchpad, daily standup, output validation, retry logic
+- **Sprint 11**: Routine builder, project health scoring, calendar view, quick capture, deduplication
+- **Sprint 12**: Workflow DAGs, smart prioritization, drag-and-drop, push notifications
+- **Sprint 13**: Agent self-evaluation, time-based context, timeline/Gantt view, backup/restore
+- **Sprint 14**: User pattern learning, health diagnostics, webhook templates, API rate limiting, agent versioning
+- **Sprint 15**: Web researcher, code reviewer, opportunity scout agents, marketplace, pipeline builder, A/B testing, budget management
+- **Sprint 16**: Streamline — removed Journal, Habits, Goals, Reading; consolidated into Notes
+- **Sprint 17**: Foundation — SQLite mode, setup wizard, install script, GHCR Docker images
+- **Sprint 18**: Integrations — Slack bot, email ingestion, voice input, Linear/Notion/Todoist, Zapier, SDKs, plugin system
 
 ## Auth
 

@@ -140,6 +140,7 @@ class Task(Base):
     source = Column(String(50), default="manual")  # manual, telegram, agent
     tags = Column(ARRAY(String), default=list)
     due_date = Column(DateTime(timezone=True), nullable=True)
+    sort_order = Column(Integer, default=0)  # manual ordering for drag-and-drop
     completed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
@@ -380,14 +381,19 @@ class AgentApproval(Base):
 
 
 class AgentMemory(Base):
-    """Persistent memory entries for agents across runs."""
+    """Persistent memory entries for agents across runs.
+
+    Shared scratchpad: entries with agent_id=NULL are visible to ALL agents,
+    enabling inter-agent collaboration without direct communication.
+    Use key prefixes like 'collab:' for shared context between agents.
+    """
     __tablename__ = "agent_memories"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    agent_id = Column(UUID(as_uuid=True), ForeignKey("agent_configs.id", ondelete="CASCADE"), nullable=False)
+    agent_id = Column(UUID(as_uuid=True), ForeignKey("agent_configs.id", ondelete="CASCADE"), nullable=True)
     key = Column(String(255), nullable=False)
     value = Column(Text, nullable=False)
-    memory_type = Column(String(50), default="general")  # general, preference, fact, decision
+    memory_type = Column(String(50), default="general")  # general, preference, fact, decision, shared
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
@@ -634,6 +640,154 @@ class MarketingContent(Base):
         Index("idx_mkt_content_project", "project_id"),
         Index("idx_mkt_content_signal", "signal_id"),
         Index("idx_mkt_content_created", "created_at"),
+    )
+
+
+# ---------- Agent Workflows (DAGs) ----------
+
+class WorkflowStatus(str, PyEnum):
+    DRAFT = "draft"
+    ACTIVE = "active"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    PAUSED = "paused"
+
+
+class AgentWorkflow(Base):
+    """Multi-step agent workflow with dependency resolution (DAG)."""
+    __tablename__ = "agent_workflows"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, default="")
+    status = Column(Enum(WorkflowStatus), default=WorkflowStatus.DRAFT, nullable=False)
+    trigger_type = Column(String(50), default="manual")  # manual, schedule, event
+    trigger_value = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    steps = relationship("WorkflowStep", back_populates="workflow", lazy="selectin", order_by="WorkflowStep.sort_order")
+
+    __table_args__ = (
+        Index("idx_workflows_status", "status"),
+    )
+
+
+class StepStatus(str, PyEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class WorkflowStep(Base):
+    """A single step in a workflow — references an agent and its dependencies."""
+    __tablename__ = "workflow_steps"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workflow_id = Column(UUID(as_uuid=True), ForeignKey("agent_workflows.id", ondelete="CASCADE"), nullable=False)
+    agent_id = Column(UUID(as_uuid=True), ForeignKey("agent_configs.id"), nullable=False)
+    name = Column(String(255), nullable=False)
+    sort_order = Column(Integer, default=0)
+    depends_on = Column(ARRAY(String), default=list)  # list of step IDs this step depends on
+    status = Column(Enum(StepStatus), default=StepStatus.PENDING, nullable=False)
+    config = Column(JSON, default=dict)  # step-specific config overrides
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    run_id = Column(UUID(as_uuid=True), nullable=True)  # reference to the agent_run created
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    workflow = relationship("AgentWorkflow", back_populates="steps")
+    agent = relationship("AgentConfig", foreign_keys=[agent_id])
+
+    __table_args__ = (
+        Index("idx_workflow_steps_workflow", "workflow_id"),
+        Index("idx_workflow_steps_status", "status"),
+    )
+
+
+# ---------- Routines ----------
+
+class RoutineType(str, PyEnum):
+    MORNING = "morning"
+    EVENING = "evening"
+    CUSTOM = "custom"
+
+
+class Routine(Base):
+    """Repeatable routine (morning/evening) with ordered checklist items."""
+    __tablename__ = "routines"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, default="")
+    routine_type = Column(Enum(RoutineType), default=RoutineType.CUSTOM, nullable=False)
+    is_active = Column(Boolean, default=True)
+    days = Column(ARRAY(String), default=lambda: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"])
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    items = relationship("RoutineItem", back_populates="routine", lazy="selectin", order_by="RoutineItem.sort_order")
+
+    __table_args__ = (
+        Index("idx_routines_type", "routine_type"),
+        Index("idx_routines_active", "is_active"),
+    )
+
+
+class RoutineItem(Base):
+    """Individual step in a routine checklist."""
+    __tablename__ = "routine_items"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    routine_id = Column(UUID(as_uuid=True), ForeignKey("routines.id", ondelete="CASCADE"), nullable=False)
+    text = Column(String(500), nullable=False)
+    sort_order = Column(Integer, default=0)
+    duration_minutes = Column(Integer, nullable=True)  # estimated time
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    routine = relationship("Routine", back_populates="items")
+
+    __table_args__ = (
+        Index("idx_routine_items_routine", "routine_id"),
+    )
+
+
+class RoutineCompletion(Base):
+    """Daily completion log for a routine — tracks which items were checked off."""
+    __tablename__ = "routine_completions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    routine_id = Column(UUID(as_uuid=True), ForeignKey("routines.id", ondelete="CASCADE"), nullable=False)
+    completed_items = Column(ARRAY(String), default=list)  # list of item IDs completed
+    total_items = Column(Integer, default=0)
+    completed_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("idx_routine_completions_routine", "routine_id"),
+        Index("idx_routine_completions_date", "completed_at"),
+    )
+
+
+# ---------- Chat Sessions ----------
+
+class ChatSession(Base):
+    """Persistent chat session for bot conversations."""
+    __tablename__ = "chat_sessions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String(100), nullable=False)  # platform-specific user ID
+    platform = Column(String(50), nullable=False, default="telegram")  # telegram, discord, etc.
+    messages = Column(JSON, default=list)  # list of {role, content, timestamp}
+    last_active = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("idx_chat_sessions_user", "user_id", "platform", unique=True),
+        Index("idx_chat_sessions_active", "last_active"),
     )
 
 

@@ -1,10 +1,26 @@
 """Database session and engine setup."""
 
+import os
+from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from app.config import settings
 from app.db.models import Base
 
-engine = create_async_engine(settings.database_url, echo=False, pool_size=10, max_overflow=20)
+db_url = settings.effective_database_url
+
+# SQLite needs different engine config
+if settings.is_sqlite:
+    # Ensure the directory exists
+    db_path = settings.sqlite_path
+    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+    engine = create_async_engine(
+        db_url,
+        echo=False,
+        connect_args={"check_same_thread": False},
+    )
+else:
+    engine = create_async_engine(db_url, echo=False, pool_size=10, max_overflow=20)
+
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 

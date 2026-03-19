@@ -34,11 +34,30 @@ export interface Project {
   created_at: string;
 }
 
+export interface ProjectHealth {
+  project_id: string;
+  project_name: string;
+  score: number;
+  status: 'healthy' | 'needs_attention' | 'at_risk';
+  metrics: {
+    total_tasks: number;
+    done_tasks: number;
+    overdue_tasks: number;
+    blocked_tasks: number;
+    completion_rate: number;
+    weekly_velocity: number;
+    active_goals: number;
+    avg_goal_progress: number;
+    monthly_activity: number;
+  };
+}
+
 export const projects = {
   list: () => request<Project[]>('/api/projects'),
   create: (data: Partial<Project>) => request<{ id: string }>('/api/projects', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: string, data: Partial<Project>) => request<{ updated: boolean }>(`/api/projects/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (id: string) => request<{ deleted: boolean }>(`/api/projects/${id}`, { method: 'DELETE' }),
+  health: (id: string) => request<ProjectHealth>(`/api/projects/${id}/health`),
 };
 
 // --- Tasks ---
@@ -82,26 +101,6 @@ export const ideas = {
   list: () => request<Idea[]>('/api/ideas'),
   create: (data: Partial<Idea>) => request<{ id: string }>('/api/ideas', { method: 'POST', body: JSON.stringify(data) }),
   delete: (id: string) => request<{ deleted: boolean }>(`/api/ideas/${id}`, { method: 'DELETE' }),
-};
-
-// --- Reading List ---
-
-export interface ReadingItem {
-  id: string;
-  title: string;
-  url?: string;
-  is_read: boolean;
-  notes?: string;
-  tags: string[];
-  source: string;
-  created_at: string;
-}
-
-export const reading = {
-  list: (showRead = false) => request<ReadingItem[]>(`/api/reading?show_read=${showRead}`),
-  create: (data: Partial<ReadingItem>) => request<{ id: string }>('/api/reading', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: string, data: Partial<ReadingItem>) => request<{ updated: boolean }>(`/api/reading/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-  delete: (id: string) => request<{ deleted: boolean }>(`/api/reading/${id}`, { method: 'DELETE' }),
 };
 
 // --- Agents ---
@@ -152,107 +151,6 @@ export const agents = {
   runs: (id: string, limit = 20) => request<AgentRun[]>(`/api/agents/${id}/runs?limit=${limit}`),
   expandPrompt: (data: { description: string; agent_type?: string; data_reads?: string[]; data_writes?: string[] }) =>
     request<{ prompt: string }>('/api/agents/expand-prompt', { method: 'POST', body: JSON.stringify(data) }),
-};
-
-// --- Habits ---
-
-export interface Habit {
-  id: string;
-  name: string;
-  description: string;
-  frequency: 'daily' | 'weekly' | 'custom';
-  current_streak: number;
-  best_streak: number;
-  total_completions: number;
-  is_active: boolean;
-  color: string;
-  completed_today: boolean;
-  project_id?: string;
-  created_at: string;
-}
-
-export interface HabitAnalytics {
-  habits: {
-    id: string;
-    name: string;
-    color: string;
-    current_streak: number;
-    best_streak: number;
-    total_completions: number;
-    completion_rate: number;
-    weekly_data: { week: number; completions: number }[];
-  }[];
-  days: number;
-}
-
-export const habits = {
-  list: (activeOnly = true) => request<Habit[]>(`/api/habits?active_only=${activeOnly}`),
-  create: (data: Partial<Habit>) => request<{ id: string }>('/api/habits', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: string, data: Partial<Habit>) => request<{ updated: boolean }>(`/api/habits/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-  complete: (id: string) => request<{ current_streak: number }>(`/api/habits/${id}/complete`, { method: 'POST' }),
-  uncomplete: (id: string) => request<{ uncompleted: boolean }>(`/api/habits/${id}/uncomplete`, { method: 'POST' }),
-  delete: (id: string) => request<{ deleted: boolean }>(`/api/habits/${id}`, { method: 'DELETE' }),
-  analytics: (days = 30) => request<HabitAnalytics>(`/api/habits/analytics/overview?days=${days}`),
-};
-
-// --- Goals ---
-
-export interface KeyResult {
-  id: string;
-  title: string;
-  target_value: number;
-  current_value: number;
-  unit: string;
-  progress: number;
-}
-
-export interface Goal {
-  id: string;
-  title: string;
-  description: string;
-  status: 'active' | 'completed' | 'abandoned';
-  target_date?: string;
-  progress: number;
-  project_id?: string;
-  tags: string[];
-  key_results: KeyResult[];
-  created_at: string;
-}
-
-export const goals = {
-  list: (status?: string) => {
-    const qs = status ? `?status=${status}` : '';
-    return request<Goal[]>(`/api/goals${qs}`);
-  },
-  create: (data: Partial<Goal>) => request<{ id: string }>('/api/goals', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: string, data: Partial<Goal>) => request<{ updated: boolean }>(`/api/goals/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-  delete: (id: string) => request<{ deleted: boolean }>(`/api/goals/${id}`, { method: 'DELETE' }),
-  createKeyResult: (goalId: string, data: Partial<KeyResult>) =>
-    request<{ id: string }>(`/api/goals/${goalId}/key-results`, { method: 'POST', body: JSON.stringify(data) }),
-  updateKeyResult: (goalId: string, krId: string, data: Partial<KeyResult>) =>
-    request<{ updated: boolean }>(`/api/goals/${goalId}/key-results/${krId}`, { method: 'PATCH', body: JSON.stringify(data) }),
-};
-
-// --- Journal ---
-
-export interface JournalEntry {
-  id: string;
-  content: string;
-  mood?: 'great' | 'good' | 'okay' | 'low' | 'bad';
-  energy?: number;
-  tags: string[];
-  wins: string[];
-  challenges: string[];
-  gratitude: string[];
-  source: string;
-  created_at: string;
-}
-
-export const journal = {
-  list: (limit = 30) => request<JournalEntry[]>(`/api/journal?limit=${limit}`),
-  create: (data: Partial<JournalEntry>) => request<{ id: string }>('/api/journal', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: string, data: Partial<JournalEntry>) => request<{ updated: boolean }>(`/api/journal/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-  delete: (id: string) => request<{ deleted: boolean }>(`/api/journal/${id}`, { method: 'DELETE' }),
 };
 
 // --- Approvals ---
@@ -472,6 +370,248 @@ export const feeds = {
   delete: (id: string) => request<{ deleted: boolean }>(`/api/feeds/${id}`, { method: 'DELETE' }),
   fetch: (id: string) => request<{ imported: number }>(`/api/feeds/${id}/fetch`, { method: 'POST' }),
 };
+
+// --- Workflows ---
+
+export interface WorkflowStep {
+  id: string;
+  agent_id: string;
+  agent_name: string | null;
+  name: string;
+  sort_order: number;
+  depends_on: string[];
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
+  config: Record<string, unknown>;
+  started_at: string | null;
+  completed_at: string | null;
+  run_id: string | null;
+  error: string | null;
+}
+
+export interface Workflow {
+  id: string;
+  name: string;
+  description: string;
+  status: 'draft' | 'active' | 'running' | 'completed' | 'failed' | 'paused';
+  trigger_type: string;
+  trigger_value: string | null;
+  steps: WorkflowStep[];
+  created_at: string;
+  updated_at: string | null;
+}
+
+export const workflows = {
+  list: () => request<Workflow[]>('/api/workflows'),
+  get: (id: string) => request<Workflow>(`/api/workflows/${id}`),
+  create: (data: { name: string; description?: string; steps?: { agent_id: string; name: string; sort_order?: number; depends_on?: string[] }[] }) =>
+    request<Workflow>('/api/workflows', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<Workflow>) =>
+    request<{ updated: boolean }>(`/api/workflows/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  delete: (id: string) => request<{ deleted: boolean }>(`/api/workflows/${id}`, { method: 'DELETE' }),
+  addStep: (workflowId: string, data: { agent_id: string; name: string; sort_order?: number; depends_on?: string[] }) =>
+    request<{ id: string }>(`/api/workflows/${workflowId}/steps`, { method: 'POST', body: JSON.stringify(data) }),
+  removeStep: (workflowId: string, stepId: string) =>
+    request<{ deleted: boolean }>(`/api/workflows/${workflowId}/steps/${stepId}`, { method: 'DELETE' }),
+  run: (id: string) => request<{ id: string; status: string; steps: number }>(`/api/workflows/${id}/run`, { method: 'POST' }),
+};
+
+// --- Smart Priority ---
+
+export interface PrioritySuggestion {
+  suggested_priority: string;
+  confidence: number;
+  scores: Record<string, number>;
+  reasons: string[];
+}
+
+export const smartPriority = {
+  suggest: (text: string) =>
+    request<PrioritySuggestion>('/api/priority/suggest', { method: 'POST', body: JSON.stringify({ text }) }),
+  bulkSuggest: () =>
+    request<{ suggestions: (PrioritySuggestion & { task_id: string; text: string; current_priority: string })[]; total_evaluated: number }>('/api/priority/bulk-suggest', { method: 'POST' }),
+};
+
+// --- Push Notifications ---
+
+export const push = {
+  subscribe: (subscription: { endpoint: string; keys: { p256dh: string; auth: string } }) =>
+    request<{ id: string; subscribed: boolean }>('/api/push/subscribe', { method: 'POST', body: JSON.stringify(subscription) }),
+  unsubscribe: (id: string) =>
+    request<{ unsubscribed: boolean }>(`/api/push/subscribe/${id}`, { method: 'DELETE' }),
+  send: (data: { title: string; body?: string; category?: string }) =>
+    request<{ sent: number }>('/api/push/send', { method: 'POST', body: JSON.stringify(data) }),
+};
+
+// --- Task Reorder ---
+
+export const taskReorder = {
+  reorder: (taskIds: string[]) =>
+    request<{ reordered: number }>('/api/tasks/reorder', { method: 'POST', body: JSON.stringify({ task_ids: taskIds }) }),
+};
+
+// --- Routines ---
+
+export interface RoutineItem {
+  id: string;
+  text: string;
+  sort_order: number;
+  duration_minutes?: number;
+}
+
+export interface Routine {
+  id: string;
+  name: string;
+  description: string;
+  routine_type: 'morning' | 'evening' | 'custom';
+  is_active: boolean;
+  days: string[];
+  items: RoutineItem[];
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface RoutineCompletion {
+  id: string;
+  completed_items: string[];
+  total_items: number;
+  completed_at: string;
+}
+
+export const routines = {
+  list: (activeOnly = true, routineType?: string) => {
+    const qs = new URLSearchParams({ active_only: String(activeOnly) });
+    if (routineType) qs.set('routine_type', routineType);
+    return request<Routine[]>(`/api/routines?${qs}`);
+  },
+  get: (id: string) => request<Routine>(`/api/routines/${id}`),
+  create: (data: Partial<Routine> & { items?: { text: string; sort_order?: number; duration_minutes?: number }[] }) =>
+    request<Routine>('/api/routines', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<Routine>) =>
+    request<{ updated: boolean }>(`/api/routines/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  delete: (id: string) => request<{ deleted: boolean }>(`/api/routines/${id}`, { method: 'DELETE' }),
+  addItem: (routineId: string, data: { text: string; sort_order?: number; duration_minutes?: number }) =>
+    request<{ id: string }>(`/api/routines/${routineId}/items`, { method: 'POST', body: JSON.stringify(data) }),
+  updateItem: (routineId: string, itemId: string, data: Partial<RoutineItem>) =>
+    request<{ updated: boolean }>(`/api/routines/${routineId}/items/${itemId}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteItem: (routineId: string, itemId: string) =>
+    request<{ deleted: boolean }>(`/api/routines/${routineId}/items/${itemId}`, { method: 'DELETE' }),
+  complete: (routineId: string, completedItems: string[]) =>
+    request<{ id: string; completed: number; total: number }>(`/api/routines/${routineId}/complete`, { method: 'POST', body: JSON.stringify({ completed_items: completedItems }) }),
+  completions: (routineId: string, limit = 30) =>
+    request<RoutineCompletion[]>(`/api/routines/${routineId}/completions?limit=${limit}`),
+};
+
+// --- Deduplication ---
+
+export interface DuplicateMatch {
+  id: string;
+  text: string;
+  similarity: number;
+  entity_type: string;
+}
+
+export interface DuplicateGroup {
+  items: { id: string; text: string; status?: string; score?: number; created_at: string }[];
+  similarity: number;
+}
+
+export const dedup = {
+  tasks: (threshold = 0.7) => request<{ entity_type: string; threshold: number; groups: DuplicateGroup[] }>(`/api/dedup/tasks?threshold=${threshold}`),
+  ideas: (threshold = 0.7) => request<{ entity_type: string; threshold: number; groups: DuplicateGroup[] }>(`/api/dedup/ideas?threshold=${threshold}`),
+  check: (text: string, entityType = 'task') =>
+    request<{ text: string; is_duplicate: boolean; matches: DuplicateMatch[] }>('/api/dedup/check', { method: 'POST', body: JSON.stringify({ text, entity_type: entityType }) }),
+};
+
+// --- User Patterns ---
+
+export const patterns = {
+  activityPatterns: (days = 30) => request<Record<string, unknown>>(`/api/patterns/activity-patterns?days=${days}`),
+  scheduleSuggestions: () => request<Record<string, unknown>>('/api/patterns/schedule-suggestions'),
+};
+
+// --- Webhook Templates ---
+
+export const webhookTemplates = {
+  list: () => request<Array<Record<string, unknown>>>('/api/webhooks/templates/templates'),
+  get: (id: string) => request<Record<string, unknown>>(`/api/webhooks/templates/templates/${id}`),
+  create: (data: { template_id: string; url?: string; secret?: string; events?: string[] }) =>
+    request<Record<string, unknown>>('/api/webhooks/templates/templates/create', { method: 'POST', body: JSON.stringify(data) }),
+};
+
+// --- Rate Limit ---
+
+export const rateLimit = {
+  usage: (key?: string) => request<Record<string, unknown>>(`/api/rate-limit/usage${key ? `?key=${key}` : ''}`),
+  limits: () => request<Record<string, unknown>>('/api/rate-limit/limits'),
+};
+
+// --- Agent Versions ---
+
+export const agentVersions = {
+  list: (agentId: string) => request<Record<string, unknown>>(`/api/agents/${agentId}/versions`),
+  get: (agentId: string, version: number) => request<Record<string, unknown>>(`/api/agents/${agentId}/versions/${version}`),
+  diff: (agentId: string, v1: number, v2: number) => request<Record<string, unknown>>(`/api/agents/${agentId}/versions/${v1}/diff/${v2}`),
+  snapshot: (agentId: string) => request<Record<string, unknown>>(`/api/agents/${agentId}/snapshot`, { method: 'POST' }),
+};
+
+// --- Agent Marketplace ---
+
+export const marketplace = {
+  categories: () => request<Array<Record<string, unknown>>>('/api/marketplace/categories'),
+  gallery: (params?: { category?: string; search?: string; installed_only?: boolean }) => {
+    const qs = new URLSearchParams();
+    if (params?.category) qs.set('category', params.category);
+    if (params?.search) qs.set('search', params.search);
+    if (params?.installed_only) qs.set('installed_only', 'true');
+    return request<Array<Record<string, unknown>>>(`/api/marketplace/gallery?${qs}`);
+  },
+  install: (skill_file: string) => request<Record<string, unknown>>('/api/marketplace/install', { method: 'POST', body: JSON.stringify({ skill_file }) }),
+  rate: (agent_id: string, rating: number, comment?: string) => request<Record<string, unknown>>('/api/marketplace/rate', { method: 'POST', body: JSON.stringify({ agent_id, rating, comment }) }),
+  stats: () => request<Record<string, unknown>>('/api/marketplace/stats'),
+};
+
+// --- Pipeline Builder ---
+
+export const pipelines = {
+  list: () => request<Array<Record<string, unknown>>>('/api/pipelines'),
+  create: (data: { name: string; description?: string; steps: Array<{ agent_id: string; name: string; depends_on?: string[] }> }) =>
+    request<Record<string, unknown>>('/api/pipelines', { method: 'POST', body: JSON.stringify(data) }),
+  preview: (id: string) => request<Record<string, unknown>>(`/api/pipelines/${id}/preview`),
+  addStep: (id: string, step: { agent_id: string; name: string; depends_on?: string[] }) =>
+    request<Record<string, unknown>>(`/api/pipelines/${id}/add-step`, { method: 'POST', body: JSON.stringify(step) }),
+  removeStep: (pipelineId: string, stepId: string) =>
+    request<Record<string, unknown>>(`/api/pipelines/${pipelineId}/steps/${stepId}`, { method: 'DELETE' }),
+};
+
+// --- A/B Testing ---
+
+export const abTests = {
+  list: () => request<Array<Record<string, unknown>>>('/api/ab-tests'),
+  create: (data: { agent_id: string; name: string; variants: Array<{ name: string; prompt_template: string; weight?: number }> }) =>
+    request<Record<string, unknown>>('/api/ab-tests', { method: 'POST', body: JSON.stringify(data) }),
+  results: (agentId: string) => request<Record<string, unknown>>(`/api/ab-tests/${agentId}/results`),
+  update: (agentId: string, testName: string, data: { is_active?: boolean; winner?: string }) =>
+    request<Record<string, unknown>>(`/api/ab-tests/${agentId}/tests/${testName}`, { method: 'PATCH', body: JSON.stringify(data) }),
+};
+
+// --- Agent Budget ---
+
+export const agentBudget = {
+  overview: () => request<Record<string, unknown>>('/api/budget/overview'),
+  spending: (agentId: string, days?: number) => request<Record<string, unknown>>(`/api/budget/${agentId}/spending?days=${days || 30}`),
+  setLimits: (agentId: string, limits: { daily_limit_usd?: number; weekly_limit_usd?: number; monthly_limit_usd?: number }) =>
+    request<Record<string, unknown>>(`/api/budget/${agentId}/limits`, { method: 'PATCH', body: JSON.stringify(limits) }),
+};
+
+// --- Backup ---
+
+export const backup = {
+  create: () => request<Record<string, unknown>>('/api/backup/backup'),
+  summary: () => request<{ total_rows: number; tables: Record<string, number> }>('/api/backup/backup/summary'),
+  downloadUrl: () => `${API_BASE}/api/backup/backup`,
+};
+
+// --- Reading Summarize ---
 
 // --- Export ---
 

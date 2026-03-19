@@ -20,6 +20,7 @@ import asyncio
 import json
 import os
 import logging
+import random
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -29,17 +30,78 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings, LLMProvider
 from app.db.models import (
     AgentConfig, AgentRun, AgentStatus, AgentRunStatus,
-    Project, Task, Idea, ReadingItem, EventLog, TaskStatus,
-    Habit, Goal, JournalEntry, AgentApproval, ApprovalStatus,
-    AgentMemory,
+    Project, Task, Idea, EventLog, TaskStatus,
+    AgentApproval, ApprovalStatus,
+    AgentMemory, Note,
 )
 from app.api.ws import broadcast
+from app.orchestrator.schemas import validate_agent_output
 
 logger = logging.getLogger(__name__)
 
 
 class AgentRunner:
     """Executes agent runs against the Claude Agent SDK or Anthropic API."""
+
+    def _build_system_prompt(self, agent: AgentConfig) -> str:
+        """Build a rich system prompt combining agent persona, user identity, and output format."""
+        # Agent persona (from YAML config)
+        persona = (agent.config or {}).get("persona", "")
+        tone = (agent.config or {}).get("tone", "")
+
+        parts = []
+
+        # 1. Identity line
+        if persona:
+            parts.append(f"You are {agent.name} — {persona}.")
+        else:
+            parts.append(f"You are {agent.name}, a specialized AI agent.")
+
+        # 2. Role description
+        if agent.description:
+            parts.append(f"Role: {agent.description}")
+
+        # 3. Tone directive
+        if tone:
+            parts.append(f"Tone: {tone}.")
+
+        # 4. User identity context (from workspace/identity.md)
+        identity = settings.identity
+        if identity:
+            parts.append(f"\n## About the User\n{identity}")
+
+        # 5. Time awareness
+        parts.append(
+            "\n## Time Awareness\n"
+            'Your context includes "time_context" with the current UTC time, period (morning/afternoon/evening/night), '
+            "and guidance on what kind of work is appropriate. Adapt your behavior accordingly:\n"
+            "- Morning: planning, prioritization, daily briefings\n"
+            "- Afternoon: execution, progress updates\n"
+            "- Evening: reflection, reviews, day summaries\n"
+            "- Night: quiet background tasks, prep for tomorrow"
+        )
+
+        # 6. Memory & learning instructions
+        parts.append(
+            "\n## Memory & Learning\n"
+            "You have persistent memory that survives between runs. Use it.\n"
+            '- Your context includes "past_runs" showing your last 5 runs (summaries, actions, dates).\n'
+            '- Your "memory" dict contains things you saved previously. Reference it.\n'
+            '- Your "shared_memory" dict contains notes from other agents. Read it for cross-agent context.\n'
+            "- To remember something for next time, include a save_memory action.\n"
+            "- To share context with other agents, include a save_shared_memory action.\n"
+            "- Avoid repeating the same actions from recent runs. Check past_runs first.\n"
+            "- If you notice a pattern (e.g., you keep creating similar tasks), save an insight to memory."
+        )
+
+        # 7. Output format
+        parts.append(
+            "\n## Output Format\n"
+            "You MUST respond with valid JSON only. No markdown, no explanation.\n"
+            'Your output should contain a "summary" string and an "actions" array.'
+        )
+
+        return "\n".join(parts)
 
     async def build_context(self, agent: AgentConfig, db: AsyncSession) -> dict:
         """Build the data context an agent needs based on its data_reads config."""
@@ -69,36 +131,14 @@ class AgentRunner:
                 for i in result.scalars().all()
             ]
 
-        if "reading" in (agent.data_reads or []):
-            result = await db.execute(select(ReadingItem).where(ReadingItem.is_read == False))
-            context["reading"] = [
-                {"id": str(r.id), "title": r.title, "url": r.url}
-                for r in result.scalars().all()
-            ]
-
-        if "habits" in (agent.data_reads or []):
-            result = await db.execute(select(Habit).where(Habit.is_active == True))
-            context["habits"] = [
-                {"id": str(h.id), "name": h.name, "current_streak": h.current_streak, "best_streak": h.best_streak}
-                for h in result.scalars().all()
-            ]
-
-        if "goals" in (agent.data_reads or []):
-            from app.db.models import GoalStatus
-            result = await db.execute(select(Goal).where(Goal.status == GoalStatus.ACTIVE))
-            context["goals"] = [
-                {"id": str(g.id), "title": g.title, "description": g.description, "progress": g.progress}
-                for g in result.scalars().all()
-            ]
-
-        if "journal" in (agent.data_reads or []):
+        if "notes" in (agent.data_reads or []):
             result = await db.execute(
-                select(JournalEntry).order_by(JournalEntry.created_at.desc()).limit(7)
+                select(Note).order_by(Note.updated_at.desc()).limit(20)
             )
-            context["journal"] = [
-                {"id": str(j.id), "content": j.content[:200], "mood": j.mood.value if j.mood else None,
-                 "created_at": j.created_at.isoformat()}
-                for j in result.scalars().all()
+            context["notes"] = [
+                {"id": str(n.id), "title": n.title, "content": n.content[:200],
+                 "tags": n.tags or [], "is_pinned": n.is_pinned}
+                for n in result.scalars().all()
             ]
 
         if "marketing_signals" in (agent.data_reads or []):
@@ -130,6 +170,118 @@ class AgentRunner:
                 for c in result.scalars().all()
             ]
 
+        # Standup context: load all agents' status and recent activity for coordination
+        if "standup" in (agent.data_reads or []):
+            from datetime import timedelta
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=36)
+
+            # All agents and their current status
+            all_agents_result = await db.execute(
+                select(AgentConfig).where(AgentConfig.status != AgentStatus.DISABLED)
+            )
+            all_agents = all_agents_result.scalars().all()
+
+            standup_roster = []
+            for a in all_agents:
+                if a.id == agent.id:
+                    continue  # skip self
+
+                agent_info = {
+                    "name": a.name,
+                    "slug": a.slug,
+                    "description": a.description,
+                    "status": a.status.value,
+                    "model": a.model,
+                    "schedule": f"{a.schedule_type}:{a.schedule_value}" if a.schedule_type else "manual",
+                    "last_run_at": a.last_run_at.isoformat() if a.last_run_at else None,
+                }
+
+                # Last completed run (within 36h window)
+                last_run_result = await db.execute(
+                    select(AgentRun)
+                    .where(
+                        AgentRun.agent_id == a.id,
+                        AgentRun.status == AgentRunStatus.COMPLETED,
+                        AgentRun.completed_at >= cutoff,
+                    )
+                    .order_by(AgentRun.completed_at.desc())
+                    .limit(1)
+                )
+                last_run = last_run_result.scalar_one_or_none()
+                if last_run:
+                    agent_info["last_run"] = {
+                        "completed_at": last_run.completed_at.isoformat() if last_run.completed_at else None,
+                        "summary": (last_run.output_data or {}).get("summary", "")[:300],
+                        "action_count": len((last_run.output_data or {}).get("actions", [])),
+                        "action_types": list(set(
+                            act.get("type", "") for act in (last_run.output_data or {}).get("actions", [])
+                            if isinstance(act, dict)
+                        )),
+                    }
+
+                # Last failed run (within 36h) — surface errors
+                failed_result = await db.execute(
+                    select(AgentRun)
+                    .where(
+                        AgentRun.agent_id == a.id,
+                        AgentRun.status == AgentRunStatus.FAILED,
+                        AgentRun.completed_at >= cutoff,
+                    )
+                    .order_by(AgentRun.completed_at.desc())
+                    .limit(1)
+                )
+                failed_run = failed_result.scalar_one_or_none()
+                if failed_run:
+                    agent_info["last_failure"] = {
+                        "completed_at": failed_run.completed_at.isoformat() if failed_run.completed_at else None,
+                        "error": (failed_run.error or "")[:200],
+                    }
+
+                # Agent's own memory (key insights it has saved)
+                mem_result = await db.execute(
+                    select(AgentMemory)
+                    .where(
+                        AgentMemory.agent_id == a.id,
+                        AgentMemory.memory_type != "system",
+                    )
+                    .order_by(AgentMemory.updated_at.desc())
+                    .limit(5)
+                )
+                agent_memories = mem_result.scalars().all()
+                if agent_memories:
+                    agent_info["memories"] = {m.key: m.value[:200] for m in agent_memories}
+
+                standup_roster.append(agent_info)
+
+            context["standup"] = standup_roster
+
+        # Time-based context: tell agent what time of day it is for appropriate behavior
+        now = datetime.now(timezone.utc)
+        hour = now.hour
+        if hour < 6:
+            time_period = "late_night"
+            time_guidance = "It's late night. Focus on low-priority background tasks. Avoid user-facing notifications."
+        elif hour < 12:
+            time_period = "morning"
+            time_guidance = "It's morning. Good time for planning, prioritization, and daily briefings."
+        elif hour < 17:
+            time_period = "afternoon"
+            time_guidance = "It's afternoon. Focus on execution, progress updates, and unblocking tasks."
+        elif hour < 21:
+            time_period = "evening"
+            time_guidance = "It's evening. Good time for reflection, reviews, and summarizing the day."
+        else:
+            time_period = "night"
+            time_guidance = "It's night. Focus on quiet background tasks and preparation for tomorrow."
+
+        context["time_context"] = {
+            "utc_time": now.isoformat(),
+            "hour": hour,
+            "period": time_period,
+            "day_of_week": now.strftime("%A").lower(),
+            "guidance": time_guidance,
+        }
+
         # Load agent memory (persistent context from previous runs)
         mem_result = await db.execute(
             select(AgentMemory).where(AgentMemory.agent_id == agent.id).order_by(AgentMemory.updated_at.desc())
@@ -137,6 +289,40 @@ class AgentRunner:
         memories = mem_result.scalars().all()
         if memories:
             context["memory"] = {m.key: m.value for m in memories}
+
+        # Load shared scratchpad (agent_id=NULL, visible to all agents)
+        shared_result = await db.execute(
+            select(AgentMemory).where(AgentMemory.agent_id.is_(None)).order_by(AgentMemory.updated_at.desc())
+        )
+        shared_memories = shared_result.scalars().all()
+        if shared_memories:
+            context["shared_memory"] = {m.key: m.value for m in shared_memories}
+
+        # Load run history (last 5 completed runs for self-awareness)
+        run_history = await db.execute(
+            select(AgentRun)
+            .where(
+                AgentRun.agent_id == agent.id,
+                AgentRun.status == AgentRunStatus.COMPLETED,
+            )
+            .order_by(AgentRun.completed_at.desc())
+            .limit(5)
+        )
+        past_runs = run_history.scalars().all()
+        if past_runs:
+            context["past_runs"] = [
+                {
+                    "run_date": r.completed_at.isoformat() if r.completed_at else None,
+                    "trigger": r.trigger,
+                    "summary": (r.output_data or {}).get("summary", "")[:300],
+                    "action_count": len((r.output_data or {}).get("actions", [])),
+                    "action_types": list(set(
+                        a.get("type", "") for a in (r.output_data or {}).get("actions", [])
+                        if isinstance(a, dict)
+                    )),
+                }
+                for r in past_runs
+            ]
 
         # Include project-specific context if agent is bound to a project
         if agent.project_id:
@@ -168,13 +354,7 @@ class AgentRunner:
 
         # Build options
         options_kwargs = {
-            "system_prompt": (
-                f"You are {agent.name}, a specialized AI agent.\n"
-                f"Role: {agent.description}\n"
-                f"You MUST respond with valid JSON only. No markdown, no explanation.\n"
-                f"Your output should contain an 'actions' array of things you did or recommend,\n"
-                f"and a 'summary' string describing what you accomplished."
-            ),
+            "system_prompt": self._build_system_prompt(agent),
             "max_turns": 10,
         }
 
@@ -235,10 +415,7 @@ class AgentRunner:
                     json={
                         "model": agent.model or settings.default_model,
                         "max_tokens": 4096,
-                        "system": (
-                            f"You are {agent.name}. {agent.description}\n"
-                            "Respond with valid JSON only: {{\"actions\": [...], \"summary\": \"...\"}}"
-                        ),
+                        "system": self._build_system_prompt(agent),
                         "messages": [{"role": "user", "content": prompt}],
                     },
                 )
@@ -276,9 +453,91 @@ class AgentRunner:
         except json.JSONDecodeError:
             return {"summary": text, "actions": [], "raw": True}
 
+    async def _self_evaluate(self, result: dict, agent: AgentConfig, min_confidence: float) -> tuple[dict, dict | None]:
+        """Score agent output quality. If below threshold, retry once with feedback.
+
+        Returns (possibly_improved_result, evaluation_metadata).
+        """
+        summary = result.get("summary", "")
+        actions = result.get("actions", [])
+
+        # Simple heuristic scoring (no LLM call needed)
+        score = 0.5  # baseline
+        reasons = []
+
+        # Penalize empty or very short summary
+        if not summary or len(summary) < 10:
+            score -= 0.3
+            reasons.append("Summary too short or missing")
+        elif len(summary) > 50:
+            score += 0.1
+            reasons.append("Good summary length")
+
+        # Penalize no actions when agent has data_writes
+        if not actions and (agent.data_writes or []):
+            score -= 0.2
+            reasons.append("No actions produced despite write permissions")
+        elif actions:
+            score += 0.1
+            reasons.append(f"{len(actions)} actions produced")
+
+        # Penalize if raw/unparsed output
+        if result.get("raw"):
+            score -= 0.3
+            reasons.append("Output was not valid JSON")
+
+        # Reward valid action types
+        valid_types = {"create_task", "create_idea", "update_task", "add_reading",
+                       "create_journal", "save_memory", "save_shared_memory",
+                       "create_goal", "create_signal", "create_content"}
+        for a in actions:
+            if isinstance(a, dict) and a.get("type") in valid_types:
+                score += 0.05
+
+        score = max(0.0, min(1.0, score))
+        eval_meta = {"score": round(score, 2), "reasons": reasons, "threshold": min_confidence}
+
+        if score < min_confidence:
+            # Retry once with feedback
+            logger.info(
+                f"Agent {agent.name} self-eval score {score:.2f} < {min_confidence}. Retrying with feedback."
+            )
+            eval_meta["retried"] = True
+            feedback_prompt = (
+                f"Your previous output scored {score:.2f} (threshold: {min_confidence}).\n"
+                f"Issues: {'; '.join(reasons)}\n"
+                f"Previous summary: {summary[:200]}\n\n"
+                "Please try again with a better response. "
+                "Ensure you provide a clear summary and well-formed actions as JSON."
+            )
+            try:
+                retry_result = await self._execute_llm(feedback_prompt, agent)
+                # Re-score
+                retry_summary = retry_result.get("summary", "")
+                retry_actions = retry_result.get("actions", [])
+                retry_score = 0.5
+                if retry_summary and len(retry_summary) > 10:
+                    retry_score += 0.2
+                if retry_actions:
+                    retry_score += 0.15
+                if not retry_result.get("raw"):
+                    retry_score += 0.15
+                retry_score = min(1.0, retry_score)
+                eval_meta["retry_score"] = round(retry_score, 2)
+
+                if retry_score > score:
+                    return retry_result, eval_meta
+            except Exception as e:
+                logger.warning(f"Self-eval retry failed for {agent.name}: {e}")
+                eval_meta["retry_error"] = str(e)[:100]
+
+        return result, eval_meta
+
     async def _execute_llm(self, prompt: str, agent: AgentConfig) -> dict:
-        """Execute LLM call with provider fallback and timeout enforcement."""
+        """Execute LLM call with provider fallback, retry, and timeout enforcement."""
         timeout_seconds = (agent.config or {}).get("timeout_seconds", 300)
+        max_retries = 3
+        base_delay = 2.0
 
         async def _run():
             provider = settings.llm_provider
@@ -291,16 +550,49 @@ class AgentRunner:
             else:
                 return await self.execute_with_anthropic_api(prompt, agent)
 
-        try:
-            return await asyncio.wait_for(_run(), timeout=timeout_seconds)
-        except asyncio.TimeoutError:
-            raise TimeoutError(
-                f"Agent {agent.name} timed out after {timeout_seconds}s. "
-                f"Increase timeout_seconds in agent config if needed."
-            )
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                return await asyncio.wait_for(_run(), timeout=timeout_seconds)
+            except asyncio.TimeoutError:
+                raise TimeoutError(
+                    f"Agent {agent.name} timed out after {timeout_seconds}s. "
+                    f"Increase timeout_seconds in agent config if needed."
+                )
+            except RuntimeError as e:
+                err_msg = str(e)
+                # Retry on rate limits and server errors
+                if any(keyword in err_msg for keyword in ["rate limit", "overloaded", "HTTP 5", "HTTP 429"]):
+                    last_error = e
+                    delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                    logger.warning(
+                        f"Agent {agent.name} attempt {attempt + 1}/{max_retries} failed: {err_msg}. "
+                        f"Retrying in {delay:.1f}s..."
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    raise
+
+        raise last_error or RuntimeError(f"Agent {agent.name} failed after {max_retries} retries")
 
     async def start_run(self, agent: AgentConfig, trigger: str, db: AsyncSession) -> AgentRun:
         """Start an agent run - creates log entry, executes, writes results."""
+
+        # Budget check before running
+        from app.api.agent_budget import check_budget_before_run
+        budget_ok, budget_msg = await check_budget_before_run(agent, db)
+        if not budget_ok:
+            run = AgentRun(
+                agent_id=agent.id, trigger=trigger, status=AgentRunStatus.FAILED,
+                error=budget_msg, completed_at=datetime.now(timezone.utc),
+            )
+            db.add(run)
+            await db.flush()
+            logger.warning(f"Agent {agent.name} blocked by budget: {budget_msg}")
+            await broadcast("agent.budget_exceeded", {
+                "agent_id": str(agent.id), "message": budget_msg,
+            })
+            return run
 
         # Create run record
         run = AgentRun(agent_id=agent.id, trigger=trigger, status=AgentRunStatus.RUNNING)
@@ -311,14 +603,51 @@ class AgentRunner:
         # Broadcast status
         await broadcast("agent.started", {"agent_id": str(agent.id), "run_id": str(run.id)})
 
+        # A/B test: select prompt variant if active test exists
+        ab_variant_name = None
+        try:
+            from app.api.ab_testing import select_variant, record_variant_result
+            variant_prompt, ab_variant_name = select_variant(agent)
+        except Exception:
+            variant_prompt = None
+
         try:
             # Build context and render prompt
             context = await self.build_context(agent, db)
-            prompt = self.render_prompt(agent.prompt_template, context)
-            run.input_data = {"prompt_length": len(prompt), "context_keys": list(context.keys())}
+            template = variant_prompt or agent.prompt_template
+            prompt = self.render_prompt(template, context)
+            run.input_data = {
+                "prompt_length": len(prompt),
+                "context_keys": list(context.keys()),
+                "ab_variant": ab_variant_name,
+            }
 
-            # Execute with timeout enforcement
+            # Execute with timeout enforcement and retry
             result = await self._execute_llm(prompt, agent)
+
+            # Self-evaluation: score output quality and retry if low confidence
+            self_eval_enabled = (agent.config or {}).get("self_eval", False)
+            min_confidence = (agent.config or {}).get("min_confidence", 0.5)
+            if self_eval_enabled:
+                result, eval_meta = await self._self_evaluate(result, agent, min_confidence)
+                if eval_meta:
+                    result["_self_eval"] = eval_meta
+
+            # Validate output
+            validated, validation_warnings = validate_agent_output(result)
+            if validation_warnings:
+                logger.warning(
+                    f"Agent {agent.name} output validation warnings: {validation_warnings}"
+                )
+                result["_validation_warnings"] = validation_warnings
+
+            # Record A/B test result
+            if ab_variant_name:
+                try:
+                    eval_score = result.get("_self_eval", {}).get("score", 0.5)
+                    record_variant_result(agent, ab_variant_name, True, eval_score)
+                except Exception:
+                    pass
 
             # Update run
             run.status = AgentRunStatus.COMPLETED
@@ -327,9 +656,9 @@ class AgentRunner:
             agent.status = AgentStatus.IDLE
             agent.last_run_at = datetime.now(timezone.utc)
 
-            # Check if agent requires approval
+            # Check if agent requires approval — use validated actions
             requires_approval = agent.config.get("requires_approval", False) if agent.config else False
-            actions = result.get("actions", [])
+            actions = [a.model_dump(exclude_none=True) for a in validated.actions]
 
             if requires_approval and actions:
                 # Queue for approval instead of executing immediately
@@ -369,6 +698,9 @@ class AgentRunner:
                 )
             except Exception:
                 pass  # notifications are best-effort
+
+            # Post-run learning: extract and persist run insights to agent memory
+            await self._post_run_learn(agent, run, result, db)
 
             # Agent chaining: if this agent has a "chain_to" config, trigger the next agent
             chain_to = agent.config.get("chain_to") if agent.config else None
@@ -451,6 +783,91 @@ class AgentRunner:
             await self.start_run(next_agent, trigger=f"chain:{trigger}", db=db)
             await db.commit()
 
+    async def _post_run_learn(self, agent: AgentConfig, run: AgentRun, result: dict, db: AsyncSession):
+        """Extract insights from a completed run and persist to agent memory.
+
+        Tracks: run count, last summary, action patterns, and running stats.
+        This gives agents self-awareness of their own performance over time.
+        """
+        try:
+            actions = result.get("actions", [])
+            action_types = [a.get("type", "") for a in actions if isinstance(a, dict)]
+
+            # 1. Increment run counter
+            counter_result = await db.execute(
+                select(AgentMemory).where(
+                    AgentMemory.agent_id == agent.id,
+                    AgentMemory.key == "_run_count",
+                )
+            )
+            counter = counter_result.scalar_one_or_none()
+            run_count = int(counter.value) + 1 if counter else 1
+            if counter:
+                counter.value = str(run_count)
+            else:
+                db.add(AgentMemory(
+                    agent_id=agent.id, key="_run_count",
+                    value=str(run_count), memory_type="system",
+                ))
+
+            # 2. Save last run summary for quick recall
+            last_summary = result.get("summary", "")[:500]
+            if last_summary:
+                existing = await db.execute(
+                    select(AgentMemory).where(
+                        AgentMemory.agent_id == agent.id,
+                        AgentMemory.key == "_last_run_summary",
+                    )
+                )
+                mem = existing.scalar_one_or_none()
+                if mem:
+                    mem.value = last_summary
+                else:
+                    db.add(AgentMemory(
+                        agent_id=agent.id, key="_last_run_summary",
+                        value=last_summary, memory_type="system",
+                    ))
+
+            # 3. Track action pattern stats (what action types this agent typically produces)
+            if action_types:
+                stats_result = await db.execute(
+                    select(AgentMemory).where(
+                        AgentMemory.agent_id == agent.id,
+                        AgentMemory.key == "_action_stats",
+                    )
+                )
+                stats_mem = stats_result.scalar_one_or_none()
+                try:
+                    stats = json.loads(stats_mem.value) if stats_mem else {}
+                except (json.JSONDecodeError, AttributeError):
+                    stats = {}
+
+                for at in action_types:
+                    stats[at] = stats.get(at, 0) + 1
+                stats["_total_actions"] = stats.get("_total_actions", 0) + len(action_types)
+                stats["_total_runs"] = run_count
+
+                stats_json = json.dumps(stats)
+                if stats_mem:
+                    stats_mem.value = stats_json
+                else:
+                    db.add(AgentMemory(
+                        agent_id=agent.id, key="_action_stats",
+                        value=stats_json, memory_type="system",
+                    ))
+
+            await db.flush()
+        except Exception as e:
+            logger.debug(f"Post-run learning failed for {agent.name}: {e}")
+
+    async def _fire_trigger(self, entity_type: str, event: str, entity_data: dict, db: AsyncSession):
+        """Fire event-driven triggers (best-effort)."""
+        try:
+            from app.api.triggers import evaluate_triggers
+            await evaluate_triggers(entity_type, event, entity_data, db)
+        except Exception as e:
+            logger.debug(f"Trigger evaluation failed: {e}")
+
     async def _process_actions(self, actions: list, agent: AgentConfig, db: AsyncSession):
         """Process structured actions from agent output and write to DB."""
         for action in actions:
@@ -468,7 +885,13 @@ class AgentRunner:
                     tags=action.get("tags", []),
                 )
                 db.add(task)
+                await db.flush()
                 await broadcast("task.created", {"text": task.text, "source": task.source})
+                await self._fire_trigger("task", "created", {
+                    "text": task.text, "priority": task.priority.value if hasattr(task.priority, 'value') else task.priority,
+                    "status": task.status.value if hasattr(task.status, 'value') else task.status,
+                    "tags": task.tags or [], "source": task.source,
+                }, db)
 
             elif action_type == "create_idea" and "ideas" in (agent.data_writes or []):
                 idea = Idea(
@@ -477,7 +900,11 @@ class AgentRunner:
                     source=f"agent:{agent.slug}",
                 )
                 db.add(idea)
+                await db.flush()
                 await broadcast("idea.created", {"text": idea.text, "source": idea.source})
+                await self._fire_trigger("idea", "created", {
+                    "text": idea.text, "tags": idea.tags or [], "source": idea.source,
+                }, db)
 
             elif action_type == "update_task" and "tasks" in (agent.data_writes or []):
                 task_id = action.get("task_id")
@@ -513,7 +940,12 @@ class AgentRunner:
                     source=f"agent:{agent.slug}",
                 )
                 db.add(entry)
+                await db.flush()
                 await broadcast("journal.created", {"source": f"agent:{agent.slug}"})
+                await self._fire_trigger("journal", "created", {
+                    "content": entry.content[:200], "mood": mood_str,
+                    "energy": entry.energy, "tags": entry.tags or [], "source": entry.source,
+                }, db)
 
             elif action_type == "save_memory":
                 # Agents can persist memory entries for future runs
@@ -535,6 +967,26 @@ class AgentRunner:
                             memory_type=action.get("memory_type", "general"),
                         ))
 
+            elif action_type == "save_shared_memory":
+                # Write to shared scratchpad (agent_id=NULL, visible to all agents)
+                key = action.get("key")
+                value = action.get("value")
+                if key and value:
+                    existing = await db.execute(
+                        select(AgentMemory).where(
+                            AgentMemory.agent_id.is_(None),
+                            AgentMemory.key == key,
+                        )
+                    )
+                    mem = existing.scalar_one_or_none()
+                    if mem:
+                        mem.value = str(value)
+                    else:
+                        db.add(AgentMemory(
+                            agent_id=None, key=key, value=str(value),
+                            memory_type="shared",
+                        ))
+
             elif action_type == "create_goal" and "goals" in (agent.data_writes or []):
                 goal = Goal(
                     title=action.get("title", "Untitled goal"),
@@ -543,7 +995,11 @@ class AgentRunner:
                     tags=action.get("tags", []),
                 )
                 db.add(goal)
+                await db.flush()
                 await broadcast("goal.created", {"title": goal.title})
+                await self._fire_trigger("goal", "created", {
+                    "title": goal.title, "description": goal.description, "tags": goal.tags or [],
+                }, db)
 
             elif action_type == "create_signal" and "marketing_signals" in (agent.data_writes or []):
                 from app.db.models import MarketingSignal
@@ -568,6 +1024,11 @@ class AgentRunner:
                     data={"title": signal.title, "signal_type": signal.signal_type},
                 ))
                 await broadcast("signal.created", {"id": str(signal.id), "title": signal.title, "source": signal.source})
+                await self._fire_trigger("signal", "created", {
+                    "title": signal.title, "source_type": signal.source_type,
+                    "signal_type": signal.signal_type, "relevance_score": signal.relevance_score,
+                    "tags": signal.tags or [], "source": signal.source,
+                }, db)
 
             elif action_type == "create_content" and "marketing_content" in (agent.data_writes or []):
                 from app.db.models import MarketingContent
@@ -589,3 +1050,7 @@ class AgentRunner:
                     data={"title": content.title, "channel": content.channel},
                 ))
                 await broadcast("content.created", {"id": str(content.id), "title": content.title, "source": content.source})
+                await self._fire_trigger("content", "created", {
+                    "title": content.title, "channel": content.channel,
+                    "tags": content.tags or [], "source": content.source,
+                }, db)

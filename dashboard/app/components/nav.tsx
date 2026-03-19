@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { clsx } from 'clsx';
 import {
-  LayoutDashboard, FolderOpen, Zap, PenLine, Settings, Keyboard,
+  LayoutDashboard, FolderOpen, Zap, StickyNote, Settings, Keyboard,
   Sun, Moon, Megaphone,
 } from 'lucide-react';
 import { useTheme, type Theme } from './shared';
@@ -16,7 +16,7 @@ const navItems = [
   { href: '/projects', label: 'Projects', icon: FolderOpen, shortcut: 'g p' },
   { href: '/marketing', label: 'Marketing', icon: Megaphone, shortcut: 'g m' },
   { href: '/agents', label: 'Agents', icon: Zap, shortcut: 'g a' },
-  { href: '/journal', label: 'Journal', icon: PenLine, shortcut: 'g j' },
+  { href: '/notes', label: 'Notes', icon: StickyNote, shortcut: 'g n' },
   { href: '/settings', label: 'Settings', icon: Settings, shortcut: 'g s' },
 ];
 
