@@ -14,6 +14,7 @@ from sqlalchemy.pool import StaticPool
 from app.db.models import Base
 from app.main import app
 from app.db.session import get_db
+from app.api.rate_limit import limiter
 
 
 # Use SQLite for testing (avoids PostgreSQL dependency)
@@ -45,6 +46,8 @@ async def setup_db():
     """Create tables before each test, drop after."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    # Reset rate limiter between tests to avoid 429s
+    limiter._requests.clear()
     yield
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
@@ -137,22 +140,7 @@ async def test_idea_crud(client: AsyncClient):
     assert r.status_code == 200
 
 
-# ─── Reading ──────────────────────────────────────────────
-
-@pytest.mark.asyncio
-async def test_reading_crud(client: AsyncClient):
-    r = await client.post("/api/reading", json={"title": "How to test", "url": "https://example.com"})
-    assert r.status_code == 200
-    item_id = r.json()["id"]
-
-    r = await client.get("/api/reading")
-    assert r.status_code == 200
-
-    r = await client.patch(f"/api/reading/{item_id}", json={"is_read": True})
-    assert r.status_code == 200
-
-    r = await client.delete(f"/api/reading/{item_id}")
-    assert r.status_code == 200
+# ─── Reading (removed in Sprint 16) ──────────────────────
 
 
 # ─── Notes ─────────────────────────────────────────────────
@@ -178,60 +166,7 @@ async def test_notes_crud(client: AsyncClient):
     assert r.status_code == 200
 
 
-# ─── Habits ────────────────────────────────────────────────
-
-@pytest.mark.asyncio
-async def test_habit_crud(client: AsyncClient):
-    r = await client.post("/api/habits", json={"name": "Exercise"})
-    assert r.status_code == 200
-    habit_id = r.json()["id"]
-
-    r = await client.get("/api/habits")
-    assert r.status_code == 200
-    assert len(r.json()) >= 1
-
-    # Complete
-    r = await client.post(f"/api/habits/{habit_id}/complete")
-    assert r.status_code == 200
-
-    # Uncomplete before delete to remove completions (SQLite FK cascade workaround)
-    r = await client.post(f"/api/habits/{habit_id}/uncomplete")
-    assert r.status_code == 200
-
-    r = await client.delete(f"/api/habits/{habit_id}")
-    assert r.status_code == 200
-
-
-# ─── Goals ─────────────────────────────────────────────────
-
-@pytest.mark.asyncio
-async def test_goal_crud(client: AsyncClient):
-    r = await client.post("/api/goals", json={"title": "Ship product"})
-    assert r.status_code == 200
-    goal_id = r.json()["id"]
-
-    r = await client.get("/api/goals")
-    assert r.status_code == 200
-    assert len(r.json()) >= 1
-
-    r = await client.delete(f"/api/goals/{goal_id}")
-    assert r.status_code == 200
-
-
-# ─── Journal ──────────────────────────────────────────────
-
-@pytest.mark.asyncio
-async def test_journal_crud(client: AsyncClient):
-    r = await client.post("/api/journal", json={"content": "Today was great", "mood": "good"})
-    assert r.status_code == 200
-    entry_id = r.json()["id"]
-
-    r = await client.get("/api/journal")
-    assert r.status_code == 200
-    assert len(r.json()) >= 1
-
-    r = await client.delete(f"/api/journal/{entry_id}")
-    assert r.status_code == 200
+# ─── Habits, Goals, Journal (removed in Sprint 16) ───────
 
 
 # ─── API Keys ─────────────────────────────────────────────
