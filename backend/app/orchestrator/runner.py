@@ -600,6 +600,22 @@ class AgentRunner:
     async def start_run(self, agent: AgentConfig, trigger: str, db: AsyncSession) -> AgentRun:
         """Start an agent run - creates log entry, executes, writes results."""
 
+        # Budget check before running
+        from app.api.agent_budget import check_budget_before_run
+        budget_ok, budget_msg = await check_budget_before_run(agent, db)
+        if not budget_ok:
+            run = AgentRun(
+                agent_id=agent.id, trigger=trigger, status=AgentRunStatus.FAILED,
+                error=budget_msg, completed_at=datetime.now(timezone.utc),
+            )
+            db.add(run)
+            await db.flush()
+            logger.warning(f"Agent {agent.name} blocked by budget: {budget_msg}")
+            await broadcast("agent.budget_exceeded", {
+                "agent_id": str(agent.id), "message": budget_msg,
+            })
+            return run
+
         # Create run record
         run = AgentRun(agent_id=agent.id, trigger=trigger, status=AgentRunStatus.RUNNING)
         db.add(run)
@@ -609,11 +625,24 @@ class AgentRunner:
         # Broadcast status
         await broadcast("agent.started", {"agent_id": str(agent.id), "run_id": str(run.id)})
 
+        # A/B test: select prompt variant if active test exists
+        ab_variant_name = None
+        try:
+            from app.api.ab_testing import select_variant, record_variant_result
+            variant_prompt, ab_variant_name = select_variant(agent)
+        except Exception:
+            variant_prompt = None
+
         try:
             # Build context and render prompt
             context = await self.build_context(agent, db)
-            prompt = self.render_prompt(agent.prompt_template, context)
-            run.input_data = {"prompt_length": len(prompt), "context_keys": list(context.keys())}
+            template = variant_prompt or agent.prompt_template
+            prompt = self.render_prompt(template, context)
+            run.input_data = {
+                "prompt_length": len(prompt),
+                "context_keys": list(context.keys()),
+                "ab_variant": ab_variant_name,
+            }
 
             # Execute with timeout enforcement and retry
             result = await self._execute_llm(prompt, agent)
@@ -633,6 +662,14 @@ class AgentRunner:
                     f"Agent {agent.name} output validation warnings: {validation_warnings}"
                 )
                 result["_validation_warnings"] = validation_warnings
+
+            # Record A/B test result
+            if ab_variant_name:
+                try:
+                    eval_score = result.get("_self_eval", {}).get("score", 0.5)
+                    record_variant_result(agent, ab_variant_name, True, eval_score)
+                except Exception:
+                    pass
 
             # Update run
             run.status = AgentRunStatus.COMPLETED

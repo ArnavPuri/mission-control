@@ -77,6 +77,15 @@ What's already built:
 - **Webhook templates** — 8 pre-built templates for Slack, Discord, GitHub, Stripe, Linear, Sendgrid
 - **API rate limiting** — Sliding window rate limiter with per-key usage tracking
 - **Agent versioning** — Automatic config snapshots on sync with version history and diffs
+- **Web researcher agent** — Navigator researches topics and compiles findings into notes
+- **Code review agent** — Reviewer analyzes PRs for correctness, security, and maintainability
+- **Opportunity scout agent** — Scout finds freelance gigs, speaking slots, and collaborations
+- **Learning path agent** — Mentor curates structured learning paths with resources
+- **Health check-in agent** — Vitals provides daily wellness check-ins with pattern tracking
+- **Agent marketplace** — Gallery with categories, search, one-click install, and ratings
+- **Pipeline builder** — Create multi-agent workflows with dependency validation and execution preview
+- **A/B testing** — Compare prompt variants with weighted traffic allocation and automatic scoring
+- **Agent budget management** — Per-agent budget limits (daily/weekly/monthly) with alerts and spending history
 
 ---
 
@@ -89,11 +98,11 @@ What's already built:
 | 3. Personal Productivity | 15 | 23 | 65% |
 | 4. Dashboard 2.0 | 18 | 18 | **100%** |
 | 5. Integrations | 9 | 18 | 50% |
-| 6. Multi-Agent Intelligence | 4 | 16 | 25% |
+| 6. Multi-Agent Intelligence | 16 | 16 | **100%** |
 | 7. Privacy & Scale | 0 | 16 | 0% |
 | 8. Mobile & Desktop | 0 | 10 | 0% |
 | 9. Community | 0 | 16 | 0% |
-| **Total** | **73** | **145** | **50%** |
+| **Total** | **85** | **145** | **59%** |
 
 ---
 
@@ -282,26 +291,26 @@ _Connect Mission Control to the tools people already use._
 _Build a team of specialized AI agents that collaborate._
 
 ### 6.1 Agent Marketplace
-- [ ] Community agent gallery — browse and install skill files
-- [ ] One-click agent installation from gallery
-- [ ] Agent ratings and reviews
-- [ ] Agent categories: productivity, marketing, research, health, finance, learning
+- [x] Community agent gallery — browse and install skill files
+- [x] One-click agent installation from gallery
+- [x] Agent ratings and reviews
+- [x] Agent categories: productivity, marketing, research, health, finance, learning
 
 ### 6.2 Advanced Agent Capabilities
-- [ ] Web browsing agent — research topics and summarize findings
-- [ ] Code review agent — review PRs and suggest improvements
+- [x] Web browsing agent — research topics and summarize findings
+- [x] Code review agent — review PRs and suggest improvements
 - [x] Content creation agent — Echo drafts content from high-relevance marketing signals
 - [x] Competitor monitoring agent — Radar tracks competitor mentions and market signals
-- [ ] Opportunity scout agent — find freelance gigs, speaking opportunities
-- [ ] Learning path agent — curate learning resources for a skill
-- [ ] Health check-in agent — daily wellness prompts and tracking
+- [x] Opportunity scout agent — find freelance gigs, speaking opportunities
+- [x] Learning path agent — curate learning resources for a skill
+- [x] Health check-in agent — daily wellness prompts and tracking
 
 ### 6.3 Agent Orchestration
-- [ ] Pipeline builder — visual editor for multi-agent workflows
+- [x] Pipeline builder — visual editor for multi-agent workflows
 - [x] Event-driven triggers (not just schedules)
 - [x] Agent performance analytics — success rate, cost efficiency, action quality
-- [ ] A/B testing for agent prompts — compare prompt variants
-- [ ] Agent budget management dashboard with alerts
+- [x] A/B testing for agent prompts — compare prompt variants
+- [x] Agent budget management dashboard with alerts
 
 ---
 
@@ -487,7 +496,21 @@ All completed:
 4. ~~**API rate limiting** — sliding window rate limiter (per-key/IP), usage tracking, rate limit headers on all responses (Phase 5.4)~~
 5. ~~**Agent versioning** — automatic config snapshots on sync, version history, diff between versions, manual snapshots (Phase 1.4)~~
 
-### Sprint 15: Productivity & Integrations (Recommended)
+### Sprint 15: Multi-Agent Intelligence ✅
+
+All completed — entire Phase 6 now 100%:
+
+1. ~~**Web browsing agent** — Navigator researches topics, compiles findings into notes and reading list (Phase 6.2)~~
+2. ~~**Code review agent** — Reviewer analyzes PRs for correctness, security, maintainability (Phase 6.2)~~
+3. ~~**Opportunity scout agent** — Scout finds freelance gigs, speaking opportunities, collaborations (Phase 6.2)~~
+4. ~~**Learning path agent** — Mentor curates structured learning paths with resources (Phase 6.2)~~
+5. ~~**Health check-in agent** — Vitals provides daily wellness check-ins with pattern tracking (Phase 6.2)~~
+6. ~~**Agent marketplace** — Gallery with 8 categories, search, one-click install, ratings (Phase 6.1)~~
+7. ~~**Pipeline builder** — Create multi-agent workflows with dependency validation, cycle detection, execution preview (Phase 6.3)~~
+8. ~~**A/B testing for prompts** — Weighted variant selection, automatic scoring, winner lock-in (Phase 6.3)~~
+9. ~~**Agent budget dashboard** — Per-agent limits (daily/weekly/monthly), spending history, pre-run budget checks (Phase 6.3)~~
+
+### Sprint 16: Productivity & Integrations (Recommended)
 
 Next high-impact features:
 
@@ -495,7 +518,7 @@ Next high-impact features:
 2. **Daily agenda agent** — morning briefing with today's priorities (Phase 3.4)
 3. **Deadline awareness** — agents factor in due dates for prioritization (Phase 3.4)
 4. **Spaced repetition** — Anki-style learning for reading items (Phase 3.5)
-5. **Web browsing agent** — research topics and summarize findings (Phase 6.2)
+5. **One-command install** — curl | bash setup script (Phase 1.1)
 
 ---
 

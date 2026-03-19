@@ -696,6 +696,55 @@ export const agentVersions = {
   snapshot: (agentId: string) => request<Record<string, unknown>>(`/api/agents/${agentId}/snapshot`, { method: 'POST' }),
 };
 
+// --- Agent Marketplace ---
+
+export const marketplace = {
+  categories: () => request<Array<Record<string, unknown>>>('/api/marketplace/categories'),
+  gallery: (params?: { category?: string; search?: string; installed_only?: boolean }) => {
+    const qs = new URLSearchParams();
+    if (params?.category) qs.set('category', params.category);
+    if (params?.search) qs.set('search', params.search);
+    if (params?.installed_only) qs.set('installed_only', 'true');
+    return request<Array<Record<string, unknown>>>(`/api/marketplace/gallery?${qs}`);
+  },
+  install: (skill_file: string) => request<Record<string, unknown>>('/api/marketplace/install', { method: 'POST', body: JSON.stringify({ skill_file }) }),
+  rate: (agent_id: string, rating: number, comment?: string) => request<Record<string, unknown>>('/api/marketplace/rate', { method: 'POST', body: JSON.stringify({ agent_id, rating, comment }) }),
+  stats: () => request<Record<string, unknown>>('/api/marketplace/stats'),
+};
+
+// --- Pipeline Builder ---
+
+export const pipelines = {
+  list: () => request<Array<Record<string, unknown>>>('/api/pipelines'),
+  create: (data: { name: string; description?: string; steps: Array<{ agent_id: string; name: string; depends_on?: string[] }> }) =>
+    request<Record<string, unknown>>('/api/pipelines', { method: 'POST', body: JSON.stringify(data) }),
+  preview: (id: string) => request<Record<string, unknown>>(`/api/pipelines/${id}/preview`),
+  addStep: (id: string, step: { agent_id: string; name: string; depends_on?: string[] }) =>
+    request<Record<string, unknown>>(`/api/pipelines/${id}/add-step`, { method: 'POST', body: JSON.stringify(step) }),
+  removeStep: (pipelineId: string, stepId: string) =>
+    request<Record<string, unknown>>(`/api/pipelines/${pipelineId}/steps/${stepId}`, { method: 'DELETE' }),
+};
+
+// --- A/B Testing ---
+
+export const abTests = {
+  list: () => request<Array<Record<string, unknown>>>('/api/ab-tests'),
+  create: (data: { agent_id: string; name: string; variants: Array<{ name: string; prompt_template: string; weight?: number }> }) =>
+    request<Record<string, unknown>>('/api/ab-tests', { method: 'POST', body: JSON.stringify(data) }),
+  results: (agentId: string) => request<Record<string, unknown>>(`/api/ab-tests/${agentId}/results`),
+  update: (agentId: string, testName: string, data: { is_active?: boolean; winner?: string }) =>
+    request<Record<string, unknown>>(`/api/ab-tests/${agentId}/tests/${testName}`, { method: 'PATCH', body: JSON.stringify(data) }),
+};
+
+// --- Agent Budget ---
+
+export const agentBudget = {
+  overview: () => request<Record<string, unknown>>('/api/budget/overview'),
+  spending: (agentId: string, days?: number) => request<Record<string, unknown>>(`/api/budget/${agentId}/spending?days=${days || 30}`),
+  setLimits: (agentId: string, limits: { daily_limit_usd?: number; weekly_limit_usd?: number; monthly_limit_usd?: number }) =>
+    request<Record<string, unknown>>(`/api/budget/${agentId}/limits`, { method: 'PATCH', body: JSON.stringify(limits) }),
+};
+
 // --- Backup ---
 
 export const backup = {
