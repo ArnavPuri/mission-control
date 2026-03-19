@@ -23,7 +23,7 @@ export default function ProjectsPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [p, t, i, a, g, n] = await Promise.all([
+      const [p, t, i, a, n] = await Promise.all([
         api.projects.list(),
         api.tasks.list(),
         api.ideas.list(),
