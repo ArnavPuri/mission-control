@@ -1,5 +1,10 @@
 import asyncio
+import sys
+from pathlib import Path
 from logging.config import fileConfig
+
+# Ensure the backend root is on sys.path (needed when alembic runs from a subdirectory)
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
