@@ -13,7 +13,7 @@ tools:
   - web_search
 
 data:
-  reads: [projects, tasks, goals]
+  reads: [projects, tasks, notes]
   writes: [marketing_signals, tasks]
 
 schedule:
@@ -27,8 +27,8 @@ prompt_template: |
   ACTIVE PROJECTS:
   {{projects}}
 
-  CURRENT GOALS:
-  {{goals}}
+  NOTES (for context on skills and interests):
+  {{notes}}
 
   EXISTING TASKS (avoid duplicates):
   {{tasks}}

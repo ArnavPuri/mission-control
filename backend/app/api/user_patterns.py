@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.db.models import (
-    Task, Idea, JournalEntry, HabitCompletion, EventLog,
+    Task, Idea, EventLog,
     AgentConfig, AgentRun, AgentRunStatus,
 )
 
@@ -43,18 +43,6 @@ async def get_activity_patterns(days: int = 30, db: AsyncSession = Depends(get_d
     # Ideas
     result = await db.execute(
         select(Idea.created_at).where(Idea.created_at >= since)
-    )
-    timestamps.extend(r[0] for r in result.all() if r[0])
-
-    # Journal entries
-    result = await db.execute(
-        select(JournalEntry.created_at).where(JournalEntry.created_at >= since)
-    )
-    timestamps.extend(r[0] for r in result.all() if r[0])
-
-    # Habit completions
-    result = await db.execute(
-        select(HabitCompletion.completed_at).where(HabitCompletion.completed_at >= since)
     )
     timestamps.extend(r[0] for r in result.all() if r[0])
 

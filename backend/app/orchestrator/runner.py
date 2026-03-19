@@ -30,9 +30,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings, LLMProvider
 from app.db.models import (
     AgentConfig, AgentRun, AgentStatus, AgentRunStatus,
-    Project, Task, Idea, ReadingItem, EventLog, TaskStatus,
-    Habit, Goal, JournalEntry, AgentApproval, ApprovalStatus,
-    AgentMemory,
+    Project, Task, Idea, EventLog, TaskStatus,
+    AgentApproval, ApprovalStatus,
+    AgentMemory, Note,
 )
 from app.api.ws import broadcast
 from app.orchestrator.schemas import validate_agent_output
@@ -131,36 +131,14 @@ class AgentRunner:
                 for i in result.scalars().all()
             ]
 
-        if "reading" in (agent.data_reads or []):
-            result = await db.execute(select(ReadingItem).where(ReadingItem.is_read == False))
-            context["reading"] = [
-                {"id": str(r.id), "title": r.title, "url": r.url}
-                for r in result.scalars().all()
-            ]
-
-        if "habits" in (agent.data_reads or []):
-            result = await db.execute(select(Habit).where(Habit.is_active == True))
-            context["habits"] = [
-                {"id": str(h.id), "name": h.name, "current_streak": h.current_streak, "best_streak": h.best_streak}
-                for h in result.scalars().all()
-            ]
-
-        if "goals" in (agent.data_reads or []):
-            from app.db.models import GoalStatus
-            result = await db.execute(select(Goal).where(Goal.status == GoalStatus.ACTIVE))
-            context["goals"] = [
-                {"id": str(g.id), "title": g.title, "description": g.description, "progress": g.progress}
-                for g in result.scalars().all()
-            ]
-
-        if "journal" in (agent.data_reads or []):
+        if "notes" in (agent.data_reads or []):
             result = await db.execute(
-                select(JournalEntry).order_by(JournalEntry.created_at.desc()).limit(7)
+                select(Note).order_by(Note.updated_at.desc()).limit(20)
             )
-            context["journal"] = [
-                {"id": str(j.id), "content": j.content[:200], "mood": j.mood.value if j.mood else None,
-                 "created_at": j.created_at.isoformat()}
-                for j in result.scalars().all()
+            context["notes"] = [
+                {"id": str(n.id), "title": n.title, "content": n.content[:200],
+                 "tags": n.tags or [], "is_pinned": n.is_pinned}
+                for n in result.scalars().all()
             ]
 
         if "marketing_signals" in (agent.data_reads or []):

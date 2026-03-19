@@ -14,8 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.db.models import (
-    Project, Task, Idea, ReadingItem, Habit, HabitCompletion,
-    Goal, KeyResult, JournalEntry, Note, AgentConfig, AgentMemory,
+    Project, Task, Idea, Note, AgentConfig, AgentMemory,
     Routine, RoutineItem, RoutineCompletion,
     EventLog, Notification,
 )
@@ -29,12 +28,6 @@ BACKUP_TABLES = [
     ("projects", Project),
     ("tasks", Task),
     ("ideas", Idea),
-    ("reading_list", ReadingItem),
-    ("habits", Habit),
-    ("habit_completions", HabitCompletion),
-    ("goals", Goal),
-    ("key_results", KeyResult),
-    ("journal_entries", JournalEntry),
     ("notes", Note),
     ("routines", Routine),
     ("routine_items", RoutineItem),

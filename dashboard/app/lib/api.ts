@@ -103,26 +103,6 @@ export const ideas = {
   delete: (id: string) => request<{ deleted: boolean }>(`/api/ideas/${id}`, { method: 'DELETE' }),
 };
 
-// --- Reading List ---
-
-export interface ReadingItem {
-  id: string;
-  title: string;
-  url?: string;
-  is_read: boolean;
-  notes?: string;
-  tags: string[];
-  source: string;
-  created_at: string;
-}
-
-export const reading = {
-  list: (showRead = false) => request<ReadingItem[]>(`/api/reading?show_read=${showRead}`),
-  create: (data: Partial<ReadingItem>) => request<{ id: string }>('/api/reading', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: string, data: Partial<ReadingItem>) => request<{ updated: boolean }>(`/api/reading/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-  delete: (id: string) => request<{ deleted: boolean }>(`/api/reading/${id}`, { method: 'DELETE' }),
-};
-
 // --- Agents ---
 
 export interface AgentRun {
@@ -171,107 +151,6 @@ export const agents = {
   runs: (id: string, limit = 20) => request<AgentRun[]>(`/api/agents/${id}/runs?limit=${limit}`),
   expandPrompt: (data: { description: string; agent_type?: string; data_reads?: string[]; data_writes?: string[] }) =>
     request<{ prompt: string }>('/api/agents/expand-prompt', { method: 'POST', body: JSON.stringify(data) }),
-};
-
-// --- Habits ---
-
-export interface Habit {
-  id: string;
-  name: string;
-  description: string;
-  frequency: 'daily' | 'weekly' | 'custom';
-  current_streak: number;
-  best_streak: number;
-  total_completions: number;
-  is_active: boolean;
-  color: string;
-  completed_today: boolean;
-  project_id?: string;
-  created_at: string;
-}
-
-export interface HabitAnalytics {
-  habits: {
-    id: string;
-    name: string;
-    color: string;
-    current_streak: number;
-    best_streak: number;
-    total_completions: number;
-    completion_rate: number;
-    weekly_data: { week: number; completions: number }[];
-  }[];
-  days: number;
-}
-
-export const habits = {
-  list: (activeOnly = true) => request<Habit[]>(`/api/habits?active_only=${activeOnly}`),
-  create: (data: Partial<Habit>) => request<{ id: string }>('/api/habits', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: string, data: Partial<Habit>) => request<{ updated: boolean }>(`/api/habits/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-  complete: (id: string) => request<{ current_streak: number }>(`/api/habits/${id}/complete`, { method: 'POST' }),
-  uncomplete: (id: string) => request<{ uncompleted: boolean }>(`/api/habits/${id}/uncomplete`, { method: 'POST' }),
-  delete: (id: string) => request<{ deleted: boolean }>(`/api/habits/${id}`, { method: 'DELETE' }),
-  analytics: (days = 30) => request<HabitAnalytics>(`/api/habits/analytics/overview?days=${days}`),
-};
-
-// --- Goals ---
-
-export interface KeyResult {
-  id: string;
-  title: string;
-  target_value: number;
-  current_value: number;
-  unit: string;
-  progress: number;
-}
-
-export interface Goal {
-  id: string;
-  title: string;
-  description: string;
-  status: 'active' | 'completed' | 'abandoned';
-  target_date?: string;
-  progress: number;
-  project_id?: string;
-  tags: string[];
-  key_results: KeyResult[];
-  created_at: string;
-}
-
-export const goals = {
-  list: (status?: string) => {
-    const qs = status ? `?status=${status}` : '';
-    return request<Goal[]>(`/api/goals${qs}`);
-  },
-  create: (data: Partial<Goal>) => request<{ id: string }>('/api/goals', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: string, data: Partial<Goal>) => request<{ updated: boolean }>(`/api/goals/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-  delete: (id: string) => request<{ deleted: boolean }>(`/api/goals/${id}`, { method: 'DELETE' }),
-  createKeyResult: (goalId: string, data: Partial<KeyResult>) =>
-    request<{ id: string }>(`/api/goals/${goalId}/key-results`, { method: 'POST', body: JSON.stringify(data) }),
-  updateKeyResult: (goalId: string, krId: string, data: Partial<KeyResult>) =>
-    request<{ updated: boolean }>(`/api/goals/${goalId}/key-results/${krId}`, { method: 'PATCH', body: JSON.stringify(data) }),
-};
-
-// --- Journal ---
-
-export interface JournalEntry {
-  id: string;
-  content: string;
-  mood?: 'great' | 'good' | 'okay' | 'low' | 'bad';
-  energy?: number;
-  tags: string[];
-  wins: string[];
-  challenges: string[];
-  gratitude: string[];
-  source: string;
-  created_at: string;
-}
-
-export const journal = {
-  list: (limit = 30) => request<JournalEntry[]>(`/api/journal?limit=${limit}`),
-  create: (data: Partial<JournalEntry>) => request<{ id: string }>('/api/journal', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: string, data: Partial<JournalEntry>) => request<{ updated: boolean }>(`/api/journal/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-  delete: (id: string) => request<{ deleted: boolean }>(`/api/journal/${id}`, { method: 'DELETE' }),
 };
 
 // --- Approvals ---
@@ -570,27 +449,6 @@ export const taskReorder = {
     request<{ reordered: number }>('/api/tasks/reorder', { method: 'POST', body: JSON.stringify({ task_ids: taskIds }) }),
 };
 
-// --- Journal Search ---
-
-export interface JournalSearchResult {
-  id: string;
-  content: string;
-  mood?: string;
-  energy?: number;
-  tags: string[];
-  wins: string[];
-  challenges: string[];
-  gratitude: string[];
-  source: string;
-  created_at: string;
-  relevance: number;
-}
-
-export const journalSearch = {
-  search: (q: string, mode: 'text' | 'semantic' = 'semantic', limit = 20) =>
-    request<{ query: string; mode: string; total: number; results: JournalSearchResult[] }>(`/api/journal/search?q=${encodeURIComponent(q)}&mode=${mode}&limit=${limit}`),
-};
-
 // --- Routines ---
 
 export interface RoutineItem {
@@ -754,10 +612,6 @@ export const backup = {
 };
 
 // --- Reading Summarize ---
-
-export const readingSummarize = {
-  summarize: (id: string) => request<{ id: string; summary: string }>(`/api/reading/${id}/summarize`, { method: 'POST' }),
-};
 
 // --- Export ---
 

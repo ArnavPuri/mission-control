@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from app.db.session import get_db
-from app.db.models import RSSFeed, ReadingItem, EventLog
+from app.db.models import RSSFeed, Note, EventLog
 
 logger = logging.getLogger(__name__)
 
@@ -140,16 +140,16 @@ async def _fetch_and_import(feed: RSSFeed, db: AsyncSession) -> int:
             if not url:
                 continue
 
-            # Check if already imported
+            # Check if already imported (by matching title)
             existing = await db.execute(
-                select(ReadingItem).where(ReadingItem.url == url)
+                select(Note).where(Note.title == title, Note.source == "rss")
             )
             if existing.scalar_one_or_none():
                 continue
 
-            item = ReadingItem(
+            item = Note(
                 title=title,
-                url=url,
+                content=f"[{title}]({url})\n\nImported from RSS feed: {feed.title}",
                 source="rss",
                 tags=(feed.tags or []) + [f"feed:{feed.title}"],
             )

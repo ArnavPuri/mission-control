@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.db.session import init_db
-from app.api import projects, tasks, ideas, reading, agents, ws, health, habits, goals, journal, approvals, search, webhooks, export, notifications, agent_memory, triggers, agent_analytics, autotag, notes, api_keys, github_integration, rss_feeds, marketing_signals, marketing_content, marketing_stats, routines, dedup, workflows, smart_priority, push, backup, user_patterns, webhook_templates, rate_limit, agent_versions, agent_marketplace, pipeline_builder, ab_testing, agent_budget
+from app.api import projects, tasks, ideas, agents, ws, health, approvals, search, webhooks, export, notifications, agent_memory, triggers, agent_analytics, autotag, notes, api_keys, github_integration, rss_feeds, marketing_signals, marketing_content, marketing_stats, routines, dedup, workflows, smart_priority, push, backup, user_patterns, webhook_templates, rate_limit, agent_versions, agent_marketplace, pipeline_builder, ab_testing, agent_budget
 from app.orchestrator.scheduler import Scheduler
 from app.integrations.telegram import start_telegram_bot
 from app.integrations.discord_bot import start_discord_bot
@@ -78,11 +78,7 @@ app.include_router(health.router, tags=["health"])
 app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
 app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
 app.include_router(ideas.router, prefix="/api/ideas", tags=["ideas"])
-app.include_router(reading.router, prefix="/api/reading", tags=["reading"])
 app.include_router(agents.router, prefix="/api/agents", tags=["agents"])
-app.include_router(habits.router, prefix="/api/habits", tags=["habits"])
-app.include_router(goals.router, prefix="/api/goals", tags=["goals"])
-app.include_router(journal.router, prefix="/api/journal", tags=["journal"])
 app.include_router(approvals.router, prefix="/api/approvals", tags=["approvals"])
 app.include_router(search.router, prefix="/api/search", tags=["search"])
 app.include_router(webhooks.router, prefix="/api/webhooks", tags=["webhooks"])

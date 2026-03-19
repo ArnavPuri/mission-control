@@ -12,7 +12,7 @@ max_budget_usd: 0.20
 tools: []
 
 data:
-  reads: [standup, tasks, goals, projects]
+  reads: [standup, tasks, projects]
   writes: []
 
 schedule:
@@ -29,9 +29,6 @@ prompt_template: |
 
   OPEN TASKS:
   {{tasks}}
-
-  ACTIVE GOALS:
-  {{goals}}
 
   PROJECTS:
   {{projects}}

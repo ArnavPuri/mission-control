@@ -23,19 +23,10 @@ class AgentAction(BaseModel):
 
     # Idea fields (text reused)
 
-    # Reading fields
+    # Note fields
     title: str | None = None
-    url: str | None = None
-
-    # Journal fields
     content: str | None = None
-    mood: str | None = None
-    energy: int | None = None
-    wins: list[str] = Field(default_factory=list)
-    challenges: list[str] = Field(default_factory=list)
-    gratitude: list[str] = Field(default_factory=list)
-
-    # Goal fields
+    url: str | None = None
     description: str | None = None
 
     # Memory fields
@@ -57,9 +48,9 @@ class AgentAction(BaseModel):
     @classmethod
     def validate_action_type(cls, v: str) -> str:
         allowed = {
-            "create_task", "create_idea", "update_task", "add_reading",
-            "create_journal", "save_memory", "save_shared_memory",
-            "create_goal", "create_note",
+            "create_task", "create_idea", "update_task",
+            "save_memory", "save_shared_memory",
+            "create_note",
             "create_signal", "create_content",
         }
         if v not in allowed:

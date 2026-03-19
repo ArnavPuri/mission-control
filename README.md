@@ -21,24 +21,23 @@ Mission Control is an open-source personal productivity system powered by AI age
 
 **Built with:** Python/FastAPI · Next.js · PostgreSQL + pgvector · Claude Agent SDK
 
-### What's included (v0.7)
+### What's included (v0.8)
 
-- **25 database tables** — Projects, tasks, ideas, reading list, habits, goals, journal, notes, routines, workflows, and more
-- **15 AI agents** — Daily Standup, Reddit Scout, Idea Validator, Weekly Prioritizer, Daily Check-in, Goal Decomposer, Evening Reflection, Weekly Review, Web Researcher, Code Reviewer, Opportunity Scout, Learning Path, Health Check-in, Content Drafter, Competitor Monitor
-- **5-page dashboard** — Dashboard, Projects, Agents, Journal, Settings with Kanban board, calendar, timeline/Gantt, drag-and-drop, bulk actions, keyboard shortcuts
-- **4 input channels** — Telegram bot (11 commands + chat), Discord bot, MCP server (17 tools), REST API + push notifications
+- **10 AI agents** — Daily Standup, Reddit Scout, Idea Validator, Weekly Prioritizer, Weekly Review, Web Researcher, Code Reviewer, Opportunity Scout, Content Drafter, Competitor Monitor
+- **5-page dashboard** — Dashboard, Projects, Agents, Notes, Settings with Kanban board, calendar, timeline/Gantt, drag-and-drop, bulk actions, keyboard shortcuts
+- **4 input channels** — Telegram bot, Discord bot, MCP server (17 tools), REST API + push notifications
 - **Multi-auth** — Anthropic API, OAuth, OpenRouter, Ollama (fully local)
 - **Agent intelligence** — Memory, chaining, workflow DAGs, self-evaluation, time-aware context, conditional triggers, approval queue, auto-tagging, smart prioritization, analytics, versioning, A/B testing
 - **Agent marketplace** — Gallery with 8 categories, search, one-click install, ratings, pipeline builder
 - **Budget management** — Per-agent limits (daily/weekly/monthly), spending history, pre-run checks, alerts
-- **Productivity suite** — Routines builder, calendar view, timeline/Gantt, quick capture, deduplication, journal search, auto-summarize reading
+- **Productivity suite** — Notes (markdown), routines builder, calendar view, timeline/Gantt, quick capture, deduplication
 - **Platform** — Rate limiting, webhook templates, user pattern learning, detailed health diagnostics, backup/restore
 - **Full test suites** — 14 backend (pytest) + 21 frontend (Vitest) tests
 
 ```
 ┌──────────────────┐     ┌──────────────┐     ┌──────────────┐
 │  Telegram         │────▶│  Orchestrator │────▶│  Agent Pool   │
-│  Discord          │     │  (scheduler)  │     │  (15 agents)  │
+│  Discord          │     │  (scheduler)  │     │  (10 agents)  │
 │  MCP / Claude Code│     │  + Workflows  │     │  + DAGs       │
 │  REST API         │     └──────┬───────┘     └──────┬───────┘
 │  Push Notifs      │            │                     │
@@ -170,7 +169,7 @@ The Next.js dashboard includes 5 pages:
 
 | Page | Features |
 |------|----------|
-| **Dashboard** | Tasks (drag-and-drop + Kanban), ideas, reading (auto-summarize), habits, routines, goals, calendar, timeline/Gantt, activity heatmap, agent analytics, journal with search |
+| **Dashboard** | Tasks (drag-and-drop + Kanban), ideas, notes (markdown), routines, calendar, timeline/Gantt, activity heatmap, agent analytics |
 | **Projects** | Project list with health scores, per-project dashboards (tasks, goals, agents, notes) |
 | **Agents** | Agent overview, per-agent detail with schedule, cost charts, recent runs, workflow DAGs |
 | **Journal** | Timeline grouped by date, mood tracking, wins/challenges/gratitude, semantic search |

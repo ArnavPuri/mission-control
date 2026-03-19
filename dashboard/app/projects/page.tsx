@@ -5,7 +5,7 @@ import * as api from '../lib/api';
 import * as Progress from '@radix-ui/react-progress';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import {
-  FolderOpen, ListTodo, Zap, Lightbulb, Target, BookOpen,
+  FolderOpen, ListTodo, Zap, Lightbulb, StickyNote, BookOpen,
   Plus, ChevronRight, ExternalLink, Loader2,
 } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -16,7 +16,6 @@ export default function ProjectsPage() {
   const [tasks, setTasks] = useState<api.Task[]>([]);
   const [ideas, setIdeas] = useState<api.Idea[]>([]);
   const [agents, setAgents] = useState<api.Agent[]>([]);
-  const [goals, setGoals] = useState<api.Goal[]>([]);
   const [notes, setNotes] = useState<api.Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
@@ -29,10 +28,9 @@ export default function ProjectsPage() {
         api.tasks.list(),
         api.ideas.list(),
         api.agents.list(),
-        api.goals.list().catch(() => []),
         api.notes.list().catch(() => []),
       ]);
-      setProjects(p); setTasks(t); setIdeas(i); setAgents(a); setGoals(g); setNotes(n);
+      setProjects(p); setTasks(t); setIdeas(i); setAgents(a); setNotes(n);
     } catch {} finally { setLoading(false); }
   }, []);
 
@@ -56,7 +54,6 @@ export default function ProjectsPage() {
   const projectTasks = selectedProject ? tasks.filter((t) => t.project_id === selectedProject) : [];
   const projectIdeas = selectedProject ? ideas.filter((i) => i.project_id === selectedProject) : [];
   const projectAgents = selectedProject ? agents.filter((a) => a.project_id === selectedProject) : [];
-  const projectGoals = selectedProject ? goals.filter((g) => g.project_id === selectedProject) : [];
   const projectNotes = selectedProject ? notes.filter((n) => n.project_id === selectedProject) : [];
 
   return (
@@ -144,7 +141,7 @@ export default function ProjectsPage() {
                       { label: 'Tasks', value: projectTasks.length, icon: ListTodo },
                       { label: 'Ideas', value: projectIdeas.length, icon: Lightbulb },
                       { label: 'Agents', value: projectAgents.length, icon: Zap },
-                      { label: 'Goals', value: projectGoals.length, icon: Target },
+                      { label: 'Notes', value: projectNotes.length, icon: StickyNote },
                     ].map((s) => (
                       <Card key={s.label} className="p-3 text-center">
                         <s.icon size={16} className="text-mc-muted mx-auto mb-1" />
@@ -168,29 +165,6 @@ export default function ProjectsPage() {
                       {projectTasks.length === 0 && <span className="text-xs text-mc-dim py-2">No tasks linked</span>}
                     </div>
                   </Card>
-
-                  {/* Goals */}
-                  {projectGoals.length > 0 && (
-                    <Card className="p-4">
-                      <SectionHeader icon={Target} title="Goals" count={projectGoals.length} />
-                      <div className="flex flex-col gap-3">
-                        {projectGoals.map((g) => {
-                          const pct = Math.round(g.progress * 100);
-                          return (
-                            <div key={g.id}>
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-sm text-mc-text dark:text-gray-200">{g.title}</span>
-                                <span className="text-xs font-semibold text-mc-accent">{pct}%</span>
-                              </div>
-                              <Progress.Root className="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden" value={pct}>
-                                <Progress.Indicator className="h-full rounded-full bg-mc-accent transition-all" style={{ width: `${pct}%` }} />
-                              </Progress.Root>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </Card>
-                  )}
 
                   {/* Agents */}
                   {projectAgents.length > 0 && (

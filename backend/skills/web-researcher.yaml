@@ -13,8 +13,8 @@ tools:
   - web_search
 
 data:
-  reads: [tasks, projects, reading_list]
-  writes: [reading_list, notes]
+  reads: [tasks, projects, notes]
+  writes: [notes]
 
 schedule:
   type: manual
@@ -29,27 +29,20 @@ prompt_template: |
   RESEARCH TASKS (look for tasks tagged "research" or with research-related text):
   {{tasks}}
 
-  EXISTING READING LIST (avoid duplicates):
-  {{reading_list}}
+  EXISTING NOTES (avoid duplicates):
+  {{notes}}
 
   Instructions:
   1. Identify any tasks or projects that need research.
   2. Search the web for relevant, recent information.
-  3. For each topic researched, add key articles to the reading list.
-  4. Create a note with your compiled findings.
-  5. Focus on actionable insights, not just raw information.
-  6. Always cite your sources.
+  3. Create notes with your compiled findings and source links.
+  4. Focus on actionable insights, not just raw information.
+  5. Always cite your sources inline using markdown links.
 
   Respond with JSON:
   {
     "summary": "Researched N topics, found M key insights",
     "actions": [
-      {
-        "type": "add_reading",
-        "title": "Article title",
-        "url": "https://...",
-        "tags": ["research", "topic-name"]
-      },
       {
         "type": "create_note",
         "title": "Research: Topic Name",
