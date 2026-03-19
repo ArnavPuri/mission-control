@@ -34,6 +34,7 @@ class Base(DeclarativeBase):
 class ProjectStatus(str, PyEnum):
     ACTIVE = "active"
     PLANNING = "planning"
+    LAUNCHED = "launched"
     PAUSED = "paused"
     ARCHIVED = "archived"
 
@@ -126,6 +127,9 @@ class Project(Base):
     # Relationships
     tasks = relationship("Task", back_populates="project", lazy="selectin")
     agents = relationship("AgentConfig", back_populates="project", lazy="selectin")
+    ideas = relationship("Idea", foreign_keys="[Idea.project_id]", lazy="selectin")
+    marketing_signals = relationship("MarketingSignal", foreign_keys="[MarketingSignal.project_id]", lazy="selectin")
+    marketing_content = relationship("MarketingContent", foreign_keys="[MarketingContent.project_id]", lazy="selectin")
 
 
 class Task(Base):
