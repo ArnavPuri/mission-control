@@ -598,7 +598,7 @@ class Notification(Base):
     is_read = Column(Boolean, default=False)
     action_url = Column(String(500), nullable=True)  # optional deep link
     data = Column(JSON, default=dict)
-    priority = Column(Enum(NotificationPriority), default=NotificationPriority.ROUTINE, nullable=False)
+    priority = Column(Enum(NotificationPriority, values_callable=lambda x: [e.value for e in x]), default=NotificationPriority.ROUTINE, nullable=False)
     telegram_sent = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
