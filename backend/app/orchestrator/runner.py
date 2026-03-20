@@ -35,6 +35,7 @@ from app.db.models import (
     AgentMemory, Note,
 )
 from app.api.ws import broadcast
+from app.api.notifications import create_notification
 from app.orchestrator.schemas import validate_agent_output
 
 logger = logging.getLogger(__name__)
@@ -333,6 +334,21 @@ class AgentRunner:
                     "name": project.name,
                     "description": project.description,
                     "status": project.status.value,
+                }
+
+        # Brand profile for marketing agents
+        if any(r in (agent.data_reads or []) for r in ("marketing_signals", "marketing_content")):
+            from app.db.models import BrandProfile
+            bp_result = await db.execute(select(BrandProfile).limit(1))
+            bp = bp_result.scalar_one_or_none()
+            if bp:
+                context["brand"] = {
+                    "name": bp.name,
+                    "tone": bp.tone,
+                    "topics": bp.topics or [],
+                    "talking_points": bp.talking_points or {},
+                    "avoid": bp.avoid or [],
+                    "example_posts": bp.example_posts or [],
                 }
 
         return context
@@ -695,6 +711,7 @@ class AgentRunner:
                     db, title=f"{agent.name} completed",
                     body=summary[:200], category=category,
                     source=f"agent:{agent.slug}",
+                    priority="routine",
                 )
             except Exception:
                 pass  # notifications are best-effort
@@ -737,6 +754,7 @@ class AgentRunner:
                     db, title=f"{agent.name} failed",
                     body=str(e)[:200], category="error",
                     source=f"agent:{agent.slug}",
+                    priority="urgent",
                 )
             except Exception:
                 pass
@@ -1030,6 +1048,27 @@ class AgentRunner:
                     "tags": signal.tags or [], "source": signal.source,
                 }, db)
 
+                relevance = action.get("relevance_score", 0.5)
+                if relevance > 0.8:
+                    await create_notification(
+                        db,
+                        title=signal.title,
+                        body=f"Source: {signal.source_type} | Score: {int(relevance * 100)}%",
+                        category="signal",
+                        source=f"agent:{agent.slug}",
+                        data={"relevance_score": relevance, "signal_id": str(signal.id)},
+                        priority="urgent",
+                    )
+                else:
+                    await create_notification(
+                        db,
+                        title=signal.title,
+                        category="signal",
+                        source=f"agent:{agent.slug}",
+                        data={"relevance_score": relevance, "signal_id": str(signal.id)},
+                        priority="routine",
+                    )
+
             elif action_type == "create_content" and "marketing_content" in (agent.data_writes or []):
                 from app.db.models import MarketingContent
                 content = MarketingContent(
@@ -1054,3 +1093,11 @@ class AgentRunner:
                     "title": content.title, "channel": content.channel,
                     "tags": content.tags or [], "source": content.source,
                 }, db)
+
+                await create_notification(
+                    db,
+                    title=f"Draft: {content.title}",
+                    category="content",
+                    source=f"agent:{agent.slug}",
+                    priority="routine",
+                )
