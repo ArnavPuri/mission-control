@@ -103,6 +103,7 @@ def _serialize_full(a: AgentConfig) -> dict:
         "last_run_at": a.last_run_at.isoformat() if a.last_run_at else None,
         "created_at": a.created_at.isoformat(),
         "updated_at": a.updated_at.isoformat() if a.updated_at else None,
+        "session_window_days": a.session_window_days or 7,
     }
 
 
@@ -351,3 +352,24 @@ async def list_agent_runs(agent_id: UUID, limit: int = 20, db: AsyncSession = De
         }
         for r in runs
     ]
+
+
+@router.get("/{agent_id}/runs/{run_id}")
+async def get_agent_run(agent_id: UUID, run_id: UUID, db: AsyncSession = Depends(get_db)):
+    """Get detailed agent run including transcript."""
+    run = await db.get(AgentRun, run_id)
+    if not run or run.agent_id != agent_id:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return {
+        "id": str(run.id),
+        "agent_id": str(run.agent_id),
+        "status": run.status.value,
+        "trigger": run.trigger,
+        "tokens_used": run.tokens_used,
+        "cost_usd": run.cost_usd,
+        "error": run.error,
+        "output_data": run.output_data,
+        "transcript": run.transcript,
+        "started_at": run.started_at.isoformat(),
+        "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+    }
