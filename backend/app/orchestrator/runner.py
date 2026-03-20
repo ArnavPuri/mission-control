@@ -21,7 +21,7 @@ import json
 import os
 import logging
 import random
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from sqlalchemy import select
@@ -743,6 +743,17 @@ class AgentRunner:
             agent.status = AgentStatus.IDLE
             agent.last_run_at = datetime.now(timezone.utc)
 
+            # Save transcript
+            run.transcript = self._last_transcript
+
+            # Update session persistence
+            if agent.session_window_days and agent.session_window_days > 0:
+                if self._last_session_id:
+                    agent.session_id = self._last_session_id
+                if self._last_message_uuid:
+                    agent.last_message_uuid = self._last_message_uuid
+                agent.session_expires_at = datetime.now(timezone.utc) + timedelta(days=agent.session_window_days)
+
             # Check if agent requires approval — use validated actions
             requires_approval = agent.config.get("requires_approval", False) if agent.config else False
             actions = [a.model_dump(exclude_none=True) for a in validated.actions]
@@ -811,6 +822,7 @@ class AgentRunner:
         except Exception as e:
             run.status = AgentRunStatus.FAILED
             run.error = str(e)
+            run.transcript = self._last_transcript
             run.completed_at = datetime.now(timezone.utc)
             agent.status = AgentStatus.ERROR
             logger.error(f"Agent {agent.name} run failed: {e}")
@@ -837,6 +849,11 @@ class AgentRunner:
                 pass
 
         await db.flush()
+
+        # Reset per-run state
+        self._last_session_id = None
+        self._last_message_uuid = None
+        self._last_transcript = None
 
         # Log event
         event = EventLog(
