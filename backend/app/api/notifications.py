@@ -32,6 +32,7 @@ async def list_notifications(unread_only: bool = False, limit: int = 50, db: Asy
             "source": n.source,
             "is_read": n.is_read,
             "action_url": n.action_url,
+            "priority": n.priority.value if n.priority else "routine",
             "created_at": n.created_at.isoformat(),
         }
         for n in notifs
@@ -75,13 +76,16 @@ async def create_notification(
     source: str = "system",
     action_url: str | None = None,
     data: dict | None = None,
+    priority: str = "routine",
 ):
     """Create a notification and broadcast via WebSocket."""
     from app.api.ws import broadcast
+    from app.db.models import NotificationPriority
 
     notif = Notification(
         title=title, body=body, category=category,
         source=source, action_url=action_url, data=data or {},
+        priority=NotificationPriority(priority),
     )
     db.add(notif)
     await db.flush()
