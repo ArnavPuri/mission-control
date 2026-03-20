@@ -34,8 +34,48 @@ class ProjectUpdate(BaseModel):
 
 @router.get("")
 async def list_projects(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Project).order_by(Project.created_at.desc()))
-    projects = result.scalars().all()
+    task_count_sq = (
+        select(func.count(Task.id))
+        .where(Task.project_id == Project.id)
+        .correlate(Project)
+        .scalar_subquery()
+    )
+    open_task_count_sq = (
+        select(func.count(Task.id))
+        .where(Task.project_id == Project.id, Task.status != TaskStatus.DONE)
+        .correlate(Project)
+        .scalar_subquery()
+    )
+    idea_count_sq = (
+        select(func.count(Idea.id))
+        .where(Idea.project_id == Project.id)
+        .correlate(Project)
+        .scalar_subquery()
+    )
+    feedback_count_sq = (
+        select(func.count(MarketingSignal.id))
+        .where(MarketingSignal.project_id == Project.id)
+        .correlate(Project)
+        .scalar_subquery()
+    )
+    content_count_sq = (
+        select(func.count(MarketingContent.id))
+        .where(MarketingContent.project_id == Project.id)
+        .correlate(Project)
+        .scalar_subquery()
+    )
+
+    result = await db.execute(
+        select(
+            Project,
+            task_count_sq.label("task_count"),
+            open_task_count_sq.label("open_task_count"),
+            idea_count_sq.label("idea_count"),
+            feedback_count_sq.label("feedback_count"),
+            content_count_sq.label("content_count"),
+        ).order_by(Project.created_at.desc())
+    )
+    rows = result.all()
     return [
         {
             "id": str(p.id),
@@ -45,15 +85,15 @@ async def list_projects(db: AsyncSession = Depends(get_db)):
             "color": p.color,
             "url": p.url,
             "metadata": p.metadata_ or {},
-            "task_count": len(p.tasks) if p.tasks else 0,
-            "open_task_count": sum(1 for t in (p.tasks or []) if t.status != TaskStatus.DONE),
-            "idea_count": len(p.ideas) if p.ideas else 0,
-            "feedback_count": len(p.marketing_signals) if p.marketing_signals else 0,
-            "content_count": len(p.marketing_content) if p.marketing_content else 0,
+            "task_count": task_count,
+            "open_task_count": open_task_count,
+            "idea_count": idea_count,
+            "feedback_count": feedback_count,
+            "content_count": content_count,
             "agent_count": len(p.agents) if p.agents else 0,
             "created_at": p.created_at.isoformat(),
         }
-        for p in projects
+        for p, task_count, open_task_count, idea_count, feedback_count, content_count in rows
     ]
 
 
@@ -73,6 +113,16 @@ async def get_project(project_id: UUID, db: AsyncSession = Depends(get_db)):
     project = await db.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    counts = await db.execute(
+        select(
+            func.count(Task.id).filter(Task.project_id == project_id).label("task_count"),
+            func.count(Task.id).filter(Task.project_id == project_id, Task.status != TaskStatus.DONE).label("open_task_count"),
+            func.count(Idea.id).filter(Idea.project_id == project_id).label("idea_count"),
+            func.count(MarketingSignal.id).filter(MarketingSignal.project_id == project_id).label("feedback_count"),
+            func.count(MarketingContent.id).filter(MarketingContent.project_id == project_id).label("content_count"),
+        )
+    )
+    c = counts.one()
     return {
         "id": str(project.id),
         "name": project.name,
@@ -81,11 +131,11 @@ async def get_project(project_id: UUID, db: AsyncSession = Depends(get_db)):
         "color": project.color,
         "url": project.url,
         "metadata": project.metadata_ or {},
-        "task_count": len(project.tasks) if project.tasks else 0,
-        "open_task_count": sum(1 for t in (project.tasks or []) if t.status != TaskStatus.DONE),
-        "idea_count": len(project.ideas) if project.ideas else 0,
-        "feedback_count": len(project.marketing_signals) if project.marketing_signals else 0,
-        "content_count": len(project.marketing_content) if project.marketing_content else 0,
+        "task_count": c.task_count,
+        "open_task_count": c.open_task_count,
+        "idea_count": c.idea_count,
+        "feedback_count": c.feedback_count,
+        "content_count": c.content_count,
         "agent_count": len(project.agents) if project.agents else 0,
         "created_at": project.created_at.isoformat(),
         "updated_at": project.updated_at.isoformat(),

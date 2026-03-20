@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import * as api from '../lib/api';
 import {
   FolderOpen, Plus, ExternalLink, Loader2, Globe, Check,
@@ -33,8 +33,6 @@ function ProjectCard({
   const [activeTab, setActiveTab] = useState<ProjectTab>('tasks');
   const [newTaskText, setNewTaskText] = useState('');
   const [newIdeaText, setNewIdeaText] = useState('');
-  const taskInputRef = useRef<HTMLInputElement>(null);
-  const ideaInputRef = useRef<HTMLInputElement>(null);
 
   const openTasks = tasks.filter((t) => t.status !== 'done');
   const doneTasks = tasks.filter((t) => t.status === 'done');
@@ -42,7 +40,7 @@ function ProjectCard({
   const tabs: { key: ProjectTab; label: string; count: number }[] = [
     { key: 'tasks', label: 'Tasks', count: tasks.length },
     { key: 'ideas', label: 'Ideas', count: ideas.length },
-    { key: 'feedback', label: 'Feedback', count: signals.length },
+    { key: 'feedback', label: 'Feedback', count: signals.length + content.length },
   ];
 
   const statusLabel = project.status.charAt(0).toUpperCase() + project.status.slice(1);
@@ -121,7 +119,7 @@ function ProjectCard({
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto p-5 pt-3" style={{ maxHeight: 400 }}>
+      <div className="flex-1 overflow-y-auto p-5 pt-3 max-h-[min(400px,50vh)]">
         {activeTab === 'tasks' && (
           <div className="flex flex-col gap-0.5">
             {[...openTasks, ...doneTasks].map((task) => (
@@ -247,7 +245,6 @@ function ProjectCard({
       {activeTab === 'tasks' && (
         <div className="border-t border-mc-border dark:border-gray-800 p-3 flex gap-2">
           <input
-            ref={taskInputRef}
             value={newTaskText}
             onChange={(e) => setNewTaskText(e.target.value)}
             placeholder="New task..."
@@ -266,7 +263,6 @@ function ProjectCard({
       {activeTab === 'ideas' && (
         <div className="border-t border-mc-border dark:border-gray-800 p-3 flex gap-2">
           <input
-            ref={ideaInputRef}
             value={newIdeaText}
             onChange={(e) => setNewIdeaText(e.target.value)}
             placeholder="New idea..."
@@ -301,8 +297,8 @@ export default function ProjectsPage() {
         api.projects.list(),
         api.tasks.list(),
         api.ideas.list(),
-        api.fetchSignals().catch(() => []),
-        api.fetchContent().catch(() => []),
+        api.fetchSignals().catch((e) => { console.warn('Failed to fetch signals:', e); return []; }),
+        api.fetchContent().catch((e) => { console.warn('Failed to fetch content:', e); return []; }),
       ]);
       setProjects(p); setTasks(t); setIdeas(i); setSignals(s); setContent(c);
     } catch {} finally { setLoading(false); }
@@ -318,18 +314,24 @@ export default function ProjectsPage() {
 
   const toggleTask = async (task: api.Task) => {
     const newStatus = task.status === 'done' ? 'todo' : 'done';
-    await api.tasks.update(task.id, { status: newStatus } as Partial<api.Task>);
-    loadData();
+    setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, status: newStatus } : t));
+    try {
+      await api.tasks.update(task.id, { status: newStatus } as Partial<api.Task>);
+    } catch {
+      setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, status: task.status } : t));
+    }
   };
 
   const addTaskToProject = async (projectId: string, text: string) => {
     await api.tasks.create({ text, project_id: projectId } as Partial<api.Task>);
-    loadData();
+    const updated = await api.tasks.list();
+    setTasks(updated);
   };
 
   const addIdeaToProject = async (projectId: string, text: string) => {
     await api.ideas.create({ text, project_id: projectId } as Partial<api.Idea>);
-    loadData();
+    const updated = await api.ideas.list();
+    setIdeas(updated);
   };
 
   if (loading) {

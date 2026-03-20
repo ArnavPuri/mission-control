@@ -127,9 +127,9 @@ class Project(Base):
     # Relationships
     tasks = relationship("Task", back_populates="project", lazy="selectin")
     agents = relationship("AgentConfig", back_populates="project", lazy="selectin")
-    ideas = relationship("Idea", foreign_keys="[Idea.project_id]", lazy="selectin")
-    marketing_signals = relationship("MarketingSignal", foreign_keys="[MarketingSignal.project_id]", lazy="selectin")
-    marketing_content = relationship("MarketingContent", foreign_keys="[MarketingContent.project_id]", lazy="selectin")
+    ideas = relationship("Idea", foreign_keys="[Idea.project_id]", back_populates="project", lazy="noload")
+    marketing_signals = relationship("MarketingSignal", foreign_keys="[MarketingSignal.project_id]", back_populates="project", lazy="noload")
+    marketing_content = relationship("MarketingContent", foreign_keys="[MarketingContent.project_id]", back_populates="project", lazy="noload")
 
 
 class Task(Base):
@@ -171,6 +171,8 @@ class Idea(Base):
     validation_notes = Column(Text, nullable=True)  # AI analysis
     project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    project = relationship("Project", foreign_keys=[project_id], back_populates="ideas")
 
 
 class ReadingItem(Base):
@@ -602,7 +604,7 @@ class MarketingSignal(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
-    project = relationship("Project", foreign_keys=[project_id])
+    project = relationship("Project", foreign_keys=[project_id], back_populates="marketing_signals")
     agent = relationship("AgentConfig", foreign_keys=[agent_id])
 
     __table_args__ = (
@@ -635,7 +637,7 @@ class MarketingContent(Base):
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     signal = relationship("MarketingSignal", foreign_keys=[signal_id])
-    project = relationship("Project", foreign_keys=[project_id])
+    project = relationship("Project", foreign_keys=[project_id], back_populates="marketing_content")
     agent = relationship("AgentConfig", foreign_keys=[agent_id])
 
     __table_args__ = (
