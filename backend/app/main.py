@@ -32,6 +32,7 @@ from app.integrations.slack_bot import start_slack_bot
 from app.integrations.email_ingest import start_email_poller
 from app.agents.skill_loader import sync_skills_to_db
 from app.plugins.loader import plugin_manager
+from app.notifications.dispatcher import urgent_dispatch_loop, digest_loop
 
 
 @asynccontextmanager
@@ -69,6 +70,10 @@ async def lifespan(app: FastAPI):
     if settings.email_imap_host and settings.email_imap_user:
         email_task = asyncio.create_task(start_email_poller())
 
+    # Start notification dispatcher
+    urgent_dispatch_task = asyncio.create_task(urgent_dispatch_loop())
+    digest_dispatch_task = asyncio.create_task(digest_loop())
+
     yield
 
     # Shutdown
@@ -81,6 +86,8 @@ async def lifespan(app: FastAPI):
         slack_task.cancel()
     if email_task:
         email_task.cancel()
+    urgent_dispatch_task.cancel()
+    digest_dispatch_task.cancel()
 
 
 app = FastAPI(
