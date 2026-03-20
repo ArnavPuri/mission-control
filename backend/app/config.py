@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     telegram_bot_token: str | None = None
     telegram_allowed_users: str | None = None  # comma-separated IDs
 
+    # Notification delivery
+    telegram_notification_chat_id: str | None = None  # falls back to first telegram_allowed_users entry
+    notification_timezone: str = "UTC"  # timezone for digest scheduling, e.g. "Asia/Kolkata"
+
     # --- Discord ---
     discord_bot_token: str | None = None
     discord_allowed_channels: str | None = None  # comma-separated channel IDs
@@ -125,6 +129,14 @@ class Settings(BaseSettings):
             return []
         return [int(uid.strip()) for uid in self.telegram_allowed_users.split(",") if uid.strip()]
 
+
+    @property
+    def telegram_target_chat_id(self) -> str | None:
+        """Resolve the Telegram chat ID for sending notifications."""
+        if self.telegram_notification_chat_id:
+            return self.telegram_notification_chat_id
+        allowed = (self.telegram_allowed_users or "").split(",")
+        return allowed[0].strip() if allowed and allowed[0].strip() else None
 
     @property
     def identity(self) -> str:
