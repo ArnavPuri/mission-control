@@ -16,7 +16,7 @@ from app.config import settings
 from app.integrations.commands import (
     cmd_task, cmd_idea, cmd_read, cmd_note, cmd_status, cmd_run,
     cmd_projects, cmd_habit, cmd_goal, cmd_journal, cmd_approve, cmd_help,
-    cmd_brand,
+    cmd_brand, cmd_signals, cmd_agents_list,
 )
 from app.db.session import async_session
 from app.integrations.chat import handle_chat
@@ -99,6 +99,49 @@ async def handle_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not text:
         return
 
+    # Check if this is a reply to a signal notification → create draft
+    if update.message.reply_to_message and update.message.reply_to_message.text:
+        replied_text = update.message.reply_to_message.text
+        user_reply = update.message.text
+
+        from app.db.models import MarketingSignal, MarketingContent
+        from datetime import datetime, timezone, timedelta
+        from sqlalchemy import select
+
+        async with async_session() as db:
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+            result = await db.execute(
+                select(MarketingSignal)
+                .where(MarketingSignal.created_at >= cutoff)
+                .order_by(MarketingSignal.created_at.desc())
+            )
+            signals = result.scalars().all()
+
+            matched_signal = None
+            for sig in signals:
+                if sig.title and sig.title in replied_text:
+                    matched_signal = sig
+                    break
+
+            if matched_signal:
+                channel_map = {"reddit": "reddit_comment", "twitter": "twitter_tweet"}
+                channel = channel_map.get(matched_signal.source_type, "other")
+
+                content = MarketingContent(
+                    title=f"Re: {matched_signal.title}"[:500],
+                    body=user_reply,
+                    channel=channel,
+                    status="draft",
+                    source="telegram",
+                    signal_id=matched_signal.id,
+                    project_id=matched_signal.project_id,
+                )
+                db.add(content)
+                await db.commit()
+
+                await update.message.reply_text(f"Draft created: Re: {matched_signal.title[:60]}")
+                return
+
     await update.message.chat.send_action("typing")
 
     try:
@@ -171,6 +214,8 @@ async def start_telegram_bot():
     app.add_handler(CommandHandler("run", _make_handler(cmd_run)))
     app.add_handler(CommandHandler("projects", _make_handler(cmd_projects, needs_args=False)))
     app.add_handler(CommandHandler("brand", _make_handler(cmd_brand, needs_args=False)))
+    app.add_handler(CommandHandler("signals", _make_handler(cmd_signals)))
+    app.add_handler(CommandHandler("agents", _make_handler(cmd_agents_list, needs_args=False)))
     app.add_handler(CommandHandler("help", _make_handler(cmd_help, needs_args=False)))
     app.add_handler(CommandHandler("start", _make_handler(cmd_help, needs_args=False)))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_chat_message))
@@ -190,6 +235,8 @@ async def start_telegram_bot():
         BotCommand("run", "Trigger an agent"),
         BotCommand("projects", "List projects"),
         BotCommand("brand", "View brand profile"),
+        BotCommand("signals", "View marketing signals"),
+        BotCommand("agents", "View agent status"),
         BotCommand("help", "Show commands"),
     ])
 

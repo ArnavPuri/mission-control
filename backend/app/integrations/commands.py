@@ -353,6 +353,80 @@ async def cmd_brand(source: str) -> CommandResult:
     return CommandResult("\n".join(lines))
 
 
+async def cmd_signals(args: str, source: str) -> CommandResult:
+    """View recent marketing signals."""
+    from app.db.models import MarketingSignal, SignalStatus
+
+    async with async_session() as db:
+        query = select(MarketingSignal).order_by(MarketingSignal.created_at.desc()).limit(5)
+
+        status_filter = args.strip().lower() if args.strip() else "new"
+        if status_filter != "all":
+            status_map = {"new": "new", "reviewed": "reviewed", "dismissed": "dismissed", "acted_on": "acted_on"}
+            if status_filter in status_map:
+                query = query.where(MarketingSignal.status == SignalStatus(status_map[status_filter]))
+
+        result = await db.execute(query)
+        signals = result.scalars().all()
+
+    if not signals:
+        return CommandResult(f"No {status_filter} signals found.")
+
+    lines = [f"*Recent Signals* ({status_filter})", ""]
+    for i, s in enumerate(signals, 1):
+        score = int((s.relevance_score or 0) * 100)
+        ago = datetime.now(timezone.utc) - s.created_at
+        if ago.total_seconds() < 3600:
+            time_str = f"{int(ago.total_seconds() / 60)}m ago"
+        elif ago.total_seconds() < 86400:
+            time_str = f"{int(ago.total_seconds() / 3600)}h ago"
+        else:
+            time_str = f"{int(ago.total_seconds() / 86400)}d ago"
+
+        lines.append(f"{i}. {s.title} ({score}%)")
+        lines.append(f"   {s.source_type} · {s.signal_type} · {time_str}")
+        lines.append("")
+
+    return CommandResult("\n".join(lines))
+
+
+async def cmd_agents_list(source: str) -> CommandResult:
+    """View agent status."""
+    async with async_session() as db:
+        result = await db.execute(select(AgentConfig).order_by(AgentConfig.name))
+        agents = result.scalars().all()
+
+    if not agents:
+        return CommandResult("No agents configured.")
+
+    emoji = {AgentStatus.IDLE: "🟢", AgentStatus.RUNNING: "🟡", AgentStatus.ERROR: "🔴", AgentStatus.DISABLED: "⚪"}
+    lines = ["*Agents*", ""]
+
+    for a in agents:
+        e = emoji.get(a.status, "⚪")
+        line = f"{e} {a.name} — {a.status.value}"
+        lines.append(line)
+
+        if a.last_run_at:
+            ago = datetime.now(timezone.utc) - a.last_run_at
+            if ago.total_seconds() < 3600:
+                time_str = f"{int(ago.total_seconds() / 60)}m ago"
+            elif ago.total_seconds() < 86400:
+                time_str = f"{int(ago.total_seconds() / 3600)}h ago"
+            else:
+                time_str = f"{int(ago.total_seconds() / 86400)}d ago"
+
+            latest_run = a.runs[0] if a.runs else None
+            if latest_run:
+                cost_str = f" · ${latest_run.cost_usd:.3f}" if latest_run.cost_usd else ""
+                lines.append(f"   Last run: {time_str} · {latest_run.status.value}{cost_str}")
+            else:
+                lines.append(f"   Last run: {time_str}")
+        lines.append("")
+
+    return CommandResult("\n".join(lines))
+
+
 async def cmd_help(source: str) -> CommandResult:
     """Show available commands."""
     from app.config import settings
@@ -370,6 +444,8 @@ async def cmd_help(source: str) -> CommandResult:
         "/status - Dashboard stats\n"
         "/run <agent> - Trigger an agent\n"
         "/projects - List projects\n"
+        "/signals [status] — View marketing signals\n"
+        "/agents — View agent status\n"
         "/brand — View your brand profile\n"
         "/help - This message"
     )
