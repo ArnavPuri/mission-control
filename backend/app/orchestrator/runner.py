@@ -392,13 +392,19 @@ class AgentRunner:
 
         options_kwargs["allowed_tools"] = allowed_tools
 
-        # Ensure auth env vars are passed to the SDK subprocess
+        # Ensure auth env vars and CLI path are available to the SDK subprocess
+        import shutil
         env = dict(os.environ)
         if settings.anthropic_api_key:
             env["ANTHROPIC_API_KEY"] = settings.anthropic_api_key
         if settings.claude_code_oauth_token:
             env["CLAUDE_CODE_OAUTH_TOKEN"] = settings.claude_code_oauth_token
         options_kwargs["env"] = env
+
+        # Explicitly resolve claude CLI path so SDK finds it regardless of how uvicorn was started
+        cli_path = shutil.which("claude")
+        if cli_path:
+            options_kwargs["cli_path"] = cli_path
 
         options = ClaudeAgentOptions(**options_kwargs)
 
@@ -577,7 +583,10 @@ class AgentRunner:
                 try:
                     return await self.execute_with_agent_sdk(prompt, agent)
                 except Exception as sdk_err:
-                    logger.warning(f"Agent SDK failed, falling back to API: {sdk_err}")
+                    logger.error(f"Agent SDK failed: {type(sdk_err).__name__}: {sdk_err}", exc_info=True)
+                    if provider == LLMProvider.ANTHROPIC_OAUTH:
+                        # No point falling back to raw API — OAuth tokens don't work there
+                        raise RuntimeError(f"Agent SDK failed and no API key fallback available: {sdk_err}") from sdk_err
                     return await self.execute_with_anthropic_api(prompt, agent)
             else:
                 return await self.execute_with_anthropic_api(prompt, agent)
