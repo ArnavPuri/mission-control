@@ -95,6 +95,11 @@ class MoodLevel(str, PyEnum):
     BAD = "bad"
 
 
+class NotificationPriority(str, PyEnum):
+    URGENT = "urgent"
+    ROUTINE = "routine"
+
+
 class SignalStatus(str, PyEnum):
     NEW = "new"
     REVIEWED = "reviewed"
@@ -560,6 +565,25 @@ class WebhookLog(Base):
     )
 
 
+# ---------- Brand Profile ----------
+
+class BrandProfile(Base):
+    """Personal brand profile for agent content drafting."""
+    __tablename__ = "brand_profile"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False, default="")
+    bio = Column(Text, default="")
+    tone = Column(String(255), default="")
+    social_handles = Column(JSON, default=dict)
+    topics = Column(JSON, default=list)  # JSON list for SQLite compat
+    talking_points = Column(JSON, default=dict)
+    avoid = Column(JSON, default=list)  # JSON list for SQLite compat
+    example_posts = Column(JSON, default=list)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
 # ---------- Notifications ----------
 
 class Notification(Base):
@@ -574,6 +598,8 @@ class Notification(Base):
     is_read = Column(Boolean, default=False)
     action_url = Column(String(500), nullable=True)  # optional deep link
     data = Column(JSON, default=dict)
+    priority = Column(Enum(NotificationPriority), default=NotificationPriority.ROUTINE, nullable=False)
+    telegram_sent = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
