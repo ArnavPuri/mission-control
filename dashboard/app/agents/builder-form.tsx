@@ -135,6 +135,7 @@ interface FormState {
   requires_approval: boolean;
   max_actions: number;
   chain_to: string;
+  session_window_days: number;
 }
 
 function defaultFormState(): FormState {
@@ -155,6 +156,7 @@ function defaultFormState(): FormState {
     requires_approval: false,
     max_actions: 5,
     chain_to: '',
+    session_window_days: 7,
   };
 }
 
@@ -177,6 +179,7 @@ function formStateFromDefaults(defaults: Partial<api.AgentDetail>): FormState {
     requires_approval: (config.requires_approval as boolean) ?? false,
     max_actions: (config.max_actions as number) ?? 5,
     chain_to: (config.chain_to as string) ?? '',
+    session_window_days: (defaults as Record<string, unknown>).session_window_days as number ?? 7,
   };
 }
 
@@ -284,7 +287,7 @@ export function AgentBuilderForm({
 
     setSaving(true);
     try {
-      const payload: Partial<api.AgentDetail> = {
+      const payload: Partial<api.AgentDetail> & { session_window_days?: number } = {
         name: form.name.trim(),
         slug: form.slug.trim(),
         description: form.description.trim(),
@@ -297,6 +300,7 @@ export function AgentBuilderForm({
         data_writes: form.data_writes,
         schedule_type: form.schedule_type === 'manual' ? undefined : form.schedule_type,
         schedule_value: form.schedule_value || undefined,
+        session_window_days: form.session_window_days,
         config: {
           timeout_seconds: form.timeout_seconds,
           requires_approval: form.requires_approval,
@@ -737,6 +741,18 @@ export function AgentBuilderForm({
                   placeholder="agent-slug"
                   className={inputClass}
                 />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-mc-muted dark:text-gray-400 mb-1">Session Memory (days)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={30}
+                  value={form.session_window_days}
+                  onChange={(e) => setForm({ ...form, session_window_days: parseInt(e.target.value) || 0 })}
+                  className="w-full border border-mc-border dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-mc-text dark:text-gray-200 outline-none focus:border-mc-accent"
+                />
+                <p className="text-[11px] text-mc-dim mt-1">0 = fresh start each run. Agent resumes its conversation within this window.</p>
               </div>
             </div>
           </Card>
