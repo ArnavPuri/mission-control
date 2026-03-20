@@ -411,12 +411,15 @@ class AgentRunner:
         # Collect response
         full_response = ""
         async for message in query(prompt=prompt, options=options):
-            if hasattr(message, "result"):
+            if hasattr(message, "result") and message.result is not None:
                 full_response = message.result
             elif hasattr(message, "content"):
                 for block in getattr(message, "content", []):
                     if hasattr(block, "text"):
                         full_response += block.text
+
+        if not full_response:
+            return {"summary": "Agent produced no output", "actions": [], "raw": True}
 
         # Try to parse as JSON
         try:
