@@ -19,6 +19,7 @@ from app.db.models import (
     Task, Idea, ReadingItem, Project, AgentConfig, AgentRun, Note,
     TaskStatus, AgentStatus, EventLog, Habit, HabitCompletion,
     Goal, GoalStatus, JournalEntry, AgentApproval, ApprovalStatus,
+    BrandProfile,
 )
 from app.orchestrator.runner import AgentRunner
 
@@ -323,6 +324,35 @@ async def cmd_approve(args: str, source: str) -> CommandResult:
     )
 
 
+async def cmd_brand(source: str) -> CommandResult:
+    """Show current brand profile."""
+    async with async_session() as db:
+        result = await db.execute(select(BrandProfile).limit(1))
+        profile = result.scalar_one_or_none()
+
+    if not profile or not profile.name:
+        return CommandResult("No brand profile configured yet.\nSet it up via the API: PUT /api/brand-profile")
+
+    lines = [
+        f"*{profile.name}*",
+        "",
+    ]
+    if profile.bio:
+        lines.append(profile.bio)
+        lines.append("")
+    if profile.tone:
+        lines.append(f"Tone: {profile.tone}")
+    if profile.topics:
+        lines.append(f"Topics: {', '.join(profile.topics)}")
+    if profile.talking_points:
+        for product, points in profile.talking_points.items():
+            lines.append(f"{product}: {', '.join(points)}")
+    if profile.avoid:
+        lines.append(f"Avoid: {', '.join(profile.avoid)}")
+
+    return CommandResult("\n".join(lines))
+
+
 async def cmd_help(source: str) -> CommandResult:
     """Show available commands."""
     from app.config import settings
@@ -340,5 +370,6 @@ async def cmd_help(source: str) -> CommandResult:
         "/status - Dashboard stats\n"
         "/run <agent> - Trigger an agent\n"
         "/projects - List projects\n"
+        "/brand — View your brand profile\n"
         "/help - This message"
     )
