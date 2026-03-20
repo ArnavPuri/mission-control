@@ -98,11 +98,11 @@ What's already built:
 | 3. Personal Productivity | 15 | 23 | 65% |
 | 4. Dashboard 2.0 | 18 | 18 | **100%** |
 | 5. Integrations | 18 | 18 | **100%** |
-| 6. Multi-Agent Intelligence | 16 | 16 | **100%** |
+| 6. Multi-Agent Intelligence | 19 | 23 | 83% |
 | 7. Privacy & Scale | 0 | 16 | 0% |
 | 8. Mobile & Desktop | 0 | 10 | 0% |
 | 9. Community | 0 | 16 | 0% |
-| **Total** | **99** | **145** | **68%** |
+| **Total** | **102** | **152** | **67%** |
 
 ---
 
@@ -306,6 +306,15 @@ _Build a team of specialized AI agents that collaborate._
 - [x] Agent performance analytics — success rate, cost efficiency, action quality
 - [x] A/B testing for agent prompts — compare prompt variants
 - [x] Agent budget management dashboard with alerts
+
+### 6.4 Agent Runtime Improvements
+- [ ] Session persistence — agents resume conversations across runs (track session ID + last message UUID)
+- [ ] CLAUDE.md auto-loading — agents inherit project/user instructions via SDK `settingSources`
+- [ ] Transcript archival — save full agent conversation to notes before context compaction (`preCompact` hook)
+- [ ] Agent teams — agents spawn sub-agents and communicate via message passing (multi-agent swarms)
+- [x] Telegram notifications — urgent alerts + daily digest from agent runs
+- [x] Personal brand profile — agents reference user identity when drafting content
+- [x] Notification preferences — toggle which agent events notify via Telegram
 
 ---
 
@@ -535,15 +544,15 @@ All completed — Phase 5 now 100%:
 8. ~~**SDK packages** — Python (httpx) and TypeScript (fetch) with full CRUD namespaces (Phase 5.4)~~
 9. ~~**Plugin system** — YAML manifest loader, event dispatch, enable/disable API (Phase 5.4)~~
 
-### Sprint 19: Productivity (Recommended)
+### Sprint 19: Agent Autonomy (Recommended)
 
-Next high-impact features:
+Next high-impact features — making agents truly autonomous:
 
-1. **Calendar integration** — Google Calendar / CalDAV sync (Phase 3.4)
-2. **Daily agenda agent** — morning briefing with today's priorities (Phase 3.4)
-3. **Deadline awareness** — agents factor in due dates for prioritization (Phase 3.4)
-4. **Spaced repetition** — Anki-style learning for reading items (Phase 3.5)
-5. **Agent Builder UI** — create/edit agents from the dashboard (Phase 6.1)
+1. **Session persistence** — agents resume conversations across runs, remember what they explored (Phase 6.4)
+2. **CLAUDE.md auto-loading** — agents inherit project instructions via SDK `settingSources` (Phase 6.4)
+3. **Transcript archival** — save full agent reasoning to notes before context compaction (Phase 6.4)
+4. **Social media posting** — Twitter/X and Reddit reply integration for content pipeline (new)
+5. **Telegram bot expansion** — manage signals, approve/post content, edit tasks from Telegram (Phase 5.1)
 
 ---
 
@@ -578,4 +587,4 @@ These principles guide every decision:
 
 ---
 
-*Last updated: 2026-03-19 · v0.6*
+*Last updated: 2026-03-20 · v0.6*
