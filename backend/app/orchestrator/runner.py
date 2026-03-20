@@ -367,6 +367,7 @@ class AgentRunner:
     async def execute_with_agent_sdk(self, prompt: str, agent: AgentConfig) -> dict:
         """Execute using Claude Agent SDK (supports both API key and OAuth)."""
         from claude_agent_sdk import query, ClaudeAgentOptions
+        import os
 
         # Build options
         options_kwargs = {
@@ -390,6 +391,14 @@ class AgentRunner:
             allowed_tools.extend(["Write", "Edit"])
 
         options_kwargs["allowed_tools"] = allowed_tools
+
+        # Ensure auth env vars are passed to the SDK subprocess
+        env = dict(os.environ)
+        if settings.anthropic_api_key:
+            env["ANTHROPIC_API_KEY"] = settings.anthropic_api_key
+        if settings.claude_code_oauth_token:
+            env["CLAUDE_CODE_OAUTH_TOKEN"] = settings.claude_code_oauth_token
+        options_kwargs["env"] = env
 
         options = ClaudeAgentOptions(**options_kwargs)
 
@@ -418,10 +427,17 @@ class AgentRunner:
         """Fallback: execute directly via Anthropic Messages API."""
         import httpx
 
-        headers = {"Content-Type": "application/json", "anthropic-version": "2023-06-01"}
+        if not settings.anthropic_api_key:
+            raise RuntimeError(
+                "Direct API fallback requires ANTHROPIC_API_KEY. "
+                "OAuth tokens only work with the Agent SDK."
+            )
 
-        if settings.anthropic_api_key:
-            headers["x-api-key"] = settings.anthropic_api_key
+        headers = {
+            "Content-Type": "application/json",
+            "anthropic-version": "2023-06-01",
+            "x-api-key": settings.anthropic_api_key,
+        }
 
         try:
             async with httpx.AsyncClient(timeout=120) as client:
