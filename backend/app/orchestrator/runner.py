@@ -44,6 +44,11 @@ logger = logging.getLogger(__name__)
 class AgentRunner:
     """Executes agent runs against the Claude Agent SDK or Anthropic API."""
 
+    def __init__(self):
+        self._last_session_id = None
+        self._last_message_uuid = None
+        self._last_transcript = None
+
     def _build_system_prompt(self, agent: AgentConfig) -> str:
         """Build a rich system prompt combining agent persona, user identity, and output format."""
         # Agent persona (from YAML config)
@@ -373,6 +378,7 @@ class AgentRunner:
         options_kwargs = {
             "system_prompt": self._build_system_prompt(agent),
             "max_turns": 10,
+            "setting_sources": ["project", "user"],
         }
 
         if agent.model:
@@ -406,24 +412,61 @@ class AgentRunner:
         if cli_path:
             options_kwargs["cli_path"] = cli_path
 
+        # Session resumption
+        if agent.session_id and agent.session_expires_at and agent.session_expires_at > datetime.now(timezone.utc):
+            options_kwargs["resume"] = agent.session_id
+            if agent.last_message_uuid:
+                options_kwargs["resume_session_at"] = agent.last_message_uuid
+            logger.info(f"Resuming session {agent.session_id[:12]}... for {agent.name}")
+
         options = ClaudeAgentOptions(**options_kwargs)
 
-        # Collect response
+        # Collect response, session info, and transcript
         full_response = ""
+        new_session_id = None
+        last_assistant_uuid = None
+        transcript = []
+
         async for message in query(prompt=prompt, options=options):
+            # Capture session ID from init message
+            if hasattr(message, 'subtype') and message.subtype == 'init':
+                if hasattr(message, 'session_id'):
+                    new_session_id = message.session_id
+                elif hasattr(message, 'data') and isinstance(message.data, dict):
+                    new_session_id = message.data.get('session_id')
+
+            # Capture result
             if hasattr(message, "result") and message.result is not None:
                 full_response = message.result
+                if len(transcript) < 50:
+                    transcript.append({"role": "result", "content": str(message.result)[:2000]})
+
             elif hasattr(message, "content"):
+                text_parts = []
                 for block in getattr(message, "content", []):
                     if hasattr(block, "text"):
+                        text_parts.append(block.text)
                         full_response += block.text
+                if text_parts and len(transcript) < 50:
+                    role = getattr(message, 'role', 'assistant')
+                    transcript.append({"role": role, "content": "".join(text_parts)[:2000]})
+                    # Track last assistant message UUID for session resumption
+                    if role == "assistant":
+                        for attr in ('uuid', 'id', 'message_id'):
+                            if hasattr(message, attr):
+                                last_assistant_uuid = getattr(message, attr)
+                                break
+
+        # Store session info and transcript for the caller to save
+        self._last_session_id = new_session_id
+        self._last_message_uuid = last_assistant_uuid
+        self._last_transcript = transcript if transcript else None
 
         if not full_response:
             return {"summary": "Agent produced no output", "actions": [], "raw": True}
 
         # Try to parse as JSON
         try:
-            # Strip markdown fences if present
             cleaned = full_response.strip()
             if cleaned.startswith("```"):
                 cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned
