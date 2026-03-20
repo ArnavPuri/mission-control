@@ -1,22 +1,109 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import * as api from '../lib/api';
 import * as Progress from '@radix-ui/react-progress';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import {
   Zap, Play, Square, Clock, DollarSign, Activity,
   BarChart3, Loader2, TrendingUp, AlertTriangle, Plus, Pencil,
+  ChevronDown, ChevronRight, CheckCircle, XCircle,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import Link from 'next/link';
 import { Card, Badge, StatusIndicator, EmptyState } from '../components/shared';
+
+interface RunDetail {
+  id: string;
+  status: string;
+  trigger: string;
+  tokens_used: number;
+  cost_usd: number;
+  error: string | null;
+  output_data: Record<string, unknown> | null;
+  started_at: string;
+  completed_at: string | null;
+}
+
+function Toast({ message, type, onDone }: { message: string; type: 'success' | 'error'; onDone: () => void }) {
+  useEffect(() => { const t = setTimeout(onDone, 3000); return () => clearTimeout(t); }, [onDone]);
+  return (
+    <div className={clsx(
+      'fixed top-4 right-4 z-50 px-4 py-2.5 rounded-lg shadow-lg text-sm font-medium flex items-center gap-2 animate-in slide-in-from-top-2',
+      type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
+    )}>
+      {type === 'success' ? <CheckCircle size={16} /> : <XCircle size={16} />}
+      {message}
+    </div>
+  );
+}
+
+function RunRow({ run, isExpanded, onToggle }: { run: RunDetail; isExpanded: boolean; onToggle: () => void }) {
+  const summary = run.output_data && typeof run.output_data === 'object'
+    ? (run.output_data as Record<string, unknown>).summary as string || null
+    : null;
+  const actions = run.output_data && typeof run.output_data === 'object'
+    ? (run.output_data as Record<string, unknown>).actions as unknown[] || []
+    : [];
+
+  return (
+    <div className="border-b border-mc-border/50 dark:border-gray-800/50 last:border-0">
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center gap-3 py-2.5 text-left cursor-pointer bg-transparent"
+      >
+        <span className={clsx('w-2 h-2 rounded-full shrink-0',
+          run.status === 'completed' ? 'bg-emerald-500' :
+          run.status === 'failed' ? 'bg-red-500' :
+          run.status === 'running' ? 'bg-amber-400 animate-pulse' : 'bg-gray-300'
+        )} />
+        <span className="text-xs text-mc-text dark:text-gray-300 flex-1">
+          {new Date(run.started_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+        </span>
+        <Badge variant={run.status === 'completed' ? 'success' : run.status === 'failed' ? 'error' : 'warning'}>{run.status}</Badge>
+        <span className="text-xs font-mono text-mc-dim">${run.cost_usd.toFixed(4)}</span>
+        {(summary || run.error) ? (
+          isExpanded ? <ChevronDown size={12} className="text-mc-dim" /> : <ChevronRight size={12} className="text-mc-dim" />
+        ) : <span className="w-3" />}
+      </button>
+      {isExpanded && (summary || run.error) && (
+        <div className="pl-5 pb-3 space-y-2">
+          {run.error && (
+            <div className="text-xs text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-950/50 rounded-lg px-3 py-2">
+              {run.error}
+            </div>
+          )}
+          {summary && (
+            <div className="text-xs text-mc-muted dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded-lg px-3 py-2 whitespace-pre-wrap">
+              {summary}
+            </div>
+          )}
+          {actions.length > 0 && (
+            <div className="text-[11px] text-mc-dim">
+              {actions.length} action{actions.length > 1 ? 's' : ''} executed
+            </div>
+          )}
+          {run.completed_at && (
+            <div className="text-[11px] text-mc-dim">
+              Duration: {Math.round((new Date(run.completed_at).getTime() - new Date(run.started_at).getTime()) / 1000)}s
+              {run.tokens_used > 0 && ` · ${run.tokens_used.toLocaleString()} tokens`}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function AgentsPage() {
   const [agents, setAgents] = useState<api.Agent[]>([]);
   const [analytics, setAnalytics] = useState<api.AgentAnalyticsOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [detailedRuns, setDetailedRuns] = useState<RunDetail[]>([]);
+  const [expandedRun, setExpandedRun] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -26,15 +113,72 @@ export default function AgentsPage() {
       ]);
       setAgents(a);
       setAnalytics(an);
+      // Clear running IDs for agents that are no longer running
+      setRunningIds((prev) => {
+        const stillRunning = new Set<string>();
+        for (const agent of a) {
+          if (agent.status === 'running' && prev.has(agent.id)) {
+            stillRunning.add(agent.id);
+          }
+        }
+        return stillRunning;
+      });
     } catch {} finally { setLoading(false); }
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
-  useEffect(() => { const i = setInterval(loadData, 15000); return () => clearInterval(i); }, [loadData]);
 
-  const toggleAgent = async (id: string, action: 'run' | 'stop') => {
+  // Poll faster (5s) when agents are running, otherwise 15s
+  useEffect(() => {
+    const hasRunning = agents.some((a) => a.status === 'running') || runningIds.size > 0;
+    const interval = hasRunning ? 5000 : 15000;
+    const i = setInterval(loadData, interval);
+    return () => clearInterval(i);
+  }, [loadData, agents, runningIds]);
+
+  // Load detailed runs when agent is selected
+  useEffect(() => {
+    if (!selectedAgent) { setDetailedRuns([]); return; }
+    api.agents.runs(selectedAgent, 20).then((runs) => setDetailedRuns(runs as RunDetail[])).catch(() => {});
+  }, [selectedAgent, agents]);
+
+  // WebSocket for live agent status updates
+  useEffect(() => {
+    const ws = api.connectWebSocket((event) => {
+      if (event.type === 'agent.started' || event.type === 'agent.completed' || event.type === 'agent.failed') {
+        loadData();
+        // Reload runs if this is the selected agent
+        if (selectedAgent && event.data?.agent_id === selectedAgent) {
+          api.agents.runs(selectedAgent, 20).then((runs) => setDetailedRuns(runs as RunDetail[])).catch(() => {});
+        }
+      }
+    });
+    return () => { ws?.close(); };
+  }, [loadData, selectedAgent]);
+
+  const triggerAgent = async (id: string) => {
+    const agent = agents.find((a) => a.id === id);
+    if (!agent) return;
+
+    // Optimistic: show running state immediately
+    setRunningIds((prev) => new Set(prev).add(id));
+    setAgents((prev) => prev.map((a) => a.id === id ? { ...a, status: 'running' as const } : a));
+
     try {
-      if (action === 'run') await api.agents.run(id); else await api.agents.stop(id);
+      await api.agents.run(id);
+      setToast({ message: `${agent.name} started`, type: 'success' });
+    } catch (err) {
+      // Rollback
+      setRunningIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+      setAgents((prev) => prev.map((a) => a.id === id ? { ...a, status: 'idle' as const } : a));
+      setToast({ message: `Failed to start ${agent.name}: ${err instanceof Error ? err.message : 'Unknown error'}`, type: 'error' });
+    }
+  };
+
+  const stopAgent = async (id: string) => {
+    try {
+      await api.agents.stop(id);
+      setRunningIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
       loadData();
     } catch {}
   };
@@ -54,6 +198,8 @@ export default function AgentsPage() {
   return (
     <Tooltip.Provider delayDuration={200}>
       <div className="min-h-screen bg-mc-bg dark:bg-gray-950 transition-colors">
+        {toast && <Toast message={toast.message} type={toast.type} onDone={() => setToast(null)} />}
+
         <header className="px-4 sm:px-6 lg:px-8 py-3 bg-white dark:bg-gray-900 border-b border-mc-border dark:border-gray-800 sticky top-0 z-30">
           <div className="max-w-[1600px] mx-auto flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -99,6 +245,7 @@ export default function AgentsPage() {
               {agents.map((a) => {
                 const isSelected = selectedAgent === a.id;
                 const agentAnalytics = analytics?.agents.find((an) => an.agent_id === a.id);
+                const isStarting = runningIds.has(a.id) && a.status !== 'running';
                 return (
                   <button
                     key={a.id}
@@ -121,17 +268,28 @@ export default function AgentsPage() {
                         <Pencil size={14} />
                       </Link>
                       <button
-                        onClick={(e) => { e.stopPropagation(); toggleAgent(a.id, a.status === 'running' ? 'stop' : 'run'); }}
+                        onClick={(e) => { e.stopPropagation(); a.status === 'running' ? stopAgent(a.id) : triggerAgent(a.id); }}
+                        disabled={isStarting}
                         className={clsx(
                           'w-7 h-7 rounded-lg flex items-center justify-center transition-all cursor-pointer border',
                           a.status === 'running'
                             ? 'bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800 text-red-600 hover:bg-red-100'
-                            : 'bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-800 text-emerald-600 hover:bg-emerald-100'
+                            : 'bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-800 text-emerald-600 hover:bg-emerald-100',
+                          isStarting && 'opacity-60'
                         )}
                       >
-                        {a.status === 'running' ? <Square size={12} /> : <Play size={12} />}
+                        {isStarting ? <Loader2 size={12} className="animate-spin" /> :
+                         a.status === 'running' ? <Square size={12} /> : <Play size={12} />}
                       </button>
                     </div>
+                    {a.status === 'running' && (
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="flex-1 h-1 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                          <div className="h-full bg-mc-accent rounded-full animate-pulse" style={{ width: '60%' }} />
+                        </div>
+                        <span className="text-[10px] text-mc-accent font-medium">Running</span>
+                      </div>
+                    )}
                     <p className="text-xs text-mc-muted dark:text-gray-500 truncate mb-2">{a.description}</p>
                     <div className="flex items-center gap-2 text-[11px] text-mc-dim">
                       <Badge variant={a.agent_type === 'research' ? 'purple' : a.agent_type === 'ops' ? 'blue' : 'default'}>{a.agent_type}</Badge>
@@ -209,21 +367,19 @@ export default function AgentsPage() {
                     </Card>
                   )}
 
-                  {/* Recent runs */}
+                  {/* Recent runs with expandable details */}
                   <Card className="p-4">
                     <h3 className="text-sm font-semibold text-mc-text dark:text-gray-100 mb-3">Recent Runs</h3>
-                    <div className="flex flex-col gap-2">
-                      {selected.recent_runs.slice(0, 10).map((r) => (
-                        <div key={r.id} className="flex items-center gap-3 py-2 border-b border-mc-border/50 dark:border-gray-800/50 last:border-0">
-                          <span className={clsx('w-2 h-2 rounded-full shrink-0', r.status === 'completed' ? 'bg-emerald-500' : r.status === 'failed' ? 'bg-red-500' : 'bg-amber-400')} />
-                          <span className="text-xs text-mc-text dark:text-gray-300 flex-1">
-                            {new Date(r.started_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                          <Badge variant={r.status === 'completed' ? 'success' : r.status === 'failed' ? 'error' : 'warning'}>{r.status}</Badge>
-                          <span className="text-xs font-mono text-mc-dim">${r.cost_usd.toFixed(4)}</span>
-                        </div>
+                    <div className="flex flex-col">
+                      {detailedRuns.slice(0, 15).map((r) => (
+                        <RunRow
+                          key={r.id}
+                          run={r}
+                          isExpanded={expandedRun === r.id}
+                          onToggle={() => setExpandedRun(expandedRun === r.id ? null : r.id)}
+                        />
                       ))}
-                      {selected.recent_runs.length === 0 && <span className="text-xs text-mc-dim py-2">No runs yet</span>}
+                      {detailedRuns.length === 0 && <span className="text-xs text-mc-dim py-2">No runs yet</span>}
                     </div>
                   </Card>
                 </div>
