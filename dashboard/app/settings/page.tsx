@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import * as api from '../lib/api';
 import {
   Settings, Key, Globe, Rss, Shield, Plus, X, Loader2,
-  Copy, Check, ExternalLink, Trash2,
+  Copy, Check, ExternalLink, Trash2, Bell,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Card, Badge, EmptyState, InlineInput } from '../components/shared';
@@ -21,17 +21,19 @@ export default function SettingsPage() {
   const [copiedKey, setCopiedKey] = useState(false);
   const [showAddFeed, setShowAddFeed] = useState(false);
   const [showAddRepo, setShowAddRepo] = useState(false);
-  const [activeTab, setActiveTab] = useState<'general' | 'api-keys' | 'github' | 'feeds'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'notifications' | 'api-keys' | 'github' | 'feeds'>('general');
+  const [notifPrefs, setNotifPrefs] = useState<api.NotificationPrefs | null>(null);
 
   const loadData = useCallback(async () => {
     try {
-      const [h, keys, feeds, repos] = await Promise.all([
+      const [h, keys, feeds, repos, np] = await Promise.all([
         api.health.check(),
         api.apiKeys.list().catch(() => []),
         api.feeds.list().catch(() => []),
         api.github.repos().catch(() => []),
+        api.getNotificationPrefs().catch(() => ({ agent_completions: true, agent_failures: true, signal_summary: true, content_drafts: true })),
       ]);
-      setHealth(h); setApiKeys(keys); setFeeds(feeds); setRepos(repos);
+      setHealth(h); setApiKeys(keys); setFeeds(feeds); setRepos(repos); setNotifPrefs(np);
     } catch {} finally { setLoading(false); }
   }, []);
 
@@ -82,8 +84,18 @@ export default function SettingsPage() {
     );
   }
 
+  const toggleNotifPref = async (key: keyof api.NotificationPrefs) => {
+    if (!notifPrefs) return;
+    const updated = { ...notifPrefs, [key]: !notifPrefs[key] };
+    setNotifPrefs(updated);
+    try { await api.updateNotificationPrefs({ [key]: updated[key] }); } catch {
+      setNotifPrefs(notifPrefs); // rollback
+    }
+  };
+
   const tabs = [
     { key: 'general', label: 'General', icon: Settings },
+    { key: 'notifications', label: 'Notifications', icon: Bell },
     { key: 'api-keys', label: 'API Keys', icon: Key },
     { key: 'github', label: 'GitHub', icon: Globe },
     { key: 'feeds', label: 'RSS Feeds', icon: Rss },
@@ -136,6 +148,45 @@ export default function SettingsPage() {
                       <span className={clsx('w-2 h-2 rounded-full', item.ok ? 'bg-emerald-500' : 'bg-amber-400')} />
                       <span className="text-sm text-mc-text dark:text-gray-200">{item.value}</span>
                     </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* Notifications */}
+        {activeTab === 'notifications' && notifPrefs && (
+          <div className="flex flex-col gap-4 max-w-2xl">
+            <p className="text-sm text-mc-muted dark:text-gray-400">
+              Control which notifications are sent to Telegram. Urgent notifications are sent immediately, routine ones are batched into a morning digest.
+            </p>
+            <Card className="p-4">
+              <h3 className="text-sm font-semibold text-mc-text dark:text-gray-100 mb-4">Telegram Notifications</h3>
+              <div className="flex flex-col gap-3">
+                {([
+                  { key: 'agent_completions' as const, label: 'Agent completions', desc: 'When an agent finishes a scheduled run (routine)' },
+                  { key: 'agent_failures' as const, label: 'Agent failures', desc: 'When an agent run fails or errors out (urgent)' },
+                  { key: 'signal_summary' as const, label: 'New leads found', desc: 'Summary count of new marketing signals discovered (urgent if high relevance)' },
+                  { key: 'content_drafts' as const, label: 'Content drafts ready', desc: 'When agents create new content drafts for review (routine)' },
+                ]).map((item) => (
+                  <div key={item.key} className="flex items-center justify-between py-2 border-b border-mc-border/40 dark:border-gray-800/40 last:border-0">
+                    <div>
+                      <div className="text-sm font-medium text-mc-text dark:text-gray-200">{item.label}</div>
+                      <div className="text-xs text-mc-dim mt-0.5">{item.desc}</div>
+                    </div>
+                    <button
+                      onClick={() => toggleNotifPref(item.key)}
+                      className={clsx(
+                        'relative w-10 h-5 rounded-full transition-colors cursor-pointer',
+                        notifPrefs[item.key] ? 'bg-mc-accent' : 'bg-gray-300 dark:bg-gray-600'
+                      )}
+                    >
+                      <span className={clsx(
+                        'absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform',
+                        notifPrefs[item.key] ? 'translate-x-5' : 'translate-x-0.5'
+                      )} />
+                    </button>
                   </div>
                 ))}
               </div>

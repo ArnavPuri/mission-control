@@ -758,3 +758,23 @@ export function connectWebSocket(onMessage: (event: { type: string; data: any })
   };
   return connect();
 }
+
+// --- Notification Preferences ---
+
+export interface NotificationPrefs {
+  agent_completions: boolean;
+  agent_failures: boolean;
+  signal_summary: boolean;
+  content_drafts: boolean;
+}
+
+export function getNotificationPrefs() {
+  return request<NotificationPrefs>('/api/brand-profile/notification-prefs');
+}
+
+export function updateNotificationPrefs(data: Partial<NotificationPrefs>) {
+  return request<NotificationPrefs>('/api/brand-profile/notification-prefs', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}

@@ -8,6 +8,13 @@ from app.db.models import BrandProfile
 
 router = APIRouter()
 
+DEFAULT_NOTIFICATION_PREFS = {
+    "agent_completions": True,
+    "agent_failures": True,
+    "signal_summary": True,
+    "content_drafts": True,
+}
+
 
 class BrandProfileUpdate(BaseModel):
     name: str | None = None
@@ -18,6 +25,14 @@ class BrandProfileUpdate(BaseModel):
     talking_points: dict | None = None
     avoid: list[str] | None = None
     example_posts: list[dict] | None = None
+    notification_prefs: dict | None = None
+
+
+class NotificationPrefsUpdate(BaseModel):
+    agent_completions: bool | None = None
+    agent_failures: bool | None = None
+    signal_summary: bool | None = None
+    content_drafts: bool | None = None
 
 
 def _serialize(profile: BrandProfile) -> dict:
@@ -31,6 +46,7 @@ def _serialize(profile: BrandProfile) -> dict:
         "talking_points": profile.talking_points or {},
         "avoid": profile.avoid or [],
         "example_posts": profile.example_posts or [],
+        "notification_prefs": profile.notification_prefs or DEFAULT_NOTIFICATION_PREFS,
         "created_at": profile.created_at.isoformat(),
         "updated_at": profile.updated_at.isoformat(),
     }
@@ -46,6 +62,7 @@ EMPTY_PROFILE = {
     "talking_points": {},
     "avoid": [],
     "example_posts": [],
+    "notification_prefs": DEFAULT_NOTIFICATION_PREFS,
     "created_at": None,
     "updated_at": None,
 }
@@ -76,3 +93,39 @@ async def upsert_brand_profile(data: BrandProfileUpdate, db: AsyncSession = Depe
 
     await db.flush()
     return _serialize(profile)
+
+
+@router.get("/notification-prefs")
+async def get_notification_prefs(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(BrandProfile).limit(1))
+    profile = result.scalar_one_or_none()
+    if not profile:
+        return DEFAULT_NOTIFICATION_PREFS
+    return profile.notification_prefs or DEFAULT_NOTIFICATION_PREFS
+
+
+@router.put("/notification-prefs")
+async def update_notification_prefs(data: NotificationPrefsUpdate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(BrandProfile).limit(1))
+    profile = result.scalar_one_or_none()
+
+    if not profile:
+        profile = BrandProfile(notification_prefs=DEFAULT_NOTIFICATION_PREFS)
+        db.add(profile)
+
+    current = profile.notification_prefs or DEFAULT_NOTIFICATION_PREFS
+    updates = data.model_dump(exclude_unset=True)
+    merged = {**current, **updates}
+    profile.notification_prefs = merged
+
+    await db.flush()
+    return merged
+
+
+async def get_notification_prefs_dict(db: AsyncSession) -> dict:
+    """Helper for runner to check prefs. Returns defaults if no profile exists."""
+    result = await db.execute(select(BrandProfile).limit(1))
+    profile = result.scalar_one_or_none()
+    if not profile:
+        return DEFAULT_NOTIFICATION_PREFS
+    return profile.notification_prefs or DEFAULT_NOTIFICATION_PREFS

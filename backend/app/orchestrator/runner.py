@@ -702,17 +702,20 @@ class AgentRunner:
                 "summary": result.get("summary", ""),
             })
 
-            # Create notification
+            # Create notification (respects user preferences)
             try:
                 from app.api.notifications import create_notification
+                from app.api.brand import get_notification_prefs_dict
+                notif_prefs = await get_notification_prefs_dict(db)
                 summary = result.get("summary", "Run completed")
                 category = "approval" if requires_approval and actions else "success"
-                await create_notification(
-                    db, title=f"{agent.name} completed",
-                    body=summary[:200], category=category,
-                    source=f"agent:{agent.slug}",
-                    priority="routine",
-                )
+                if notif_prefs.get("agent_completions", True):
+                    await create_notification(
+                        db, title=f"{agent.name} completed",
+                        body=summary[:200], category=category,
+                        source=f"agent:{agent.slug}",
+                        priority="routine",
+                    )
             except Exception:
                 pass  # notifications are best-effort
 
@@ -747,15 +750,18 @@ class AgentRunner:
                 "error": str(e),
             })
 
-            # Notification for failures
+            # Notification for failures (respects user preferences)
             try:
                 from app.api.notifications import create_notification
-                await create_notification(
-                    db, title=f"{agent.name} failed",
-                    body=str(e)[:200], category="error",
-                    source=f"agent:{agent.slug}",
-                    priority="urgent",
-                )
+                from app.api.brand import get_notification_prefs_dict
+                notif_prefs = await get_notification_prefs_dict(db)
+                if notif_prefs.get("agent_failures", True):
+                    await create_notification(
+                        db, title=f"{agent.name} failed",
+                        body=str(e)[:200], category="error",
+                        source=f"agent:{agent.slug}",
+                        priority="urgent",
+                    )
             except Exception:
                 pass
 
@@ -888,6 +894,11 @@ class AgentRunner:
 
     async def _process_actions(self, actions: list, agent: AgentConfig, db: AsyncSession):
         """Process structured actions from agent output and write to DB."""
+        # Track counts for batched summary notification
+        _signal_count = 0
+        _signal_high_count = 0
+        _content_count = 0
+
         for action in actions:
             if not isinstance(action, dict):
                 continue
@@ -1048,26 +1059,10 @@ class AgentRunner:
                     "tags": signal.tags or [], "source": signal.source,
                 }, db)
 
-                relevance = action.get("relevance_score", 0.5)
-                if relevance > 0.8:
-                    await create_notification(
-                        db,
-                        title=signal.title,
-                        body=f"Source: {signal.source_type} | Score: {int(relevance * 100)}%",
-                        category="signal",
-                        source=f"agent:{agent.slug}",
-                        data={"relevance_score": relevance, "signal_id": str(signal.id)},
-                        priority="urgent",
-                    )
-                else:
-                    await create_notification(
-                        db,
-                        title=signal.title,
-                        category="signal",
-                        source=f"agent:{agent.slug}",
-                        data={"relevance_score": relevance, "signal_id": str(signal.id)},
-                        priority="routine",
-                    )
+                # Track for batched summary
+                _signal_count += 1
+                if action.get("relevance_score", 0.5) > 0.8:
+                    _signal_high_count += 1
 
             elif action_type == "create_content" and "marketing_content" in (agent.data_writes or []):
                 from app.db.models import MarketingContent
@@ -1094,10 +1089,29 @@ class AgentRunner:
                     "tags": content.tags or [], "source": content.source,
                 }, db)
 
-                await create_notification(
-                    db,
-                    title=f"Draft: {content.title}",
-                    category="content",
-                    source=f"agent:{agent.slug}",
-                    priority="routine",
-                )
+                # Track for batched summary
+                _content_count += 1
+
+        # --- Batched summary notifications (after all actions processed) ---
+        from app.api.brand import get_notification_prefs_dict
+        prefs = await get_notification_prefs_dict(db)
+
+        if _signal_count > 0 and prefs.get("signal_summary", True):
+            high_part = f", {_signal_high_count} high relevance" if _signal_high_count else ""
+            await create_notification(
+                db,
+                title=f"Found {_signal_count} new leads{high_part}",
+                category="signal",
+                source=f"agent:{agent.slug}",
+                data={"signal_count": _signal_count, "high_count": _signal_high_count},
+                priority="urgent" if _signal_high_count > 0 else "routine",
+            )
+
+        if _content_count > 0 and prefs.get("content_drafts", True):
+            await create_notification(
+                db,
+                title=f"{_content_count} new draft{'s' if _content_count > 1 else ''} ready for review",
+                category="content",
+                source=f"agent:{agent.slug}",
+                priority="routine",
+            )

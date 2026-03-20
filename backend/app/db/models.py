@@ -580,6 +580,12 @@ class BrandProfile(Base):
     talking_points = Column(JSON, default=dict)
     avoid = Column(JSON, default=list)  # JSON list for SQLite compat
     example_posts = Column(JSON, default=list)
+    notification_prefs = Column(JSON, default=lambda: {
+        "agent_completions": True,
+        "agent_failures": True,
+        "signal_summary": True,
+        "content_drafts": True,
+    })
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
