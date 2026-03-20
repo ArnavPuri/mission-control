@@ -171,7 +171,19 @@ export default function MarketingPage() {
                 return (
                   <Card key={s.id} className="p-3.5">
                     <div className="flex items-start justify-between gap-2 mb-1.5">
-                      <span className="text-sm font-semibold text-mc-text dark:text-gray-100 line-clamp-2">{s.title}</span>
+                      {s.source_url ? (
+                        <a
+                          href={s.source_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm font-semibold text-mc-text dark:text-gray-100 line-clamp-2 hover:text-mc-accent transition-colors flex items-center gap-1"
+                        >
+                          {s.title}
+                          <ExternalLink size={12} className="shrink-0 text-mc-dim" />
+                        </a>
+                      ) : (
+                        <span className="text-sm font-semibold text-mc-text dark:text-gray-100 line-clamp-2">{s.title}</span>
+                      )}
                       <span className="text-[11px] text-mc-dim whitespace-nowrap shrink-0">{timeAgo(s.created_at)}</span>
                     </div>
 
