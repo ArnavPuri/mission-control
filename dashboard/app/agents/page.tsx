@@ -23,6 +23,7 @@ interface RunDetail {
   output_data: Record<string, unknown> | null;
   started_at: string;
   completed_at: string | null;
+  transcript: { role: string; content: string }[] | null;
 }
 
 function Toast({ message, type, onDone }: { message: string; type: 'success' | 'error'; onDone: () => void }) {
@@ -88,6 +89,26 @@ function RunRow({ run, isExpanded, onToggle }: { run: RunDetail; isExpanded: boo
               Duration: {Math.round((new Date(run.completed_at).getTime() - new Date(run.started_at).getTime()) / 1000)}s
               {run.tokens_used > 0 && ` · ${run.tokens_used.toLocaleString()} tokens`}
             </div>
+          )}
+          {run.transcript && run.transcript.length > 0 && (
+            <details className="mt-2">
+              <summary className="text-[11px] text-mc-accent cursor-pointer hover:underline">
+                Show transcript ({run.transcript.length} messages)
+              </summary>
+              <div className="mt-2 space-y-1.5 max-h-64 overflow-y-auto">
+                {run.transcript.map((msg, i) => (
+                  <div key={i} className={clsx(
+                    'text-xs px-2.5 py-1.5 rounded',
+                    msg.role === 'assistant' ? 'bg-blue-50 dark:bg-blue-950/30 text-mc-text dark:text-gray-300' :
+                    msg.role === 'result' ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400' :
+                    'bg-gray-50 dark:bg-gray-800/50 text-mc-muted dark:text-gray-400'
+                  )}>
+                    <span className="font-medium text-[10px] uppercase text-mc-dim mr-1.5">{msg.role}</span>
+                    <span className="whitespace-pre-wrap">{msg.content}</span>
+                  </div>
+                ))}
+              </div>
+            </details>
           )}
         </div>
       )}
@@ -181,6 +202,23 @@ export default function AgentsPage() {
       setRunningIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
       loadData();
     } catch {}
+  };
+
+  const handleExpandRun = async (run: RunDetail) => {
+    if (expandedRun === run.id) {
+      setExpandedRun(null);
+      return;
+    }
+    setExpandedRun(run.id);
+    // Lazy-load transcript if not yet fetched
+    if (!run.transcript && selectedAgent) {
+      try {
+        const detail = await api.agents.runDetail(selectedAgent, run.id);
+        setDetailedRuns((prev) => prev.map((r) =>
+          r.id === run.id ? { ...r, transcript: (detail as unknown as RunDetail).transcript } : r
+        ));
+      } catch {}
+    }
   };
 
   if (loading) {
@@ -376,7 +414,7 @@ export default function AgentsPage() {
                           key={r.id}
                           run={r}
                           isExpanded={expandedRun === r.id}
-                          onToggle={() => setExpandedRun(expandedRun === r.id ? null : r.id)}
+                          onToggle={() => handleExpandRun(r)}
                         />
                       ))}
                       {detailedRuns.length === 0 && <span className="text-xs text-mc-dim py-2">No runs yet</span>}
