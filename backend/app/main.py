@@ -23,7 +23,7 @@ from app.api import (
     user_patterns, webhook_templates, rate_limit, agent_versions,
     agent_marketplace, pipeline_builder, ab_testing, agent_budget,
     email_ingest, zapier, linear_integration, notion_integration,
-    todoist_integration, plugins,
+    todoist_integration, plugins, brand,
 )
 from app.orchestrator.scheduler import Scheduler
 from app.integrations.telegram import start_telegram_bot
@@ -145,4 +145,5 @@ app.include_router(linear_integration.router, prefix="/api/linear", tags=["linea
 app.include_router(notion_integration.router, prefix="/api/notion", tags=["notion"])
 app.include_router(todoist_integration.router, prefix="/api/todoist", tags=["todoist"])
 app.include_router(plugins.router, prefix="/api/plugins", tags=["plugins"])
+app.include_router(brand.router, prefix="/api/brand-profile", tags=["brand"])
 app.include_router(ws.router, tags=["websocket"])
