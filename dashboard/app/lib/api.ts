@@ -26,10 +26,15 @@ export interface Project {
   id: string;
   name: string;
   description: string;
-  status: 'active' | 'planning' | 'paused' | 'archived';
+  status: 'active' | 'planning' | 'launched' | 'paused' | 'archived';
   color: string;
   url?: string;
+  metadata?: Record<string, unknown>;
   task_count: number;
+  open_task_count: number;
+  idea_count: number;
+  feedback_count: number;
+  content_count: number;
   agent_count: number;
   created_at: string;
 }

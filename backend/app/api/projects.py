@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from app.db.session import get_db
 from app.db.models import (
     Project, ProjectStatus, Task, TaskStatus, Goal, GoalStatus,
-    AgentRun, AgentRunStatus, EventLog,
+    AgentRun, AgentRunStatus, EventLog, Idea, MarketingSignal, MarketingContent,
 )
 
 router = APIRouter()
@@ -20,6 +20,7 @@ class ProjectCreate(BaseModel):
     status: ProjectStatus = ProjectStatus.PLANNING
     color: str = "#00ffc8"
     url: str | None = None
+    metadata: dict | None = None
 
 
 class ProjectUpdate(BaseModel):
@@ -28,12 +29,53 @@ class ProjectUpdate(BaseModel):
     status: ProjectStatus | None = None
     color: str | None = None
     url: str | None = None
+    metadata: dict | None = None
 
 
 @router.get("")
 async def list_projects(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Project).order_by(Project.created_at.desc()))
-    projects = result.scalars().all()
+    task_count_sq = (
+        select(func.count(Task.id))
+        .where(Task.project_id == Project.id)
+        .correlate(Project)
+        .scalar_subquery()
+    )
+    open_task_count_sq = (
+        select(func.count(Task.id))
+        .where(Task.project_id == Project.id, Task.status != TaskStatus.DONE)
+        .correlate(Project)
+        .scalar_subquery()
+    )
+    idea_count_sq = (
+        select(func.count(Idea.id))
+        .where(Idea.project_id == Project.id)
+        .correlate(Project)
+        .scalar_subquery()
+    )
+    feedback_count_sq = (
+        select(func.count(MarketingSignal.id))
+        .where(MarketingSignal.project_id == Project.id)
+        .correlate(Project)
+        .scalar_subquery()
+    )
+    content_count_sq = (
+        select(func.count(MarketingContent.id))
+        .where(MarketingContent.project_id == Project.id)
+        .correlate(Project)
+        .scalar_subquery()
+    )
+
+    result = await db.execute(
+        select(
+            Project,
+            task_count_sq.label("task_count"),
+            open_task_count_sq.label("open_task_count"),
+            idea_count_sq.label("idea_count"),
+            feedback_count_sq.label("feedback_count"),
+            content_count_sq.label("content_count"),
+        ).order_by(Project.created_at.desc())
+    )
+    rows = result.all()
     return [
         {
             "id": str(p.id),
@@ -42,17 +84,25 @@ async def list_projects(db: AsyncSession = Depends(get_db)):
             "status": p.status.value,
             "color": p.color,
             "url": p.url,
-            "task_count": len(p.tasks) if p.tasks else 0,
+            "metadata": p.metadata_ or {},
+            "task_count": task_count,
+            "open_task_count": open_task_count,
+            "idea_count": idea_count,
+            "feedback_count": feedback_count,
+            "content_count": content_count,
             "agent_count": len(p.agents) if p.agents else 0,
             "created_at": p.created_at.isoformat(),
         }
-        for p in projects
+        for p, task_count, open_task_count, idea_count, feedback_count, content_count in rows
     ]
 
 
 @router.post("")
 async def create_project(data: ProjectCreate, db: AsyncSession = Depends(get_db)):
-    project = Project(**data.model_dump())
+    fields = data.model_dump(exclude_unset=True)
+    if "metadata" in fields:
+        fields["metadata_"] = fields.pop("metadata")
+    project = Project(**fields)
     db.add(project)
     await db.flush()
     return {"id": str(project.id), "name": project.name}
@@ -63,6 +113,16 @@ async def get_project(project_id: UUID, db: AsyncSession = Depends(get_db)):
     project = await db.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    counts = await db.execute(
+        select(
+            func.count(Task.id).filter(Task.project_id == project_id).label("task_count"),
+            func.count(Task.id).filter(Task.project_id == project_id, Task.status != TaskStatus.DONE).label("open_task_count"),
+            func.count(Idea.id).filter(Idea.project_id == project_id).label("idea_count"),
+            func.count(MarketingSignal.id).filter(MarketingSignal.project_id == project_id).label("feedback_count"),
+            func.count(MarketingContent.id).filter(MarketingContent.project_id == project_id).label("content_count"),
+        )
+    )
+    c = counts.one()
     return {
         "id": str(project.id),
         "name": project.name,
@@ -70,6 +130,13 @@ async def get_project(project_id: UUID, db: AsyncSession = Depends(get_db)):
         "status": project.status.value,
         "color": project.color,
         "url": project.url,
+        "metadata": project.metadata_ or {},
+        "task_count": c.task_count,
+        "open_task_count": c.open_task_count,
+        "idea_count": c.idea_count,
+        "feedback_count": c.feedback_count,
+        "content_count": c.content_count,
+        "agent_count": len(project.agents) if project.agents else 0,
         "created_at": project.created_at.isoformat(),
         "updated_at": project.updated_at.isoformat(),
     }
@@ -80,7 +147,10 @@ async def update_project(project_id: UUID, data: ProjectUpdate, db: AsyncSession
     project = await db.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    for key, val in data.model_dump(exclude_unset=True).items():
+    fields = data.model_dump(exclude_unset=True)
+    if "metadata" in fields:
+        fields["metadata_"] = fields.pop("metadata")
+    for key, val in fields.items():
         setattr(project, key, val)
     await db.flush()
     return {"id": str(project.id), "updated": True}

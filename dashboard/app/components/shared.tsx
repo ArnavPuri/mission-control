@@ -145,6 +145,7 @@ export function StatusIndicator({ status }: { status: string }) {
   const config: Record<string, { color: string; pulse: boolean }> = {
     running: { color: 'bg-emerald-500', pulse: true },
     active: { color: 'bg-emerald-500', pulse: true },
+    launched: { color: 'bg-emerald-500', pulse: false },
     idle: { color: 'bg-gray-300 dark:bg-gray-600', pulse: false },
     planning: { color: 'bg-amber-400', pulse: false },
     paused: { color: 'bg-amber-400', pulse: false },

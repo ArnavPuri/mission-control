@@ -200,8 +200,8 @@ function ProjectsPanel({ projects }: { projects: api.Project[] }) {
           </div>
           <p className="text-xs text-mc-muted dark:text-gray-500 leading-relaxed truncate mb-3">{p.description}</p>
           <div className="flex items-center gap-2">
-            <Badge variant={p.status === 'active' ? 'success' : 'warning'}>{p.status}</Badge>
-            <span className="text-[11px] text-mc-dim dark:text-gray-600">{p.task_count} tasks · {p.agent_count} agents</span>
+            <Badge variant={p.status === 'active' || p.status === 'launched' ? 'success' : 'warning'}>{p.status}</Badge>
+            <span className="text-[11px] text-mc-dim dark:text-gray-600">{p.open_task_count || 0} open · {p.idea_count || 0} ideas</span>
           </div>
         </div>
       ))}
