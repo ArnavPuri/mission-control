@@ -219,6 +219,12 @@ class AgentConfig(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
+    # Session persistence
+    session_id = Column(String(255), nullable=True)
+    last_message_uuid = Column(String(255), nullable=True)
+    session_expires_at = Column(DateTime(timezone=True), nullable=True)
+    session_window_days = Column(Integer, default=7)
+
     # Relationships
     project = relationship("Project", back_populates="agents")
     runs = relationship("AgentRun", back_populates="agent", lazy="selectin", order_by="AgentRun.started_at.desc()")
@@ -237,6 +243,7 @@ class AgentRun(Base):
     error = Column(Text, nullable=True)
     tokens_used = Column(Integer, default=0)
     cost_usd = Column(Float, default=0.0)
+    transcript = Column(JSON, nullable=True)  # full conversation messages, capped at 50
     started_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
