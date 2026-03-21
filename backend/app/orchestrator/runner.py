@@ -304,6 +304,17 @@ class AgentRunner:
         if shared_memories:
             context["shared_memory"] = {m.key: m.value for m in shared_memories}
 
+        # Inject lessons for all agents
+        lessons_result = await db.execute(
+            select(AgentMemory).where(
+                AgentMemory.agent_id.is_(None),
+                AgentMemory.key == "system:lessons",
+            )
+        )
+        lessons_mem = lessons_result.scalar_one_or_none()
+        if lessons_mem and lessons_mem.value.strip():
+            context["lessons"] = lessons_mem.value
+
         # Load run history (last 5 completed runs for self-awareness)
         run_history = await db.execute(
             select(AgentRun)
@@ -746,6 +757,13 @@ class AgentRunner:
             # Save transcript
             run.transcript = self._last_transcript
 
+            # Capture lesson if output couldn't be parsed as JSON
+            if result.get("raw"):
+                try:
+                    await self._write_lesson(agent.name, "Output was not valid JSON — agent returned unstructured text", db)
+                except Exception:
+                    pass
+
             # Update session persistence
             if agent.session_window_days and agent.session_window_days > 0:
                 if self._last_session_id:
@@ -845,6 +863,12 @@ class AgentRunner:
                         source=f"agent:{agent.slug}",
                         priority="urgent",
                     )
+            except Exception:
+                pass
+
+            # Auto-capture lesson from failure
+            try:
+                await self._write_lesson(agent.name, str(e)[:100], db)
             except Exception:
                 pass
 
@@ -971,6 +995,35 @@ class AgentRunner:
             await db.flush()
         except Exception as e:
             logger.debug(f"Post-run learning failed for {agent.name}: {e}")
+
+    async def _write_lesson(self, agent_name: str, lesson_text: str, db: AsyncSession):
+        """Append a lesson to shared memory for all agents to learn from."""
+        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        new_lesson = f"[{date_str}] {agent_name}: {lesson_text}"
+
+        # Read existing lessons
+        existing = await db.execute(
+            select(AgentMemory).where(
+                AgentMemory.agent_id.is_(None),
+                AgentMemory.key == "system:lessons",
+            )
+        )
+        mem = existing.scalar_one_or_none()
+
+        if mem:
+            lines = [l for l in mem.value.split("\n") if l.strip()]
+            lines.append(new_lesson)
+            # Keep only 20 most recent
+            if len(lines) > 20:
+                lines = lines[-20:]
+            mem.value = "\n".join(lines)
+        else:
+            db.add(AgentMemory(
+                agent_id=None,
+                key="system:lessons",
+                value=new_lesson,
+                memory_type="shared",
+            ))
 
     async def _fire_trigger(self, entity_type: str, event: str, entity_data: dict, db: AsyncSession):
         """Fire event-driven triggers (best-effort)."""
