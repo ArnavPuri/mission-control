@@ -427,6 +427,13 @@ async def cmd_agents_list(source: str) -> CommandResult:
     return CommandResult("\n".join(lines))
 
 
+async def cmd_morning(source: str) -> CommandResult:
+    """Generate and send the morning briefing."""
+    from app.notifications.morning import generate_morning_briefing
+    text = await generate_morning_briefing()
+    return CommandResult(text)
+
+
 async def cmd_help(source: str) -> CommandResult:
     """Show available commands."""
     from app.config import settings
@@ -447,5 +454,6 @@ async def cmd_help(source: str) -> CommandResult:
         "/signals [status] — View marketing signals\n"
         "/agents — View agent status\n"
         "/brand — View your brand profile\n"
+        "/morning — Get your morning briefing\n"
         "/help - This message"
     )

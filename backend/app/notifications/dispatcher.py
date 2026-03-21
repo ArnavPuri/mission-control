@@ -146,6 +146,11 @@ async def digest_loop():
             wait_seconds = (target - now).total_seconds()
             await asyncio.sleep(wait_seconds)
 
+            # Send morning briefing (replaces plain digest — it's a superset)
+            from app.notifications.morning import send_morning_briefing
+            await send_morning_briefing()
+
+            # Also flush any unsent routine notifications
             await dispatch_digest()
         except Exception as e:
             logger.error(f"Digest loop error: {e}")
