@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import * as api from '../lib/api';
 import {
   FolderOpen, Plus, ExternalLink, Loader2, Globe, Check,
   Megaphone, MessageSquare, Lightbulb,
-  X, Sparkles,
+  X, Sparkles, RefreshCw,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Card, Badge, EmptyState } from '../components/shared';
@@ -99,9 +99,24 @@ function ProjectCard({
 
           if (enrichStatus === 'pending') {
             return (
-              <div className="flex items-center gap-2 mt-2 text-xs text-mc-muted dark:text-gray-500">
+              <div className="flex items-center gap-2 mt-2 text-xs text-mc-muted dark:text-gray-500" role="status">
                 <Loader2 size={12} className="animate-spin" />
                 <span>Fetching brand info...</span>
+              </div>
+            );
+          }
+
+          if (enrichStatus === 'failed') {
+            return (
+              <div className="flex items-center gap-2 mt-2 text-xs text-mc-muted dark:text-gray-500">
+                <span>Brand fetch failed.</span>
+                <button
+                  onClick={() => api.projects.enrich(project.id)}
+                  className="inline-flex items-center gap-1 text-mc-accent hover:underline cursor-pointer"
+                  aria-label={`Retry brand fetch for ${project.name}`}
+                >
+                  <RefreshCw size={10} /> Retry
+                </button>
               </div>
             );
           }
@@ -139,10 +154,14 @@ function ProjectCard({
         })()}
 
         {/* Tabs */}
-        <div className="flex items-center gap-6 mt-4 border-b border-mc-border dark:border-gray-800">
+        <div role="tablist" aria-label={`${project.name} sections`} className="flex items-center gap-6 mt-4 border-b border-mc-border dark:border-gray-800">
           {tabs.map((tab) => (
             <button
               key={tab.key}
+              role="tab"
+              aria-selected={activeTab === tab.key}
+              aria-controls={`${project.id}-panel-${tab.key}`}
+              id={`${project.id}-tab-${tab.key}`}
               onClick={() => setActiveTab(tab.key)}
               className={clsx(
                 'pb-2.5 text-sm font-medium transition-colors relative cursor-pointer flex items-center gap-1.5',
@@ -167,18 +186,26 @@ function ProjectCard({
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto p-5 pt-3 max-h-[min(400px,50vh)]">
+      <div
+        role="tabpanel"
+        id={`${project.id}-panel-${activeTab}`}
+        aria-labelledby={`${project.id}-tab-${activeTab}`}
+        className="flex-1 overflow-y-auto p-5 pt-3 max-h-[min(400px,50vh)]"
+      >
         {activeTab === 'tasks' && (
           <div className="flex flex-col gap-0.5">
             {[...openTasks, ...doneTasks].map((task) => (
               <div key={task.id} className="flex items-start gap-3 py-2.5 border-b border-mc-border/40 dark:border-gray-800/40 last:border-0">
                 <button
+                  role="checkbox"
+                  aria-checked={task.status === 'done'}
+                  aria-label={`Mark "${task.text}" as ${task.status === 'done' ? 'incomplete' : 'complete'}`}
                   onClick={() => onToggleTask(task)}
                   className={clsx(
                     'mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors cursor-pointer',
                     task.status === 'done'
-                      ? 'bg-emerald-500 border-emerald-500 text-white'
-                      : 'border-gray-300 dark:border-gray-600 hover:border-emerald-400'
+                      ? 'bg-mc-green border-mc-green text-white'
+                      : 'border-mc-border dark:border-gray-600 hover:border-mc-green'
                   )}
                 >
                   {task.status === 'done' && <Check size={12} strokeWidth={3} />}
@@ -246,7 +273,7 @@ function ProjectCard({
                       </div>
                     </div>
                     {sig.source_url && (
-                      <a href={sig.source_url} target="_blank" rel="noopener noreferrer" className="text-mc-accent shrink-0">
+                      <a href={sig.source_url} target="_blank" rel="noopener noreferrer" className="text-mc-accent shrink-0" aria-label={`Open source for ${sig.title}`}>
                         <ExternalLink size={12} />
                       </a>
                     )}
@@ -273,7 +300,7 @@ function ProjectCard({
                       </div>
                     </div>
                     {c.posted_url && (
-                      <a href={c.posted_url} target="_blank" rel="noopener noreferrer" className="text-mc-accent shrink-0">
+                      <a href={c.posted_url} target="_blank" rel="noopener noreferrer" className="text-mc-accent shrink-0" aria-label={`Open ${c.title}`}>
                         <ExternalLink size={12} />
                       </a>
                     )}
@@ -293,6 +320,8 @@ function ProjectCard({
       {activeTab === 'tasks' && (
         <div className="border-t border-mc-border dark:border-gray-800 p-3 flex gap-2">
           <input
+            type="text"
+            aria-label={`Add task to ${project.name}`}
             value={newTaskText}
             onChange={(e) => setNewTaskText(e.target.value)}
             placeholder="New task..."
@@ -311,6 +340,8 @@ function ProjectCard({
       {activeTab === 'ideas' && (
         <div className="border-t border-mc-border dark:border-gray-800 p-3 flex gap-2">
           <input
+            type="text"
+            aria-label={`Add idea to ${project.name}`}
             value={newIdeaText}
             onChange={(e) => setNewIdeaText(e.target.value)}
             placeholder="New idea..."
@@ -327,6 +358,115 @@ function ProjectCard({
         </div>
       )}
     </Card>
+  );
+}
+
+function CreateProjectDialog({
+  newName, setNewName, newUrl, setNewUrl, creating, onClose, onCreate,
+}: {
+  newName: string; setNewName: (v: string) => void;
+  newUrl: string; setNewUrl: (v: string) => void;
+  creating: boolean; onClose: () => void; onCreate: () => void;
+}) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  // Focus trap + Escape handler
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { onClose(); return; }
+      if (e.key !== 'Tab') return;
+
+      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
+        'input, button, [tabindex]:not([tabindex="-1"])'
+      );
+      if (!focusable || focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+      } else {
+        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose} role="presentation">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-project-title"
+        className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md mx-4 p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-5">
+          <h2 id="create-project-title" className="text-lg font-bold text-mc-text dark:text-gray-100">New Project</h2>
+          <button onClick={onClose} aria-label="Close dialog" className="text-mc-muted hover:text-mc-text dark:hover:text-gray-300 cursor-pointer">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label htmlFor="project-name" className="block text-xs font-medium text-mc-muted dark:text-gray-400 mb-1.5">Project Name *</label>
+            <input
+              id="project-name"
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="My Awesome Project"
+              autoFocus
+              maxLength={200}
+              onKeyDown={(e) => { if (e.key === 'Enter' && newName.trim()) onCreate(); }}
+              className="w-full px-3 py-2 text-sm bg-mc-bg dark:bg-gray-800 border border-mc-border dark:border-gray-700 rounded-lg text-mc-text dark:text-gray-200 placeholder:text-mc-dim outline-none focus:border-mc-accent focus:ring-1 focus:ring-mc-accent/30"
+            />
+          </div>
+          <div>
+            <label htmlFor="project-url" className="block text-xs font-medium text-mc-muted dark:text-gray-400 mb-1.5">
+              Website URL
+              <span className="ml-1.5 text-mc-dim font-normal">(optional — auto-fetches brand info)</span>
+            </label>
+            <input
+              id="project-url"
+              type="url"
+              value={newUrl}
+              onChange={(e) => setNewUrl(e.target.value)}
+              placeholder="https://example.com"
+              onKeyDown={(e) => { if (e.key === 'Enter' && newName.trim()) onCreate(); }}
+              className="w-full px-3 py-2 text-sm bg-mc-bg dark:bg-gray-800 border border-mc-border dark:border-gray-700 rounded-lg text-mc-text dark:text-gray-200 placeholder:text-mc-dim outline-none focus:border-mc-accent focus:ring-1 focus:ring-mc-accent/30"
+            />
+            {newUrl.trim() && (
+              <p className="text-[11px] text-mc-accent mt-1 flex items-center gap-1">
+                <Sparkles size={10} />
+                Brand voice, offering, and colors will be auto-detected
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 mt-6">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-mc-muted dark:text-gray-400 hover:text-mc-text dark:hover:text-gray-200 transition-colors cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onCreate}
+            disabled={!newName.trim() || creating}
+            className="flex items-center gap-2 px-4 py-2 bg-mc-accent text-white text-sm font-medium rounded-lg hover:opacity-90 transition-colors cursor-pointer disabled:opacity-50"
+          >
+            {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+            Create Project
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -357,19 +497,36 @@ export default function ProjectsPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Listen for WebSocket updates to refresh enriched projects
+  // Listen for WebSocket updates to refresh enriched projects (with reconnect)
   useEffect(() => {
-    const wsUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/^http/, 'ws') + '/ws';
-    const ws = new WebSocket(wsUrl);
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'project.updated') {
-          loadData();
-        }
-      } catch {}
+    let ws: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout>;
+    let unmounted = false;
+
+    function connect() {
+      if (unmounted) return;
+      const wsUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/^http/, 'ws') + '/ws';
+      ws = new WebSocket(wsUrl);
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'project.updated') {
+            loadData();
+          }
+        } catch {}
+      };
+      ws.onclose = () => {
+        if (!unmounted) reconnectTimer = setTimeout(connect, 5000);
+      };
+      ws.onerror = () => ws?.close();
+    }
+
+    connect();
+    return () => {
+      unmounted = true;
+      clearTimeout(reconnectTimer);
+      ws?.close();
     };
-    return () => ws.close();
   }, [loadData]);
 
   const createProject = async () => {
@@ -439,69 +596,15 @@ export default function ProjectsPage() {
 
       {/* Create Project Dialog */}
       {showCreateDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowCreateDialog(false)}>
-          <div
-            className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md mx-4 p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-bold text-mc-text dark:text-gray-100">New Project</h2>
-              <button onClick={() => setShowCreateDialog(false)} className="text-mc-muted hover:text-mc-text dark:hover:text-gray-300 cursor-pointer">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-mc-muted dark:text-gray-400 mb-1.5">Project Name *</label>
-                <input
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  placeholder="My Awesome Project"
-                  autoFocus
-                  onKeyDown={(e) => { if (e.key === 'Enter' && newName.trim()) createProject(); }}
-                  className="w-full px-3 py-2 text-sm bg-mc-bg dark:bg-gray-800 border border-mc-border dark:border-gray-700 rounded-lg text-mc-text dark:text-gray-200 placeholder:text-mc-dim outline-none focus:border-mc-accent focus:ring-1 focus:ring-mc-accent/30"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-mc-muted dark:text-gray-400 mb-1.5">
-                  Website URL
-                  <span className="ml-1.5 text-mc-dim font-normal">(optional — auto-fetches brand info)</span>
-                </label>
-                <input
-                  value={newUrl}
-                  onChange={(e) => setNewUrl(e.target.value)}
-                  placeholder="https://example.com"
-                  onKeyDown={(e) => { if (e.key === 'Enter' && newName.trim()) createProject(); }}
-                  className="w-full px-3 py-2 text-sm bg-mc-bg dark:bg-gray-800 border border-mc-border dark:border-gray-700 rounded-lg text-mc-text dark:text-gray-200 placeholder:text-mc-dim outline-none focus:border-mc-accent focus:ring-1 focus:ring-mc-accent/30"
-                />
-                {newUrl.trim() && (
-                  <p className="text-[11px] text-mc-accent mt-1 flex items-center gap-1">
-                    <Sparkles size={10} />
-                    Brand voice, offering, and colors will be auto-detected
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={() => setShowCreateDialog(false)}
-                className="px-4 py-2 text-sm text-mc-muted dark:text-gray-400 hover:text-mc-text dark:hover:text-gray-200 transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={createProject}
-                disabled={!newName.trim() || creating}
-                className="flex items-center gap-2 px-4 py-2 bg-mc-accent text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors cursor-pointer disabled:opacity-50"
-              >
-                {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                Create Project
-              </button>
-            </div>
-          </div>
-        </div>
+        <CreateProjectDialog
+          newName={newName}
+          setNewName={setNewName}
+          newUrl={newUrl}
+          setNewUrl={setNewUrl}
+          creating={creating}
+          onClose={() => setShowCreateDialog(false)}
+          onCreate={createProject}
+        />
       )}
 
       <main className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6">

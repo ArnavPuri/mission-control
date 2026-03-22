@@ -70,6 +70,47 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   opacity: 0;
 }
 
+/* Focus indicators — visible for keyboard, hidden for mouse */
+:focus-visible {
+  outline: 2px solid var(--mc-accent, #3b82f6);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Skip to content link */
+.skip-to-content {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: 0.5rem 1rem;
+  background: var(--mc-accent, #3b82f6);
+  color: white;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: 0 0 0.5rem 0;
+}
+
+.skip-to-content:focus {
+  left: 0;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* Radix overrides */
 [data-radix-popper-content-wrapper] {
   z-index: 50 !important;
