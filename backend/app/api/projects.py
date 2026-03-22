@@ -8,6 +8,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
+from sqlalchemy.orm.attributes import flag_modified
 from app.db.session import get_db, async_session
 from app.db.models import (
     Project, ProjectStatus, Task, TaskStatus, Goal, GoalStatus,
@@ -467,6 +468,7 @@ async def _enrich_project(project_id: UUID, url: str):
         }
         meta["enrichment_status"] = "completed"
         project.metadata_ = meta
+        flag_modified(project, "metadata_")
 
         # Auto-fill description if empty
         if not project.description and brand_data.get("offering"):
@@ -493,6 +495,7 @@ async def _update_enrichment_status(project_id: UUID, status: str):
         meta = project.metadata_ or {}
         meta["enrichment_status"] = status
         project.metadata_ = meta
+        flag_modified(project, "metadata_")
         await db.commit()
     await broadcast("project.updated", {"project_id": str(project_id)})
 
