@@ -376,13 +376,20 @@ async def call_anthropic_via_sdk(
     options = ClaudeAgentOptions(**opts_kwargs)
 
     full_response = ""
-    async for message in query(prompt=prompt, options=options):
-        if hasattr(message, "result"):
-            full_response = message.result
-        elif hasattr(message, "content"):
-            for block in getattr(message, "content", []):
-                if hasattr(block, "text"):
-                    full_response += block.text
+    try:
+        async for message in query(prompt=prompt, options=options):
+            if hasattr(message, "result") and message.result:
+                full_response = message.result
+            elif hasattr(message, "content"):
+                for block in getattr(message, "content", []):
+                    if hasattr(block, "text"):
+                        full_response += block.text
+    except Exception as e:
+        logger.error(f"Chat SDK call failed: {e}", exc_info=True)
+        return None
+
+    if not full_response:
+        logger.warning("Chat SDK returned empty response")
 
     return full_response or None
 
