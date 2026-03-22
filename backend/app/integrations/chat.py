@@ -378,6 +378,8 @@ async def call_anthropic_via_sdk(
     full_response = ""
     try:
         async for message in query(prompt=prompt, options=options):
+            msg_type = type(message).__name__
+            print(f"[chat-sdk] {msg_type}", flush=True)
             if hasattr(message, "result") and message.result:
                 full_response = message.result
             elif hasattr(message, "content"):
@@ -385,11 +387,12 @@ async def call_anthropic_via_sdk(
                     if hasattr(block, "text"):
                         full_response += block.text
     except Exception as e:
+        print(f"[chat-sdk] ERROR: {e}", flush=True)
         logger.error(f"Chat SDK call failed: {e}", exc_info=True)
         return None
 
     if not full_response:
-        logger.warning("Chat SDK returned empty response")
+        print("[chat-sdk] WARNING: empty response", flush=True)
 
     return full_response or None
 
