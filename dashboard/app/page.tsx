@@ -61,11 +61,11 @@ function Badge({ children, variant = 'default' }: {
 }) {
   const styles: Record<string, string> = {
     default: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
-    success: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
-    warning: 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-400',
-    error: 'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-400',
-    purple: 'bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-400',
-    blue: 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
+    success: 'bg-mc-green-bg text-mc-green-dark dark:bg-mc-green-bg-dark dark:text-mc-green',
+    warning: 'bg-mc-yellow-bg text-mc-yellow-dark dark:bg-mc-yellow-bg-dark dark:text-mc-yellow',
+    error: 'bg-mc-red-bg text-mc-red-dark dark:bg-mc-red-bg-dark dark:text-mc-red',
+    purple: 'bg-mc-purple-bg text-mc-purple-dark dark:bg-mc-purple-bg-dark dark:text-mc-purple',
+    blue: 'bg-mc-blue-bg text-mc-blue-dark dark:bg-mc-blue-bg-dark dark:text-mc-blue',
   };
   return (
     <span className={clsx('inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium', styles[variant])}>
@@ -114,7 +114,7 @@ function InlineInput({ placeholder, onSubmit, onCancel }: {
       />
       <button
         onClick={() => { if (val.trim()) { onSubmit(val.trim()); setVal(''); } }}
-        className="px-3 py-2 bg-mc-accent text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors cursor-pointer"
+        className="px-3 py-2 bg-mc-accent text-white text-sm font-medium rounded-lg hover:bg-mc-accent-hover transition-colors cursor-pointer"
       >
         Add
       </button>
@@ -127,12 +127,12 @@ function InlineInput({ placeholder, onSubmit, onCancel }: {
 
 function StatusIndicator({ status }: { status: string }) {
   const config: Record<string, { color: string; pulse: boolean }> = {
-    running: { color: 'bg-emerald-500', pulse: true },
-    active: { color: 'bg-emerald-500', pulse: true },
+    running: { color: 'bg-mc-green', pulse: true },
+    active: { color: 'bg-mc-green', pulse: true },
     idle: { color: 'bg-gray-300 dark:bg-gray-600', pulse: false },
-    planning: { color: 'bg-amber-400', pulse: false },
-    paused: { color: 'bg-amber-400', pulse: false },
-    error: { color: 'bg-red-500', pulse: false },
+    planning: { color: 'bg-mc-yellow', pulse: false },
+    paused: { color: 'bg-mc-yellow', pulse: false },
+    error: { color: 'bg-mc-red', pulse: false },
     disabled: { color: 'bg-gray-200 dark:bg-gray-700', pulse: false },
     archived: { color: 'bg-gray-200 dark:bg-gray-700', pulse: false },
   };
@@ -154,9 +154,9 @@ function HealthBadge({ projectId }: { projectId: string }) {
   }, [projectId]);
   if (!health) return null;
   const colors: Record<string, string> = {
-    healthy: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
-    needs_attention: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400',
-    at_risk: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400',
+    healthy: 'bg-mc-green-bg text-mc-green-dark dark:bg-mc-green-bg-dark dark:text-mc-green',
+    needs_attention: 'bg-mc-yellow-bg text-mc-yellow-dark dark:bg-mc-yellow-bg-dark dark:text-mc-yellow',
+    at_risk: 'bg-mc-red-bg text-mc-red-dark dark:bg-mc-red-bg-dark dark:text-mc-red',
   };
   return (
     <Tooltip.Provider>
@@ -174,7 +174,7 @@ function HealthBadge({ projectId }: { projectId: string }) {
             <div className="font-medium mb-1">{health.status.replace('_', ' ')}</div>
             <div>Done: {health.metrics.completion_rate}%</div>
             <div>Velocity: {health.metrics.weekly_velocity}/wk</div>
-            {health.metrics.overdue_tasks > 0 && <div className="text-red-300 dark:text-red-600">Overdue: {health.metrics.overdue_tasks}</div>}
+            {health.metrics.overdue_tasks > 0 && <div className="text-mc-red-light dark:text-mc-red">Overdue: {health.metrics.overdue_tasks}</div>}
             <Tooltip.Arrow className="fill-gray-900 dark:fill-gray-100" />
           </Tooltip.Content>
         </Tooltip.Portal>
@@ -249,8 +249,8 @@ function AgentsPanel({ agents, projects, onToggle }: {
               className={clsx(
                 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer border',
                 isRunning
-                  ? 'bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-100'
-                  : 'bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100',
+                  ? 'bg-mc-red-bg dark:bg-mc-red-bg-dark border-mc-red-light dark:border-mc-red-dark text-mc-red dark:text-mc-red hover:bg-mc-red-light'
+                  : 'bg-mc-green-bg dark:bg-mc-green-bg-dark border-mc-green-light dark:border-mc-green-dark text-mc-green-dark dark:text-mc-green hover:bg-mc-green-light',
               )}
             >
               {isRunning ? <><Square size={11} /> Stop</> : <><Play size={11} /> Run</>}
@@ -276,7 +276,7 @@ function EditableTaskRow({ task, onToggle, onUpdate, onDelete }: {
   const done = task.status === 'done';
 
   const priorityDots: Record<string, string> = {
-    critical: 'bg-red-500', high: 'bg-orange-400', medium: 'bg-amber-400', low: 'bg-gray-300',
+    critical: 'bg-mc-priority-critical', high: 'bg-mc-priority-high', medium: 'bg-mc-priority-medium', low: 'bg-mc-priority-low',
   };
   const priorityOrder: api.Task['priority'][] = ['critical', 'high', 'medium', 'low'];
 
@@ -382,11 +382,11 @@ function KanbanColumn({ title, tasks, color, onToggle, onUpdate, onDelete }: {
       </div>
       <div className="flex flex-col gap-1.5">
         {tasks.map((t) => {
-          const prioColor: Record<string, string> = { critical: 'border-l-red-500', high: 'border-l-amber-500', medium: 'border-l-blue-400', low: 'border-l-gray-300' };
+          const prioColor: Record<string, string> = { critical: 'border-l-mc-priority-critical', high: 'border-l-mc-priority-high', medium: 'border-l-mc-priority-medium', low: 'border-l-mc-priority-low' };
           return (
             <div
               key={t.id}
-              className={clsx('bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-800 rounded-lg px-2.5 py-2 hover:shadow-card-hover transition-all border-l-2', prioColor[t.priority] || 'border-l-gray-300')}
+              className={clsx('bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-800 rounded-lg px-2.5 py-2 hover:shadow-card-hover transition-all border-l-2', prioColor[t.priority] || 'border-l-mc-priority-low')}
             >
               <span className="text-xs text-mc-text dark:text-gray-200 line-clamp-2 leading-relaxed">{t.text}</span>
               <div className="flex items-center gap-1 mt-1.5">
@@ -450,7 +450,7 @@ function TasksPanel({ tasks, projects, onToggle, onUpdate, onAdd, showInput, set
           <button className={clsx(
             'flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium border cursor-pointer transition-colors',
             filterStatus !== 'all'
-              ? 'bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400'
+              ? 'bg-mc-blue-bg dark:bg-mc-blue-bg-dark border-mc-blue-light dark:border-mc-blue-dark text-mc-blue-dark dark:text-mc-blue'
               : 'bg-white dark:bg-gray-800 border-mc-border dark:border-gray-700 text-mc-muted dark:text-gray-400',
           )}>
             <Filter size={10} />
@@ -478,7 +478,7 @@ function TasksPanel({ tasks, projects, onToggle, onUpdate, onAdd, showInput, set
           <button className={clsx(
             'flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium border cursor-pointer transition-colors',
             filterPriority !== 'all'
-              ? 'bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400'
+              ? 'bg-mc-blue-bg dark:bg-mc-blue-bg-dark border-mc-blue-light dark:border-mc-blue-dark text-mc-blue-dark dark:text-mc-blue'
               : 'bg-white dark:bg-gray-800 border-mc-border dark:border-gray-700 text-mc-muted dark:text-gray-400',
           )}>
             <Filter size={10} />
@@ -559,7 +559,7 @@ function TasksPanel({ tasks, projects, onToggle, onUpdate, onAdd, showInput, set
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
-      <button onClick={bulkDelete} className="text-[11px] text-red-500 hover:underline cursor-pointer bg-transparent border-none">Delete</button>
+      <button onClick={bulkDelete} className="text-[11px] text-mc-red hover:underline cursor-pointer bg-transparent border-none">Delete</button>
       <button onClick={() => setSelected(new Set())} className="text-[11px] text-mc-dim hover:underline cursor-pointer bg-transparent border-none ml-auto">Clear</button>
     </div>
   );
@@ -620,9 +620,9 @@ function TasksPanel({ tasks, projects, onToggle, onUpdate, onAdd, showInput, set
         <div className="flex gap-3 overflow-x-auto pb-2">
           {([
             { key: 'todo', title: 'To Do', color: 'bg-gray-400' },
-            { key: 'in_progress', title: 'In Progress', color: 'bg-blue-500' },
-            { key: 'blocked', title: 'Blocked', color: 'bg-red-500' },
-            { key: 'done', title: 'Done', color: 'bg-emerald-500' },
+            { key: 'in_progress', title: 'In Progress', color: 'bg-mc-blue' },
+            { key: 'blocked', title: 'Blocked', color: 'bg-mc-red' },
+            { key: 'done', title: 'Done', color: 'bg-mc-green' },
           ] as const).map((col) => (
             <KanbanColumn
               key={col.key}
@@ -649,7 +649,7 @@ function IdeasPanel({ ideas, onAdd, showInput, setShowInput, onDelete }: {
       {showInput && <InlineInput placeholder="Capture an idea..." onSubmit={onAdd} onCancel={() => setShowInput(false)} />}
       <div className="flex flex-col gap-2">
         {ideas.map((idea) => (
-          <div key={idea.id} className="bg-violet-50/50 dark:bg-violet-950/30 border border-violet-100 dark:border-violet-900 rounded-lg px-3.5 py-2.5 hover:bg-violet-50 dark:hover:bg-violet-950/50 transition-colors group">
+          <div key={idea.id} className="bg-mc-purple-bg/50 dark:bg-mc-purple-bg-dark/30 border border-mc-purple-light dark:border-mc-purple-dark rounded-lg px-3.5 py-2.5 hover:bg-mc-purple-bg dark:hover:bg-mc-purple-bg-dark/50 transition-colors group">
             <div className="flex justify-between items-start">
               <span className="text-sm text-mc-secondary dark:text-gray-300 flex-1">{idea.text}</span>
               <button onClick={() => onDelete(idea.id)} className="opacity-0 group-hover:opacity-100 text-mc-dim hover:text-mc-red transition-all cursor-pointer bg-transparent border-none p-0.5 ml-2">
@@ -683,11 +683,11 @@ function NotesPanel({ notes, onAdd, onDelete, onTogglePin, showInput, setShowInp
         {notes.slice(0, 8).map((n) => (
           <div key={n.id} className="bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-800 rounded-lg px-3.5 py-2.5 hover:shadow-card-hover transition-all group">
             <div className="flex items-center gap-2">
-              <button onClick={() => onTogglePin(n.id)} className={clsx('shrink-0 cursor-pointer bg-transparent border-none p-0', n.is_pinned ? 'text-amber-500' : 'text-gray-300 dark:text-gray-700 hover:text-amber-400')}>
+              <button onClick={() => onTogglePin(n.id)} className={clsx('shrink-0 cursor-pointer bg-transparent border-none p-0', n.is_pinned ? 'text-mc-yellow' : 'text-gray-300 dark:text-gray-700 hover:text-mc-yellow')}>
                 <Pin size={12} />
               </button>
               <span className="text-sm text-mc-text dark:text-gray-200 font-medium flex-1 truncate">{n.title}</span>
-              <button onClick={() => onDelete(n.id)} className="opacity-0 group-hover:opacity-100 text-mc-dim hover:text-red-500 transition-all cursor-pointer bg-transparent border-none p-0">
+              <button onClick={() => onDelete(n.id)} className="opacity-0 group-hover:opacity-100 text-mc-dim hover:text-mc-red transition-all cursor-pointer bg-transparent border-none p-0">
                 <X size={12} />
               </button>
             </div>
@@ -724,7 +724,7 @@ function AgentAnalyticsPanel({ analytics, agents }: { analytics: api.AgentAnalyt
           <div className="text-[11px] text-mc-dim">Total Runs</div>
         </div>
         <div className="bg-mc-subtle dark:bg-gray-800 rounded-lg px-3 py-2 text-center">
-          <div className={clsx('text-lg font-bold', totals.overall_success_rate >= 80 ? 'text-emerald-600' : totals.overall_success_rate >= 50 ? 'text-amber-600' : 'text-red-600')}>
+          <div className={clsx('text-lg font-bold', totals.overall_success_rate >= 80 ? 'text-mc-green' : totals.overall_success_rate >= 50 ? 'text-mc-yellow' : 'text-mc-red')}>
             {Math.round(totals.overall_success_rate)}%
           </div>
           <div className="text-[11px] text-mc-dim">Success</div>
@@ -744,10 +744,10 @@ function AgentAnalyticsPanel({ analytics, agents }: { analytics: api.AgentAnalyt
           </div>
           <div className="flex items-center gap-3 text-[11px]">
             <span className="text-mc-muted">{a.total_runs} runs</span>
-            <span className={clsx(a.success_rate >= 80 ? 'text-emerald-600' : a.success_rate >= 50 ? 'text-amber-600' : 'text-red-500')}>
+            <span className={clsx(a.success_rate >= 80 ? 'text-mc-green' : a.success_rate >= 50 ? 'text-mc-yellow' : 'text-mc-red')}>
               {Math.round(a.success_rate)}% ok
             </span>
-            <span className={clsx('font-mono', a.total_cost_usd > 0.5 ? 'text-amber-600' : 'text-emerald-600')}>
+            <span className={clsx('font-mono', a.total_cost_usd > 0.5 ? 'text-mc-yellow' : 'text-mc-green')}>
               ${a.total_cost_usd.toFixed(3)}
             </span>
             {a.avg_duration_seconds > 0 && (
@@ -782,15 +782,15 @@ function ApprovalsPanel({ approvals, onApprove, onReject }: {
 }) {
   if (approvals.length === 0) return null;
   return (
-    <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-950/20 p-4">
+    <Card className="border-mc-yellow-light dark:border-mc-yellow-dark bg-mc-yellow-bg/30 dark:bg-mc-yellow-bg-dark/20 p-4">
       <div className="flex items-center gap-2 mb-3">
-        <Shield size={15} className="text-amber-600" />
-        <h3 className="text-sm font-semibold text-amber-800 dark:text-amber-400">Pending Approvals</h3>
+        <Shield size={15} className="text-mc-yellow" />
+        <h3 className="text-sm font-semibold text-mc-yellow-dark dark:text-mc-yellow">Pending Approvals</h3>
         <Badge variant="warning">{approvals.length}</Badge>
       </div>
       <div className="flex flex-col gap-2">
         {approvals.map((a) => (
-          <div key={a.id} className="bg-white dark:bg-gray-900 rounded-lg border border-amber-200 dark:border-amber-800 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
+          <div key={a.id} className="bg-white dark:bg-gray-900 rounded-lg border border-mc-yellow-light dark:border-mc-yellow-dark px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-0.5">
                 <span className="text-sm font-medium text-mc-text dark:text-gray-100">{a.agent_name}</span>
@@ -799,10 +799,10 @@ function ApprovalsPanel({ approvals, onApprove, onReject }: {
               <p className="text-xs text-mc-muted dark:text-gray-500 truncate">{a.summary}</p>
             </div>
             <div className="flex gap-2 shrink-0">
-              <button onClick={() => onApprove(a.id)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 transition-colors cursor-pointer">
+              <button onClick={() => onApprove(a.id)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-mc-green-bg dark:bg-mc-green-bg-dark border border-mc-green-light dark:border-mc-green-dark text-mc-green-dark dark:text-mc-green hover:bg-mc-green-light transition-colors cursor-pointer">
                 <Check size={12} /> Approve
               </button>
-              <button onClick={() => onReject(a.id)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-100 transition-colors cursor-pointer">
+              <button onClick={() => onReject(a.id)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-mc-red-bg dark:bg-mc-red-bg-dark border border-mc-red-light dark:border-mc-red-dark text-mc-red dark:text-mc-red hover:bg-mc-red-light transition-colors cursor-pointer">
                 <X size={12} /> Reject
               </button>
             </div>
@@ -820,7 +820,7 @@ function NotificationBell({ notifications, unreadCount, onMarkRead, onMarkAllRea
   onMarkRead: (id: string) => void; onMarkAllRead: () => void;
 }) {
   const categoryColors: Record<string, string> = {
-    success: 'bg-emerald-500', error: 'bg-red-500', warning: 'bg-amber-500', info: 'bg-blue-500', approval: 'bg-amber-500',
+    success: 'bg-mc-green', error: 'bg-mc-red', warning: 'bg-mc-yellow', info: 'bg-mc-blue', approval: 'bg-mc-yellow',
   };
   return (
     <Popover.Root>
@@ -828,7 +828,7 @@ function NotificationBell({ notifications, unreadCount, onMarkRead, onMarkAllRea
         <button className="relative w-9 h-9 rounded-lg border border-mc-border dark:border-gray-700 bg-white dark:bg-gray-800 text-mc-muted dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-mc-text transition-all flex items-center justify-center cursor-pointer">
           <Bell size={16} />
           {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 w-[18px] h-[18px] bg-red-500 rounded-full flex items-center justify-center text-[10px] text-white font-bold">
+            <span className="absolute -top-1 -right-1 w-[18px] h-[18px] bg-mc-red rounded-full flex items-center justify-center text-[10px] text-white font-bold">
               {unreadCount > 9 ? '9+' : unreadCount}
             </span>
           )}
@@ -1017,7 +1017,7 @@ function ConnectionBar({ health }: { health: api.HealthStatus | null }) {
   return (
     <div className="hidden md:flex items-center gap-3 text-xs text-mc-muted dark:text-gray-500">
       <span className="flex items-center gap-1.5">
-        <span className={clsx('w-1.5 h-1.5 rounded-full', ok ? 'bg-emerald-500' : 'bg-red-500')} />
+        <span className={clsx('w-1.5 h-1.5 rounded-full', ok ? 'bg-mc-green' : 'bg-mc-red')} />
         DB
       </span>
       <span>LLM: {health.llm_provider}</span>
@@ -1130,7 +1130,7 @@ function QuickCapture({ open, onClose, onCapture }: {
               </div>
             )}
             {lastCapture && (
-              <div className="mt-2 flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400">
+              <div className="mt-2 flex items-center gap-2 text-xs text-mc-green dark:text-mc-green">
                 <Check size={13} />
                 <span>{lastCapture}</span>
               </div>
@@ -1324,7 +1324,7 @@ function RoutinesPanel({ routines, onComplete, onAdd, showInput, setShowInput }:
                           onCheckedChange={() => toggle(r.id, item.id)}
                           className={clsx(
                             'w-[16px] h-[16px] rounded border-2 flex items-center justify-center transition-all cursor-pointer shrink-0',
-                            isDone ? 'bg-emerald-500 border-emerald-500' : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 hover:border-emerald-400',
+                            isDone ? 'bg-mc-green border-mc-green' : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 hover:border-mc-green',
                           )}
                         >
                           <Checkbox.Indicator>
@@ -1345,7 +1345,7 @@ function RoutinesPanel({ routines, onComplete, onAdd, showInput, setShowInput }:
               {allDone && r.items.length > 0 && (
                 <button
                   onClick={() => { onComplete(r.id, Array.from(completedSet)); setChecked((prev) => ({ ...prev, [r.id]: new Set() })); }}
-                  className="mt-2 w-full py-1.5 rounded-lg text-xs font-medium bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 transition-colors cursor-pointer"
+                  className="mt-2 w-full py-1.5 rounded-lg text-xs font-medium bg-mc-green-bg dark:bg-mc-green-bg-dark border border-mc-green-light dark:border-mc-green-dark text-mc-green-dark dark:text-mc-green hover:bg-mc-green-light transition-colors cursor-pointer"
                 >
                   <Check size={12} className="inline mr-1" /> Complete Routine
                 </button>
@@ -1396,7 +1396,7 @@ function CalendarView({ tasks }: { tasks: api.Task[] }) {
 
   const monthName = new Date(viewYear, viewMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-  const priorityColors: Record<string, string> = { critical: 'bg-red-500', high: 'bg-orange-400', medium: 'bg-blue-400', low: 'bg-gray-300' };
+  const priorityColors: Record<string, string> = { critical: 'bg-mc-priority-critical', high: 'bg-mc-priority-high', medium: 'bg-mc-priority-medium', low: 'bg-mc-priority-low' };
 
   return (
     <div>
@@ -1419,7 +1419,7 @@ function CalendarView({ tasks }: { tasks: api.Task[] }) {
               <Tooltip.Trigger asChild>
                 <div className={clsx(
                   'relative rounded-lg py-1.5 text-xs transition-colors',
-                  isToday ? 'bg-mc-accent text-white font-bold' : hasTasks ? 'bg-blue-50 dark:bg-blue-950 text-mc-text dark:text-gray-200 font-medium' : 'text-mc-secondary dark:text-gray-400 hover:bg-mc-subtle dark:hover:bg-gray-800',
+                  isToday ? 'bg-mc-accent text-white font-bold' : hasTasks ? 'bg-mc-blue-bg dark:bg-mc-blue-bg-dark text-mc-text dark:text-gray-200 font-medium' : 'text-mc-secondary dark:text-gray-400 hover:bg-mc-subtle dark:hover:bg-gray-800',
                 )}>
                   {cell.day}
                   {hasTasks && (

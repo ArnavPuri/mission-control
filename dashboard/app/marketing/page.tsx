@@ -133,11 +133,11 @@ export default function MarketingPage() {
             <div className="text-[11px] text-mc-dim">New Signals</div>
           </Card>
           <Card className="p-4 text-center">
-            <div className="text-xl font-bold text-amber-600 dark:text-amber-400">{draftsCount}</div>
+            <div className="text-xl font-bold text-mc-yellow dark:text-mc-yellow">{draftsCount}</div>
             <div className="text-[11px] text-mc-dim">Drafts Ready</div>
           </Card>
           <Card className="p-4 text-center">
-            <div className="text-xl font-bold text-emerald-600 dark:text-emerald-400">{postedCount}</div>
+            <div className="text-xl font-bold text-mc-green dark:text-mc-green">{postedCount}</div>
             <div className="text-[11px] text-mc-dim">Posted</div>
           </Card>
         </div>
@@ -167,7 +167,7 @@ export default function MarketingPage() {
 
             <div className="flex flex-col gap-2">
               {signals.map((s) => {
-                const relevanceColor = s.relevance_score > 0.7 ? 'bg-emerald-500' : s.relevance_score >= 0.4 ? 'bg-amber-400' : 'bg-gray-300 dark:bg-gray-600';
+                const relevanceColor = s.relevance_score > 0.7 ? 'bg-mc-green' : s.relevance_score >= 0.4 ? 'bg-mc-yellow' : 'bg-gray-300 dark:bg-gray-600';
                 return (
                   <Card key={s.id} className="p-3.5">
                     <div className="flex items-start justify-between gap-2 mb-1.5">
@@ -208,13 +208,13 @@ export default function MarketingPage() {
                         </button>
                         <button
                           onClick={() => handleSignalStatus(s.id, 'dismissed')}
-                          className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-mc-muted dark:text-gray-400 bg-gray-50 dark:bg-gray-800 border border-mc-border dark:border-gray-700 rounded-md hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400 transition-colors cursor-pointer"
+                          className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-mc-muted dark:text-gray-400 bg-gray-50 dark:bg-gray-800 border border-mc-border dark:border-gray-700 rounded-md hover:bg-mc-red-bg hover:text-mc-red dark:hover:bg-mc-red-bg-dark dark:hover:text-mc-red transition-colors cursor-pointer"
                         >
                           <X size={12} /> Dismiss
                         </button>
                         <button
                           onClick={() => handleCreateDraft(s)}
-                          className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-white bg-mc-accent rounded-md hover:bg-blue-700 transition-colors cursor-pointer ml-auto"
+                          className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-white bg-mc-accent rounded-md hover:bg-mc-accent-hover transition-colors cursor-pointer ml-auto"
                         >
                           <FileText size={12} /> Create Draft
                         </button>
@@ -224,13 +224,13 @@ export default function MarketingPage() {
                       <div className="flex items-center gap-1.5 pt-1 border-t border-mc-border/50 dark:border-gray-800/50">
                         <button
                           onClick={() => handleCreateDraft(s)}
-                          className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-white bg-mc-accent rounded-md hover:bg-blue-700 transition-colors cursor-pointer"
+                          className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-white bg-mc-accent rounded-md hover:bg-mc-accent-hover transition-colors cursor-pointer"
                         >
                           <FileText size={12} /> Create Draft
                         </button>
                         <button
                           onClick={() => handleSignalStatus(s.id, 'dismissed')}
-                          className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-mc-muted dark:text-gray-400 bg-gray-50 dark:bg-gray-800 border border-mc-border dark:border-gray-700 rounded-md hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400 transition-colors cursor-pointer"
+                          className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-mc-muted dark:text-gray-400 bg-gray-50 dark:bg-gray-800 border border-mc-border dark:border-gray-700 rounded-md hover:bg-mc-red-bg hover:text-mc-red dark:hover:bg-mc-red-bg-dark dark:hover:text-mc-red transition-colors cursor-pointer"
                         >
                           <X size={12} /> Dismiss
                         </button>
@@ -304,7 +304,7 @@ export default function MarketingPage() {
                           <div className="flex items-center gap-1.5 pt-1 border-t border-mc-border/50 dark:border-gray-800/50">
                             <button
                               onClick={() => handleContentStatus(c.id, 'approved')}
-                              className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 transition-colors cursor-pointer"
+                              className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-white bg-mc-green rounded-md hover:bg-mc-green-hover transition-colors cursor-pointer"
                             >
                               <Check size={12} /> Approve
                             </button>
@@ -312,7 +312,7 @@ export default function MarketingPage() {
                               onClick={() => copyToClipboard(c.id, c.body)}
                               className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-mc-muted dark:text-gray-400 bg-gray-50 dark:bg-gray-800 border border-mc-border dark:border-gray-700 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
                             >
-                              {copied === c.id ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+                              {copied === c.id ? <Check size={12} className="text-mc-green" /> : <Copy size={12} />}
                               {copied === c.id ? 'Copied' : 'Copy'}
                             </button>
                           </div>
@@ -329,7 +329,7 @@ export default function MarketingPage() {
                             />
                             <button
                               onClick={() => handleContentStatus(c.id, 'posted', postUrlInput[c.id] || undefined)}
-                              className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-white bg-mc-accent rounded-md hover:bg-blue-700 transition-colors cursor-pointer"
+                              className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-white bg-mc-accent rounded-md hover:bg-mc-accent-hover transition-colors cursor-pointer"
                             >
                               <Send size={12} /> Mark Posted
                             </button>

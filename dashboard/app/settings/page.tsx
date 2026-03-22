@@ -145,7 +145,7 @@ export default function SettingsPage() {
                   <div key={item.label} className="flex items-center justify-between py-1">
                     <span className="text-sm text-mc-muted dark:text-gray-400">{item.label}</span>
                     <div className="flex items-center gap-2">
-                      <span className={clsx('w-2 h-2 rounded-full', item.ok ? 'bg-emerald-500' : 'bg-amber-400')} />
+                      <span className={clsx('w-2 h-2 rounded-full', item.ok ? 'bg-mc-green' : 'bg-mc-yellow')} />
                       <span className="text-sm text-mc-text dark:text-gray-200">{item.value}</span>
                     </div>
                   </div>
@@ -201,24 +201,24 @@ export default function SettingsPage() {
               <p className="text-sm text-mc-muted dark:text-gray-400">Manage API keys for external access to your Mission Control data.</p>
               <button
                 onClick={() => setShowNewKey(true)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-mc-accent text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors cursor-pointer"
+                className="flex items-center gap-2 px-3 py-1.5 bg-mc-accent text-white text-sm font-medium rounded-lg hover:bg-mc-accent-hover transition-colors cursor-pointer"
               >
                 <Plus size={14} /> New Key
               </button>
             </div>
 
             {createdKey && (
-              <Card className="p-4 border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950">
+              <Card className="p-4 border-mc-green-light dark:border-mc-green-dark bg-mc-green-bg dark:bg-mc-green-bg-dark">
                 <div className="flex items-center gap-2 mb-2">
-                  <Shield size={14} className="text-emerald-600" />
-                  <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">API Key Created</span>
+                  <Shield size={14} className="text-mc-green" />
+                  <span className="text-sm font-semibold text-mc-green-dark dark:text-mc-green">API Key Created</span>
                 </div>
-                <p className="text-xs text-emerald-600 dark:text-emerald-400 mb-2">Copy this key now — it won't be shown again.</p>
+                <p className="text-xs text-mc-green dark:text-mc-green mb-2">Copy this key now — it won't be shown again.</p>
                 <div className="flex items-center gap-2">
-                  <code className="text-xs bg-white dark:bg-gray-800 border border-emerald-200 dark:border-emerald-800 rounded px-2 py-1 font-mono flex-1 truncate">{createdKey}</code>
+                  <code className="text-xs bg-white dark:bg-gray-800 border border-mc-green-light dark:border-mc-green-dark rounded px-2 py-1 font-mono flex-1 truncate">{createdKey}</code>
                   <button
                     onClick={() => copyToClipboard(createdKey)}
-                    className="px-2 py-1 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-white dark:bg-gray-800 text-emerald-600 hover:bg-emerald-50 cursor-pointer transition-colors"
+                    className="px-2 py-1 rounded-lg border border-mc-green-light dark:border-mc-green-dark bg-white dark:bg-gray-800 text-mc-green hover:bg-mc-green-bg cursor-pointer transition-colors"
                   >
                     {copiedKey ? <Check size={14} /> : <Copy size={14} />}
                   </button>
@@ -237,7 +237,7 @@ export default function SettingsPage() {
                     className="flex-1 border border-mc-border dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-mc-text dark:text-gray-200 bg-white dark:bg-gray-800 outline-none focus:border-mc-accent"
                     autoFocus
                   />
-                  <button onClick={createApiKey} className="px-3 py-2 bg-mc-accent text-white text-sm rounded-lg hover:bg-blue-700 cursor-pointer">Create</button>
+                  <button onClick={createApiKey} className="px-3 py-2 bg-mc-accent text-white text-sm rounded-lg hover:bg-mc-accent-hover cursor-pointer">Create</button>
                   <button onClick={() => setShowNewKey(false)} className="px-2 py-2 border border-mc-border rounded-lg text-mc-muted hover:bg-gray-50 cursor-pointer bg-white dark:bg-gray-800 dark:border-gray-700">
                     <X size={14} />
                   </button>
@@ -262,7 +262,7 @@ export default function SettingsPage() {
                   {k.is_active && (
                     <button
                       onClick={() => revokeKey(k.id)}
-                      className="text-xs text-mc-dim hover:text-red-500 cursor-pointer bg-transparent border-none transition-colors"
+                      className="text-xs text-mc-dim hover:text-mc-red cursor-pointer bg-transparent border-none transition-colors"
                     >
                       <Trash2 size={14} />
                     </button>
@@ -281,7 +281,7 @@ export default function SettingsPage() {
               <p className="text-sm text-mc-muted dark:text-gray-400">Link GitHub repositories to sync issues and PRs.</p>
               <button
                 onClick={() => setShowAddRepo(true)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-mc-accent text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors cursor-pointer"
+                className="flex items-center gap-2 px-3 py-1.5 bg-mc-accent text-white text-sm font-medium rounded-lg hover:bg-mc-accent-hover transition-colors cursor-pointer"
               >
                 <Plus size={14} /> Add Repo
               </button>
@@ -309,7 +309,7 @@ export default function SettingsPage() {
                   </div>
                   <button
                     onClick={() => removeRepo(r.id)}
-                    className="text-xs text-mc-dim hover:text-red-500 cursor-pointer bg-transparent border-none transition-colors"
+                    className="text-xs text-mc-dim hover:text-mc-red cursor-pointer bg-transparent border-none transition-colors"
                   >
                     <Trash2 size={14} />
                   </button>
@@ -327,7 +327,7 @@ export default function SettingsPage() {
               <p className="text-sm text-mc-muted dark:text-gray-400">Subscribe to RSS feeds to auto-import articles to your reading list.</p>
               <button
                 onClick={() => setShowAddFeed(true)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-mc-accent text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors cursor-pointer"
+                className="flex items-center gap-2 px-3 py-1.5 bg-mc-accent text-white text-sm font-medium rounded-lg hover:bg-mc-accent-hover transition-colors cursor-pointer"
               >
                 <Plus size={14} /> Add Feed
               </button>
@@ -362,7 +362,7 @@ export default function SettingsPage() {
                     </button>
                     <button
                       onClick={() => deleteFeed(f.id)}
-                      className="text-mc-dim hover:text-red-500 cursor-pointer bg-transparent border-none transition-colors"
+                      className="text-mc-dim hover:text-mc-red cursor-pointer bg-transparent border-none transition-colors"
                     >
                       <Trash2 size={14} />
                     </button>

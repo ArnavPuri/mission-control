@@ -29,7 +29,7 @@ export function Sidebar() {
     <Tooltip.Provider delayDuration={300}>
       <aside className="fixed left-0 top-0 bottom-0 w-14 bg-white dark:bg-gray-900 border-r border-mc-border dark:border-gray-800 flex flex-col items-center py-4 z-40">
         {/* Logo */}
-        <Link href="/" className="w-9 h-9 rounded-xl bg-mc-accent text-white flex items-center justify-center font-bold text-sm mb-6 hover:bg-blue-700 transition-colors">
+        <Link href="/" className="w-9 h-9 rounded-xl bg-mc-accent text-white flex items-center justify-center font-bold text-sm mb-6 hover:bg-mc-accent-hover transition-colors">
           MC
         </Link>
 

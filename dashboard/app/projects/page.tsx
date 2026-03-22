@@ -230,7 +230,7 @@ function ProjectCard({
           <div className="flex flex-col gap-0.5">
             {ideas.map((idea) => (
               <div key={idea.id} className="flex items-start gap-3 py-2.5 border-b border-mc-border/40 dark:border-gray-800/40 last:border-0">
-                <Lightbulb size={14} className="text-amber-400 mt-0.5 shrink-0" />
+                <Lightbulb size={14} className="text-mc-yellow mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <span className="text-sm text-mc-text dark:text-gray-200">{idea.text}</span>
                   {idea.tags.length > 0 && (
@@ -586,7 +586,7 @@ export default function ProjectsPage() {
           </div>
           <button
             onClick={() => setShowCreateDialog(true)}
-            className="flex items-center gap-2 px-3 py-1.5 bg-mc-accent text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors cursor-pointer"
+            className="flex items-center gap-2 px-3 py-1.5 bg-mc-accent text-white text-sm font-medium rounded-lg hover:bg-mc-accent-hover transition-colors cursor-pointer"
           >
             <Plus size={14} />
             <span className="hidden sm:inline">New Project</span>

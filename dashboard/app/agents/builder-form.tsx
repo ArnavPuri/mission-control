@@ -759,7 +759,7 @@ export function AgentBuilderForm({
 
           {/* Error */}
           {error && (
-            <div className="flex items-center gap-2 px-4 py-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-xl text-sm text-red-700 dark:text-red-400">
+            <div className="flex items-center gap-2 px-4 py-3 bg-mc-red-bg dark:bg-mc-red-bg-dark border border-mc-red-light dark:border-mc-red-dark rounded-xl text-sm text-mc-red-dark dark:text-mc-red">
               <X size={14} /> {error}
             </div>
           )}
@@ -778,7 +778,7 @@ export function AgentBuilderForm({
                 disabled={saving}
                 className={clsx(
                   'flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors cursor-pointer',
-                  saving ? 'bg-mc-accent/60' : 'bg-mc-accent hover:bg-blue-700',
+                  saving ? 'bg-mc-accent/60' : 'bg-mc-accent hover:bg-mc-accent-hover',
                 )}
               >
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}

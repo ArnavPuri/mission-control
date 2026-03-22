@@ -61,7 +61,7 @@ export default function NotesPage() {
         </div>
         <button
           onClick={() => setShowNew(!showNew)}
-          className="flex items-center gap-1.5 text-xs bg-mc-accent text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors cursor-pointer border-none"
+          className="flex items-center gap-1.5 text-xs bg-mc-accent text-white px-3 py-1.5 rounded-lg hover:bg-mc-accent-hover transition-colors cursor-pointer border-none"
         >
           <Plus size={14} /> New Note
         </button>
@@ -105,7 +105,7 @@ export default function NotesPage() {
               onChange={(e) => setNewTags(e.target.value)}
               className="flex-1 text-xs px-3 py-1.5 border border-mc-border dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-mc-text dark:text-gray-100"
             />
-            <button onClick={createNote} className="text-xs bg-mc-accent text-white px-4 py-1.5 rounded-lg hover:bg-blue-700 cursor-pointer border-none">
+            <button onClick={createNote} className="text-xs bg-mc-accent text-white px-4 py-1.5 rounded-lg hover:bg-mc-accent-hover cursor-pointer border-none">
               Save
             </button>
           </div>
@@ -131,7 +131,7 @@ export default function NotesPage() {
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); deleteNote(note.id); }}
-                  className="p-1 rounded text-mc-dim hover:text-red-500 cursor-pointer border-none bg-transparent"
+                  className="p-1 rounded text-mc-dim hover:text-mc-red cursor-pointer border-none bg-transparent"
                 >
                   <Trash2 size={12} />
                 </button>

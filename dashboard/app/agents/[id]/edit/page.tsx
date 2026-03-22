@@ -53,7 +53,7 @@ function DryRunPanel({ agentId }: { agentId: string }) {
           disabled={running}
           className={clsx(
             'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white rounded-lg transition-colors cursor-pointer',
-            running ? 'bg-mc-accent/60 cursor-not-allowed' : 'bg-mc-accent hover:bg-blue-700',
+            running ? 'bg-mc-accent/60 cursor-not-allowed' : 'bg-mc-accent hover:bg-mc-accent-hover',
           )}
         >
           {running ? (
@@ -65,7 +65,7 @@ function DryRunPanel({ agentId }: { agentId: string }) {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 px-4 py-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-xl text-sm text-red-700 dark:text-red-400">
+        <div className="flex items-center gap-2 px-4 py-3 bg-mc-red-bg dark:bg-mc-red-bg-dark border border-mc-red-light dark:border-mc-red-dark rounded-xl text-sm text-mc-red-dark dark:text-mc-red">
           <AlertCircle size={14} /> {error}
         </div>
       )}
@@ -197,7 +197,7 @@ export default function EditAgentPage() {
         )}
 
         {fetchError && (
-          <div className="flex items-center gap-2 px-4 py-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-xl text-sm text-red-700 dark:text-red-400">
+          <div className="flex items-center gap-2 px-4 py-3 bg-mc-red-bg dark:bg-mc-red-bg-dark border border-mc-red-light dark:border-mc-red-dark rounded-xl text-sm text-mc-red-dark dark:text-mc-red">
             <AlertCircle size={14} /> {fetchError}
           </div>
         )}
