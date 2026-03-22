@@ -341,47 +341,51 @@ def _strip_html_to_text(html: str) -> str:
 
 
 async def _call_haiku(prompt: str) -> dict | None:
-    """Call Claude Haiku via the Anthropic Messages API (supports API key + OAuth)."""
-    import httpx
-
-    headers = {
-        "Content-Type": "application/json",
-        "anthropic-version": "2023-06-01",
-    }
-
-    if settings.anthropic_api_key:
-        headers["x-api-key"] = settings.anthropic_api_key
-    elif settings.claude_code_oauth_token:
-        headers["Authorization"] = f"Bearer {settings.claude_code_oauth_token}"
-    else:
-        logger.warning("No LLM auth configured (need ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN), skipping enrichment")
-        return None
+    """Call Claude via the Agent SDK (supports OAuth login + API key)."""
+    import os
+    import shutil
+    from claude_agent_sdk import query, ClaudeAgentOptions
 
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers=headers,
-                json={
-                    "model": settings.default_model,
-                    "max_tokens": 1024,
-                    "messages": [{"role": "user", "content": prompt}],
-                },
-            )
-        if resp.status_code != 200:
-            logger.warning(f"Haiku API returned {resp.status_code}: {resp.text[:200]}")
+        env = dict(os.environ)
+        if settings.anthropic_api_key:
+            env["ANTHROPIC_API_KEY"] = settings.anthropic_api_key
+        if settings.claude_code_oauth_token:
+            env["CLAUDE_CODE_OAUTH_TOKEN"] = settings.claude_code_oauth_token
+
+        options_kwargs = {
+            "model": settings.default_model,
+            "max_turns": 1,
+            "allowed_tools": [],
+            "env": env,
+        }
+
+        cli_path = shutil.which("claude")
+        if cli_path:
+            options_kwargs["cli_path"] = cli_path
+
+        options = ClaudeAgentOptions(**options_kwargs)
+
+        full_response = ""
+        async for message in query(prompt=prompt, options=options):
+            if hasattr(message, "result") and message.result is not None:
+                full_response = message.result
+            elif hasattr(message, "content"):
+                for block in getattr(message, "content", []):
+                    if hasattr(block, "text"):
+                        full_response += block.text
+
+        if not full_response:
+            logger.warning("Enrichment LLM returned no output")
             return None
 
-        data = resp.json()
-        text = ""
-        for block in data.get("content", []):
-            if block.get("type") == "text":
-                text += block["text"]
-
-        cleaned = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        cleaned = full_response.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned
+            cleaned = cleaned.rsplit("```", 1)[0]
         return json.loads(cleaned)
     except Exception as e:
-        logger.warning(f"Haiku call failed: {e}")
+        logger.warning(f"Enrichment LLM call failed: {e}")
         return None
 
 
