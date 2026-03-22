@@ -35,6 +35,28 @@ from app.plugins.loader import plugin_manager
 from app.notifications.dispatcher import urgent_dispatch_loop, digest_loop
 
 
+async def _retry_stuck_enrichments():
+    """Retry any project enrichments stuck in 'pending' from a prior restart."""
+    import logging
+    from sqlalchemy import select
+    from app.db.session import async_session
+    from app.db.models import Project
+    from app.api.projects import _enrich_project
+
+    logger = logging.getLogger(__name__)
+    await asyncio.sleep(5)  # let startup settle
+    try:
+        async with async_session() as db:
+            result = await db.execute(select(Project).where(Project.url.isnot(None)))
+            for project in result.scalars().all():
+                meta = project.metadata_ or {}
+                if meta.get("enrichment_status") == "pending":
+                    logger.info(f"Retrying stuck enrichment for {project.name}")
+                    asyncio.create_task(_enrich_project(project.id, project.url))
+    except Exception as e:
+        logger.warning(f"Failed to retry stuck enrichments: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
@@ -69,6 +91,9 @@ async def lifespan(app: FastAPI):
     email_task = None
     if settings.email_imap_host and settings.email_imap_user:
         email_task = asyncio.create_task(start_email_poller())
+
+    # Retry stuck enrichments (pending from prior restart)
+    asyncio.create_task(_retry_stuck_enrichments())
 
     # Start notification dispatcher
     urgent_dispatch_task = asyncio.create_task(urgent_dispatch_loop())
