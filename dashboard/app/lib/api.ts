@@ -63,6 +63,7 @@ export const projects = {
   update: (id: string, data: Partial<Project>) => request<{ updated: boolean }>(`/api/projects/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (id: string) => request<{ deleted: boolean }>(`/api/projects/${id}`, { method: 'DELETE' }),
   health: (id: string) => request<ProjectHealth>(`/api/projects/${id}/health`),
+  enrich: (id: string) => request<{ status: string }>(`/api/projects/${id}/enrich`, { method: 'POST' }),
 };
 
 // --- Tasks ---

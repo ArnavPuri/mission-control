@@ -1,15 +1,22 @@
+import json
+import re
+import logging
 from uuid import UUID
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
-from app.db.session import get_db
+from app.db.session import get_db, async_session
 from app.db.models import (
     Project, ProjectStatus, Task, TaskStatus, Goal, GoalStatus,
     AgentRun, AgentRunStatus, EventLog, Idea, MarketingSignal, MarketingContent,
 )
+from app.api.ws import broadcast
+from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -98,14 +105,27 @@ async def list_projects(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("")
-async def create_project(data: ProjectCreate, db: AsyncSession = Depends(get_db)):
+async def create_project(
+    data: ProjectCreate,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
     fields = data.model_dump(exclude_unset=True)
     if "metadata" in fields:
         fields["metadata_"] = fields.pop("metadata")
+    # If URL provided, set enrichment status to pending
+    if fields.get("url"):
+        meta = fields.get("metadata_") or {}
+        meta["enrichment_status"] = "pending"
+        fields["metadata_"] = meta
     project = Project(**fields)
     db.add(project)
     await db.flush()
-    return {"id": str(project.id), "name": project.name}
+    project_id = project.id
+    # Trigger background enrichment if URL provided
+    if data.url:
+        background_tasks.add_task(_enrich_project, project_id, data.url)
+    return {"id": str(project_id), "name": project.name}
 
 
 @router.get("/{project_id}")
@@ -282,3 +302,183 @@ async def project_health(project_id: UUID, db: AsyncSession = Depends(get_db)):
             "monthly_activity": activity_count,
         },
     }
+
+
+# --- Project Enrichment ---
+
+ENRICHMENT_PROMPT = """Analyze this website content and extract brand information. Return ONLY valid JSON with these fields:
+
+{
+  "tagline": "the site's main tagline or value proposition (one line)",
+  "offering": "what the product/service does (2-3 sentences)",
+  "brand_voice": "description of the writing tone and style (1-2 sentences)",
+  "tone_keywords": ["3-5 adjectives describing the tone"],
+  "brand_colors": ["hex color codes found on the site, primary first"]
+}
+
+If you cannot determine a field, use null. Do not include any text outside the JSON.
+
+Website content:
+"""
+
+
+def _strip_html_to_text(html: str) -> str:
+    """Strip HTML tags and extract readable text content."""
+    # Remove script and style blocks
+    html = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL | re.IGNORECASE)
+    html = re.sub(r"<style[^>]*>.*?</style>", "", html, flags=re.DOTALL | re.IGNORECASE)
+    # Extract hex colors before stripping tags
+    colors = re.findall(r"#[0-9a-fA-F]{6}", html)
+    # Remove tags
+    text = re.sub(r"<[^>]+>", " ", html)
+    # Collapse whitespace
+    text = re.sub(r"\s+", " ", text).strip()
+    # Prepend found colors as context
+    if colors:
+        unique_colors = list(dict.fromkeys(colors))[:10]
+        text = f"[CSS colors found: {', '.join(unique_colors)}]\n\n{text}"
+    return text[:4000]
+
+
+async def _call_haiku(prompt: str) -> dict | None:
+    """Call Claude Haiku via the Anthropic Messages API."""
+    import httpx
+
+    if not settings.anthropic_api_key:
+        logger.warning("No ANTHROPIC_API_KEY configured, skipping enrichment")
+        return None
+
+    headers = {
+        "Content-Type": "application/json",
+        "anthropic-version": "2023-06-01",
+        "x-api-key": settings.anthropic_api_key,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers=headers,
+                json={
+                    "model": "claude-haiku-4-5-20251001",
+                    "max_tokens": 1024,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+            )
+        if resp.status_code != 200:
+            logger.warning(f"Haiku API returned {resp.status_code}: {resp.text[:200]}")
+            return None
+
+        data = resp.json()
+        text = ""
+        for block in data.get("content", []):
+            if block.get("type") == "text":
+                text += block["text"]
+
+        cleaned = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        return json.loads(cleaned)
+    except Exception as e:
+        logger.warning(f"Haiku call failed: {e}")
+        return None
+
+
+async def _enrich_project(project_id: UUID, url: str):
+    """Background task: fetch website and extract brand info via Haiku."""
+    import httpx
+
+    logger.info(f"Enriching project {project_id} from {url}")
+
+    # Fetch website
+    try:
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+            resp = await client.get(url, headers={"User-Agent": "MissionControl/1.0"})
+        if resp.status_code != 200:
+            logger.warning(f"Failed to fetch {url}: HTTP {resp.status_code}")
+            await _update_enrichment_status(project_id, "failed")
+            return
+        html = resp.text
+    except Exception as e:
+        logger.warning(f"Failed to fetch {url}: {e}")
+        await _update_enrichment_status(project_id, "failed")
+        return
+
+    # Extract text
+    site_text = _strip_html_to_text(html)
+    if len(site_text.strip()) < 50:
+        logger.warning(f"Too little content from {url}")
+        await _update_enrichment_status(project_id, "failed")
+        return
+
+    # Call Haiku
+    brand_data = await _call_haiku(ENRICHMENT_PROMPT + site_text)
+    if not brand_data:
+        await _update_enrichment_status(project_id, "failed")
+        return
+
+    # Update project
+    async with async_session() as db:
+        project = await db.get(Project, project_id)
+        if not project:
+            return
+
+        meta = project.metadata_ or {}
+        meta["brand"] = {
+            "tagline": brand_data.get("tagline"),
+            "offering": brand_data.get("offering"),
+            "brand_voice": brand_data.get("brand_voice"),
+            "tone_keywords": brand_data.get("tone_keywords") or [],
+            "brand_colors": brand_data.get("brand_colors") or [],
+        }
+        meta["enrichment_status"] = "completed"
+        project.metadata_ = meta
+
+        # Auto-fill description if empty
+        if not project.description and brand_data.get("offering"):
+            project.description = brand_data["offering"]
+
+        # Auto-set color from brand colors
+        brand_colors = brand_data.get("brand_colors") or []
+        if brand_colors and project.color == "#00ffc8":
+            project.color = brand_colors[0]
+
+        await db.commit()
+
+    # Broadcast update so dashboard refreshes
+    await broadcast("project.updated", {"project_id": str(project_id)})
+    logger.info(f"Enrichment completed for project {project_id}")
+
+
+async def _update_enrichment_status(project_id: UUID, status: str):
+    """Update just the enrichment status in metadata."""
+    async with async_session() as db:
+        project = await db.get(Project, project_id)
+        if not project:
+            return
+        meta = project.metadata_ or {}
+        meta["enrichment_status"] = status
+        project.metadata_ = meta
+        await db.commit()
+    await broadcast("project.updated", {"project_id": str(project_id)})
+
+
+@router.post("/{project_id}/enrich")
+async def enrich_project(
+    project_id: UUID,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    """Manually trigger brand enrichment for a project."""
+    project = await db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not project.url:
+        raise HTTPException(status_code=400, detail="Project has no URL to enrich from")
+
+    # Set pending status
+    meta = project.metadata_ or {}
+    meta["enrichment_status"] = "pending"
+    project.metadata_ = meta
+    await db.flush()
+
+    background_tasks.add_task(_enrich_project, project_id, project.url)
+    return {"status": "enrichment_started", "project_id": str(project_id)}

@@ -178,7 +178,6 @@ class AgentRunner:
 
         # Standup context: load all agents' status and recent activity for coordination
         if "standup" in (agent.data_reads or []):
-            from datetime import timedelta
             cutoff = datetime.now(timezone.utc) - timedelta(hours=36)
 
             # All agents and their current status
@@ -778,7 +777,6 @@ class AgentRunner:
 
             if requires_approval and actions:
                 # Queue for approval instead of executing immediately
-                from datetime import timedelta
                 approval = AgentApproval(
                     run_id=run.id,
                     agent_id=agent.id,

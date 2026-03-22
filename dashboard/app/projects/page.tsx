@@ -4,10 +4,11 @@ import { useState, useEffect, useCallback } from 'react';
 import * as api from '../lib/api';
 import {
   FolderOpen, Plus, ExternalLink, Loader2, Globe, Check,
-  Megaphone, MessageSquare, Lightbulb, ListTodo, ChevronRight,
+  Megaphone, MessageSquare, Lightbulb,
+  X, Sparkles,
 } from 'lucide-react';
 import { clsx } from 'clsx';
-import { Card, Badge, StatusIndicator, EmptyState, InlineInput } from '../components/shared';
+import { Card, Badge, EmptyState } from '../components/shared';
 
 type ProjectTab = 'tasks' | 'ideas' | 'feedback';
 
@@ -89,6 +90,53 @@ function ProjectCard({
         {project.description && (
           <p className="text-xs text-mc-muted dark:text-gray-400 mt-2 line-clamp-2">{project.description}</p>
         )}
+
+        {/* Brand Info */}
+        {(() => {
+          const meta = project.metadata || {};
+          const brand = meta.brand as { tagline?: string; offering?: string; brand_voice?: string; tone_keywords?: string[]; brand_colors?: string[] } | undefined;
+          const enrichStatus = meta.enrichment_status as string | undefined;
+
+          if (enrichStatus === 'pending') {
+            return (
+              <div className="flex items-center gap-2 mt-2 text-xs text-mc-muted dark:text-gray-500">
+                <Loader2 size={12} className="animate-spin" />
+                <span>Fetching brand info...</span>
+              </div>
+            );
+          }
+
+          if (brand) {
+            return (
+              <div className="mt-2 space-y-1.5">
+                {brand.tagline && (
+                  <p className="text-xs font-medium text-mc-text dark:text-gray-300 italic">&ldquo;{brand.tagline}&rdquo;</p>
+                )}
+                {brand.brand_voice && (
+                  <p className="text-[11px] text-mc-muted dark:text-gray-500">
+                    <span className="font-medium">Voice:</span> {brand.brand_voice}
+                  </p>
+                )}
+                {brand.tone_keywords && brand.tone_keywords.length > 0 && (
+                  <div className="flex gap-1 flex-wrap">
+                    {brand.tone_keywords.map((kw) => (
+                      <span key={kw} className="text-[10px] px-1.5 py-0.5 rounded-full bg-mc-accent/10 text-mc-accent dark:bg-mc-accent/20">{kw}</span>
+                    ))}
+                  </div>
+                )}
+                {brand.brand_colors && brand.brand_colors.length > 0 && (
+                  <div className="flex items-center gap-1">
+                    {brand.brand_colors.slice(0, 5).map((c) => (
+                      <div key={c} className="w-4 h-4 rounded-full border border-mc-border dark:border-gray-700" style={{ backgroundColor: c }} title={c} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          }
+
+          return null;
+        })()}
 
         {/* Tabs */}
         <div className="flex items-center gap-6 mt-4 border-b border-mc-border dark:border-gray-800">
@@ -289,7 +337,10 @@ export default function ProjectsPage() {
   const [signals, setSignals] = useState<api.MarketingSignal[]>([]);
   const [content, setContent] = useState<api.MarketingContent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreateInput, setShowCreateInput] = useState(false);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newUrl, setNewUrl] = useState('');
+  const [creating, setCreating] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -306,10 +357,35 @@ export default function ProjectsPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const createProject = async (name: string) => {
-    await api.projects.create({ name, description: '' });
-    setShowCreateInput(false);
-    loadData();
+  // Listen for WebSocket updates to refresh enriched projects
+  useEffect(() => {
+    const wsUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/^http/, 'ws') + '/ws';
+    const ws = new WebSocket(wsUrl);
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'project.updated') {
+          loadData();
+        }
+      } catch {}
+    };
+    return () => ws.close();
+  }, [loadData]);
+
+  const createProject = async () => {
+    if (!newName.trim()) return;
+    setCreating(true);
+    try {
+      const data: Record<string, string> = { name: newName.trim(), description: '' };
+      if (newUrl.trim()) data.url = newUrl.trim();
+      await api.projects.create(data as Partial<api.Project>);
+      setShowCreateDialog(false);
+      setNewName('');
+      setNewUrl('');
+      loadData();
+    } finally {
+      setCreating(false);
+    }
   };
 
   const toggleTask = async (task: api.Task) => {
@@ -352,7 +428,7 @@ export default function ProjectsPage() {
             <span className="text-xs text-mc-dim">{projects.length} total</span>
           </div>
           <button
-            onClick={() => setShowCreateInput(true)}
+            onClick={() => setShowCreateDialog(true)}
             className="flex items-center gap-2 px-3 py-1.5 bg-mc-accent text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors cursor-pointer"
           >
             <Plus size={14} />
@@ -361,12 +437,74 @@ export default function ProjectsPage() {
         </div>
       </header>
 
-      <main className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {showCreateInput && (
-          <div className="mb-6">
-            <InlineInput placeholder="Project name..." onSubmit={createProject} onCancel={() => setShowCreateInput(false)} />
+      {/* Create Project Dialog */}
+      {showCreateDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowCreateDialog(false)}>
+          <div
+            className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md mx-4 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-bold text-mc-text dark:text-gray-100">New Project</h2>
+              <button onClick={() => setShowCreateDialog(false)} className="text-mc-muted hover:text-mc-text dark:hover:text-gray-300 cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-mc-muted dark:text-gray-400 mb-1.5">Project Name *</label>
+                <input
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="My Awesome Project"
+                  autoFocus
+                  onKeyDown={(e) => { if (e.key === 'Enter' && newName.trim()) createProject(); }}
+                  className="w-full px-3 py-2 text-sm bg-mc-bg dark:bg-gray-800 border border-mc-border dark:border-gray-700 rounded-lg text-mc-text dark:text-gray-200 placeholder:text-mc-dim outline-none focus:border-mc-accent focus:ring-1 focus:ring-mc-accent/30"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-mc-muted dark:text-gray-400 mb-1.5">
+                  Website URL
+                  <span className="ml-1.5 text-mc-dim font-normal">(optional — auto-fetches brand info)</span>
+                </label>
+                <input
+                  value={newUrl}
+                  onChange={(e) => setNewUrl(e.target.value)}
+                  placeholder="https://example.com"
+                  onKeyDown={(e) => { if (e.key === 'Enter' && newName.trim()) createProject(); }}
+                  className="w-full px-3 py-2 text-sm bg-mc-bg dark:bg-gray-800 border border-mc-border dark:border-gray-700 rounded-lg text-mc-text dark:text-gray-200 placeholder:text-mc-dim outline-none focus:border-mc-accent focus:ring-1 focus:ring-mc-accent/30"
+                />
+                {newUrl.trim() && (
+                  <p className="text-[11px] text-mc-accent mt-1 flex items-center gap-1">
+                    <Sparkles size={10} />
+                    Brand voice, offering, and colors will be auto-detected
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setShowCreateDialog(false)}
+                className="px-4 py-2 text-sm text-mc-muted dark:text-gray-400 hover:text-mc-text dark:hover:text-gray-200 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={createProject}
+                disabled={!newName.trim() || creating}
+                className="flex items-center gap-2 px-4 py-2 bg-mc-accent text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                Create Project
+              </button>
+            </div>
           </div>
-        )}
+        </div>
+      )}
+
+      <main className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {projects.map((project) => {
