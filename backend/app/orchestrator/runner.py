@@ -417,8 +417,14 @@ class AgentRunner:
             env["CLAUDE_CODE_OAUTH_TOKEN"] = settings.claude_code_oauth_token
         options_kwargs["env"] = env
 
-        # Explicitly resolve claude CLI path so SDK finds it regardless of how uvicorn was started
+        # Explicitly resolve claude CLI path — check PATH first, then bundled SDK location
         cli_path = shutil.which("claude")
+        if not cli_path:
+            # Fallback: the claude_agent_sdk bundles a CLI binary
+            import claude_agent_sdk
+            bundled = os.path.join(os.path.dirname(claude_agent_sdk.__file__), "_bundled", "claude")
+            if os.path.isfile(bundled):
+                cli_path = bundled
         if cli_path:
             options_kwargs["cli_path"] = cli_path
 

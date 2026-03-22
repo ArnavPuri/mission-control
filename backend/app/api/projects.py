@@ -362,6 +362,11 @@ async def _call_haiku(prompt: str) -> dict | None:
         }
 
         cli_path = shutil.which("claude")
+        if not cli_path:
+            import claude_agent_sdk
+            bundled = os.path.join(os.path.dirname(claude_agent_sdk.__file__), "_bundled", "claude")
+            if os.path.isfile(bundled):
+                cli_path = bundled
         if cli_path:
             options_kwargs["cli_path"] = cli_path
 
