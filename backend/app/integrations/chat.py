@@ -367,7 +367,8 @@ async def call_anthropic_via_sdk(
     opts_kwargs: dict = {
         "system_prompt": system,
         "model": settings.chat_model,
-        "max_turns": 1,
+        "max_turns": 5,
+        "allowed_tools": [],
         "env": env,
     }
     if cli_path:
