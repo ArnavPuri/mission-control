@@ -341,18 +341,21 @@ def _strip_html_to_text(html: str) -> str:
 
 
 async def _call_haiku(prompt: str) -> dict | None:
-    """Call Claude Haiku via the Anthropic Messages API."""
+    """Call Claude Haiku via the Anthropic Messages API (supports API key + OAuth)."""
     import httpx
-
-    if not settings.anthropic_api_key:
-        logger.warning("No ANTHROPIC_API_KEY configured, skipping enrichment")
-        return None
 
     headers = {
         "Content-Type": "application/json",
         "anthropic-version": "2023-06-01",
-        "x-api-key": settings.anthropic_api_key,
     }
+
+    if settings.anthropic_api_key:
+        headers["x-api-key"] = settings.anthropic_api_key
+    elif settings.claude_code_oauth_token:
+        headers["Authorization"] = f"Bearer {settings.claude_code_oauth_token}"
+    else:
+        logger.warning("No LLM auth configured (need ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN), skipping enrichment")
+        return None
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
@@ -360,7 +363,7 @@ async def _call_haiku(prompt: str) -> dict | None:
                 "https://api.anthropic.com/v1/messages",
                 headers=headers,
                 json={
-                    "model": "claude-haiku-4-5-20251001",
+                    "model": settings.default_model,
                     "max_tokens": 1024,
                     "messages": [{"role": "user", "content": prompt}],
                 },
