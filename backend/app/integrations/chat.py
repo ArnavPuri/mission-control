@@ -337,6 +337,9 @@ async def call_anthropic_via_sdk(
     This path does NOT support tool_use — it sends the full prompt as text
     and gets back a plain text response. Used when no API key is available.
     """
+    import os
+    import shutil
+    import claude_agent_sdk
     from claude_agent_sdk import query, ClaudeAgentOptions
 
     # Flatten messages into a single prompt
@@ -348,11 +351,29 @@ async def call_anthropic_via_sdk(
 
     prompt = "\n\n".join(prompt_parts)
 
-    options = ClaudeAgentOptions(
-        system_prompt=system,
-        model=settings.chat_model,
-        max_turns=1,
-    )
+    # Resolve CLI path and auth env
+    env = dict(os.environ)
+    if settings.anthropic_api_key:
+        env["ANTHROPIC_API_KEY"] = settings.anthropic_api_key
+    if settings.claude_code_oauth_token:
+        env["CLAUDE_CODE_OAUTH_TOKEN"] = settings.claude_code_oauth_token
+
+    cli_path = shutil.which("claude")
+    if not cli_path:
+        bundled = os.path.join(os.path.dirname(claude_agent_sdk.__file__), "_bundled", "claude")
+        if os.path.isfile(bundled):
+            cli_path = bundled
+
+    opts_kwargs: dict = {
+        "system_prompt": system,
+        "model": settings.chat_model,
+        "max_turns": 1,
+        "env": env,
+    }
+    if cli_path:
+        opts_kwargs["cli_path"] = cli_path
+
+    options = ClaudeAgentOptions(**opts_kwargs)
 
     full_response = ""
     async for message in query(prompt=prompt, options=options):
@@ -363,7 +384,7 @@ async def call_anthropic_via_sdk(
                 if hasattr(block, "text"):
                     full_response += block.text
 
-    return full_response
+    return full_response or None
 
 
 # --- Tool Execution ---
