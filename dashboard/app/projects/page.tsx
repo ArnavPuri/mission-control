@@ -61,7 +61,7 @@ function ProjectCard({
   };
 
   return (
-    <Card className="flex flex-col overflow-hidden">
+    <Card className="flex flex-col overflow-hidden card-lift">
       {/* Header */}
       <div className="p-5 pb-0">
         <div className="flex items-start justify-between mb-1">
@@ -123,7 +123,7 @@ function ProjectCard({
 
           if (brand) {
             return (
-              <div className="mt-2 space-y-1.5">
+              <div className="mt-2 space-y-1.5 animate-success-in">
                 {brand.tagline && (
                   <p className="text-xs font-medium text-mc-text dark:text-gray-300 italic">&ldquo;{brand.tagline}&rdquo;</p>
                 )}
@@ -395,13 +395,13 @@ function CreateProjectDialog({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose} role="presentation">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 animate-overlay-in" onClick={onClose} role="presentation">
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="create-project-title"
-        className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md mx-4 p-6"
+        className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 animate-dialog-in"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-5">
@@ -610,29 +610,49 @@ export default function ProjectsPage() {
       <main className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {projects.map((project) => {
+          {projects.map((project, i) => {
             const projectTasks = tasks.filter((t) => t.project_id === project.id);
             const projectIdeas = ideas.filter((i) => i.project_id === project.id);
             const projectSignals = signals.filter((s) => s.project_id === project.id);
             const projectContent = content.filter((c) => c.project_id === project.id);
 
             return (
-              <ProjectCard
+              <div
                 key={project.id}
-                project={project}
-                tasks={projectTasks}
-                ideas={projectIdeas}
-                signals={projectSignals}
-                content={projectContent}
-                onToggleTask={toggleTask}
-                onAddTask={(text) => addTaskToProject(project.id, text)}
-                onAddIdea={(text) => addIdeaToProject(project.id, text)}
-              />
+                className="animate-fade-up"
+                style={{ animationDelay: `${i * 60}ms` }}
+              >
+                <ProjectCard
+                  project={project}
+                  tasks={projectTasks}
+                  ideas={projectIdeas}
+                  signals={projectSignals}
+                  content={projectContent}
+                  onToggleTask={toggleTask}
+                  onAddTask={(text) => addTaskToProject(project.id, text)}
+                  onAddIdea={(text) => addIdeaToProject(project.id, text)}
+                />
+              </div>
             );
           })}
           {projects.length === 0 && (
-            <div className="col-span-full">
-              <EmptyState icon={FolderOpen} message="No projects yet — create one to get started" />
+            <div className="col-span-full animate-fade-up">
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="w-16 h-16 rounded-2xl bg-mc-accent/10 flex items-center justify-center mb-4">
+                  <FolderOpen size={28} className="text-mc-accent" />
+                </div>
+                <h2 className="text-lg font-semibold text-mc-text dark:text-gray-100 mb-1">No projects yet</h2>
+                <p className="text-sm text-mc-muted dark:text-gray-500 mb-5 max-w-xs">
+                  Add a project with its website and we&apos;ll auto-detect its brand voice, colors, and offering.
+                </p>
+                <button
+                  onClick={() => setShowCreateDialog(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-mc-accent text-white text-sm font-medium rounded-lg hover:bg-mc-accent-hover transition-colors cursor-pointer"
+                >
+                  <Plus size={14} />
+                  Create your first project
+                </button>
+              </div>
             </div>
           )}
         </div>
