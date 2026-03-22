@@ -498,8 +498,10 @@ async def execute_tool_call(
 TELEGRAM_MAX_LENGTH = 4096
 
 
-def split_message(text: str) -> list[str]:
+def split_message(text: str | None) -> list[str]:
     """Split a message into chunks that fit Telegram's 4096 char limit."""
+    if not text:
+        return ["No response generated."]
     if len(text) <= TELEGRAM_MAX_LENGTH:
         return [text]
 
