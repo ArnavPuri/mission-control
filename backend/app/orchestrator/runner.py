@@ -429,10 +429,12 @@ class AgentRunner:
             options_kwargs["cli_path"] = cli_path
 
         # Session resumption
+        use_resume = False
         if agent.session_id and agent.session_expires_at and agent.session_expires_at > datetime.now(timezone.utc):
             options_kwargs["resume"] = agent.session_id
             if agent.last_message_uuid:
                 options_kwargs["resume_session_at"] = agent.last_message_uuid
+            use_resume = True
             logger.info(f"Resuming session {agent.session_id[:12]}... for {agent.name}")
 
         options = ClaudeAgentOptions(**options_kwargs)
@@ -443,35 +445,50 @@ class AgentRunner:
         last_assistant_uuid = None
         transcript = []
 
-        async for message in query(prompt=prompt, options=options):
-            # Capture session ID from init message
-            if hasattr(message, 'subtype') and message.subtype == 'init':
-                if hasattr(message, 'session_id'):
-                    new_session_id = message.session_id
-                elif hasattr(message, 'data') and isinstance(message.data, dict):
-                    new_session_id = message.data.get('session_id')
+        async def _run_query(opts):
+            nonlocal full_response, new_session_id, last_assistant_uuid, transcript
+            async for message in query(prompt=prompt, options=opts):
+                # Capture session ID from init message
+                if hasattr(message, 'subtype') and message.subtype == 'init':
+                    if hasattr(message, 'session_id'):
+                        new_session_id = message.session_id
+                    elif hasattr(message, 'data') and isinstance(message.data, dict):
+                        new_session_id = message.data.get('session_id')
 
-            # Capture result
-            if hasattr(message, "result") and message.result is not None:
-                full_response = message.result
-                if len(transcript) < 50:
-                    transcript.append({"role": "result", "content": str(message.result)[:2000]})
+                # Capture result
+                if hasattr(message, "result") and message.result is not None:
+                    full_response = message.result
+                    if len(transcript) < 50:
+                        transcript.append({"role": "result", "content": str(message.result)[:2000]})
 
-            elif hasattr(message, "content"):
-                text_parts = []
-                for block in getattr(message, "content", []):
-                    if hasattr(block, "text"):
-                        text_parts.append(block.text)
-                        full_response += block.text
-                if text_parts and len(transcript) < 50:
-                    role = getattr(message, 'role', 'assistant')
-                    transcript.append({"role": role, "content": "".join(text_parts)[:2000]})
-                    # Track last assistant message UUID for session resumption
-                    if role == "assistant":
-                        for attr in ('uuid', 'id', 'message_id'):
-                            if hasattr(message, attr):
-                                last_assistant_uuid = getattr(message, attr)
-                                break
+                elif hasattr(message, "content"):
+                    text_parts = []
+                    for block in getattr(message, "content", []):
+                        if hasattr(block, "text"):
+                            text_parts.append(block.text)
+                            full_response += block.text
+                    if text_parts and len(transcript) < 50:
+                        role = getattr(message, 'role', 'assistant')
+                        transcript.append({"role": role, "content": "".join(text_parts)[:2000]})
+                        # Track last assistant message UUID for session resumption
+                        if role == "assistant":
+                            for attr in ('uuid', 'id', 'message_id'):
+                                if hasattr(message, attr):
+                                    last_assistant_uuid = getattr(message, attr)
+                                    break
+
+        try:
+            await _run_query(options)
+        except Exception:
+            if use_resume:
+                # Session resume failed (stale session) — retry without it
+                logger.warning(f"Session resume failed for {agent.name}, starting fresh session")
+                full_response = ""
+                transcript = []
+                fresh_kwargs = {k: v for k, v in options_kwargs.items() if k not in ("resume", "resume_session_at")}
+                await _run_query(ClaudeAgentOptions(**fresh_kwargs))
+            else:
+                raise
 
         # Store session info and transcript for the caller to save
         self._last_session_id = new_session_id
@@ -645,7 +662,11 @@ class AgentRunner:
                 try:
                     return await self.execute_with_agent_sdk(prompt, agent)
                 except Exception as sdk_err:
-                    logger.error(f"Agent SDK failed: {type(sdk_err).__name__}: {sdk_err}", exc_info=True)
+                    # Extract stderr from ProcessError for actual error details
+                    stderr = getattr(sdk_err, 'stderr', '') or ''
+                    if not stderr and hasattr(sdk_err, '__cause__'):
+                        stderr = getattr(sdk_err.__cause__, 'stderr', '') or ''
+                    logger.error(f"Agent SDK failed: {type(sdk_err).__name__}: {sdk_err}\nstderr: {stderr}", exc_info=True)
                     if provider == LLMProvider.ANTHROPIC_OAUTH:
                         # No point falling back to raw API — OAuth tokens don't work there
                         raise RuntimeError(f"Agent SDK failed and no API key fallback available: {sdk_err}") from sdk_err
