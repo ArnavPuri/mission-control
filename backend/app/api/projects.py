@@ -379,11 +379,40 @@ async def _call_haiku(prompt: str) -> dict | None:
             logger.warning("Enrichment LLM returned no output")
             return None
 
-        cleaned = full_response.strip()
-        if cleaned.startswith("```"):
-            cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned
-            cleaned = cleaned.rsplit("```", 1)[0]
-        return json.loads(cleaned)
+        # Extract JSON from response — handle preamble, code fences, etc.
+        text = full_response.strip()
+        logger.debug(f"Enrichment raw response: {text[:500]}")
+
+        # Try to find JSON object in the response
+        # 1. Strip code fences
+        if "```" in text:
+            # Extract content between first ``` and last ```
+            parts = text.split("```")
+            for part in parts[1::2]:  # odd-indexed parts are inside fences
+                candidate = part.strip()
+                if candidate.startswith("json"):
+                    candidate = candidate[4:].strip()
+                if candidate.startswith("{"):
+                    try:
+                        return json.loads(candidate)
+                    except json.JSONDecodeError:
+                        continue
+
+        # 2. Find first { and last } — extract the JSON object
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end > start:
+            try:
+                return json.loads(text[start:end + 1])
+            except json.JSONDecodeError:
+                pass
+
+        # 3. Try the whole thing as-is
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            logger.warning(f"Could not parse enrichment response as JSON: {text[:200]}")
+            return None
     except Exception as e:
         logger.warning(f"Enrichment LLM call failed: {e}")
         return None
