@@ -1,16 +1,11 @@
-"""
-Semantic search across all Mission Control entities.
-
-Uses pgvector for embedding-based similarity search with a fallback
-to text-based search when embeddings aren't available.
-"""
+"""Search across Mission Control entities."""
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, or_, cast, String, func
+from sqlalchemy import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.db.models import Task, Idea, Project, Note, MarketingSignal, MarketingContent
+from app.db.models import Task, Project, Note, MarketingSignal, MarketingContent
 
 router = APIRouter()
 
@@ -18,17 +13,13 @@ router = APIRouter()
 @router.get("")
 async def search(
     q: str = Query(..., min_length=1, description="Search query"),
-    entity_types: str = Query("all", description="Comma-separated: tasks,ideas,notes,projects,signals,content"),
+    entity_types: str = Query("all", description="Comma-separated: tasks,notes,projects,signals,content"),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
-    """Search across all entities using text matching.
-
-    Returns results grouped by entity type, ranked by relevance.
-    """
     query_lower = f"%{q.lower()}%"
     types = set(entity_types.split(",")) if entity_types != "all" else {
-        "tasks", "ideas", "notes", "projects", "signals", "content"
+        "tasks", "notes", "projects", "signals", "content"
     }
     results = []
 
@@ -39,15 +30,6 @@ async def search(
             {"type": "task", "id": str(t.id), "title": t.text, "status": t.status.value,
              "priority": t.priority.value, "created_at": t.created_at.isoformat()}
             for t in rows
-        ])
-
-    if "ideas" in types:
-        stmt = select(Idea).where(func.lower(Idea.text).like(query_lower)).limit(limit)
-        rows = (await db.execute(stmt)).scalars().all()
-        results.extend([
-            {"type": "idea", "id": str(i.id), "title": i.text, "tags": i.tags or [],
-             "created_at": i.created_at.isoformat()}
-            for i in rows
         ])
 
     if "notes" in types:

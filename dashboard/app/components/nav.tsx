@@ -4,8 +4,8 @@ import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { clsx } from 'clsx';
 import {
-  LayoutDashboard, FolderOpen, Zap, StickyNote, Settings, Keyboard,
-  Sun, Moon, Megaphone,
+  LayoutDashboard, Zap, StickyNote, Settings, Keyboard,
+  Sun, Moon,
 } from 'lucide-react';
 import { useTheme, type Theme } from './shared';
 import * as Tooltip from '@radix-ui/react-tooltip';
@@ -13,8 +13,6 @@ import { useState } from 'react';
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, shortcut: 'g d' },
-  { href: '/projects', label: 'Projects', icon: FolderOpen, shortcut: 'g p' },
-  { href: '/marketing', label: 'Marketing', icon: Megaphone, shortcut: 'g m' },
   { href: '/agents', label: 'Agents', icon: Zap, shortcut: 'g a' },
   { href: '/notes', label: 'Notes', icon: StickyNote, shortcut: 'g n' },
   { href: '/settings', label: 'Settings', icon: Settings, shortcut: 'g s' },
@@ -115,7 +113,6 @@ export function Sidebar() {
               {[
                 { label: 'Command palette', key: 'Cmd+K' },
                 { label: 'New task', key: 'n t' },
-                { label: 'New idea', key: 'n i' },
                 { label: 'New note', key: 'n o' },
                 { label: 'Toggle theme', key: 'Shift+T' },
                 { label: 'Close dialog', key: 'Esc' },

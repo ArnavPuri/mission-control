@@ -105,16 +105,6 @@ async def create_content(data: ContentCreate, db: AsyncSession = Depends(get_db)
     db.add(event)
     await broadcast("content.created", {"id": str(content.id), "title": content.title})
 
-    # Evaluate conditional triggers
-    try:
-        from app.api.triggers import evaluate_triggers
-        await evaluate_triggers("content", "created", {
-            "title": content.title, "channel": content.channel, "tags": content.tags or [],
-        }, db)
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"Trigger evaluation failed: {e}")
-
     return _serialize(content)
 
 

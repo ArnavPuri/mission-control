@@ -1,16 +1,11 @@
 """
 Mission Control - Configuration
 
-Supports multiple LLM auth methods:
-  1. ANTHROPIC_API_KEY (recommended)
-  2. CLAUDE_CODE_OAUTH_TOKEN (subscription-based, may expire)
-  3. OPENROUTER_API_KEY / OLLAMA_BASE_URL (alternative providers)
+Telegram-first AI assistant. Supports multiple LLM auth methods.
 """
 
-import re
 from pathlib import Path
 from pydantic_settings import BaseSettings
-from pydantic import Field
 from enum import Enum
 
 
@@ -24,11 +19,11 @@ class LLMProvider(str, Enum):
 class Settings(BaseSettings):
     # --- Database ---
     database_url: str = "postgresql+asyncpg://missionctl:missionctl@localhost:5432/missioncontrol"
-    use_sqlite: bool = False  # Set True for zero-config local dev (no Postgres needed)
+    use_sqlite: bool = False
     sqlite_path: str = "data/mission_control.db"
     redis_url: str = "redis://localhost:6379/0"
 
-    # --- LLM Auth (multiple options) ---
+    # --- LLM Auth ---
     anthropic_api_key: str | None = None
     claude_code_oauth_token: str | None = None
     openrouter_api_key: str | None = None
@@ -45,41 +40,16 @@ class Settings(BaseSettings):
 
     # --- Telegram ---
     telegram_bot_token: str | None = None
-    telegram_allowed_users: str | None = None  # comma-separated IDs
-
-    # Notification delivery
-    telegram_notification_chat_id: str | None = None  # falls back to first telegram_allowed_users entry
-    notification_timezone: str = "UTC"  # timezone for digest scheduling, e.g. "Asia/Kolkata"
-
-    # --- Discord ---
-    discord_bot_token: str | None = None
-    discord_allowed_channels: str | None = None  # comma-separated channel IDs
-
-    # --- Slack ---
-    slack_bot_token: str | None = None
-    slack_app_token: str | None = None  # for Socket Mode (xapp-...)
-
-    # --- GitHub ---
-    github_token: str | None = None  # for API access (optional, enhances sync)
+    telegram_allowed_users: str | None = None
+    telegram_notification_chat_id: str | None = None
+    notification_timezone: str = "UTC"
 
     # --- Identity ---
     bot_name: str = "MC"
     identity_file: str = "workspace/identity.md"
 
-    # --- Email Ingestion ---
-    email_webhook_secret: str | None = None  # Shared secret for inbound email webhooks
-    email_imap_host: str | None = None
-    email_imap_user: str | None = None
-    email_imap_password: str | None = None
-    email_imap_folder: str = "INBOX"
-    email_poll_interval_seconds: int = 300
-
-    # --- Service Integrations ---
-    linear_api_key: str | None = None
-    linear_webhook_secret: str | None = None  # For verifying Linear webhook signatures
-    notion_api_key: str | None = None
-    todoist_api_key: str | None = None
-    openai_api_key: str | None = None  # for Whisper voice transcription
+    # --- Voice (optional) ---
+    openai_api_key: str | None = None
 
     # --- Paths ---
     agent_workdir: str = "/app/workdir"
@@ -92,7 +62,6 @@ class Settings(BaseSettings):
 
     @property
     def effective_database_url(self) -> str:
-        """Return the actual database URL, considering SQLite mode."""
         if self.use_sqlite or self.database_url.startswith("sqlite"):
             return f"sqlite+aiosqlite:///{self.sqlite_path}"
         return self.database_url
@@ -103,7 +72,6 @@ class Settings(BaseSettings):
 
     @property
     def llm_provider(self) -> LLMProvider:
-        """Detect which LLM auth method is configured."""
         if self.anthropic_api_key:
             return LLMProvider.ANTHROPIC_API
         if self.claude_code_oauth_token:
@@ -118,21 +86,13 @@ class Settings(BaseSettings):
         )
 
     @property
-    def discord_channel_ids(self) -> list[int]:
-        if not self.discord_allowed_channels:
-            return []
-        return [int(cid.strip()) for cid in self.discord_allowed_channels.split(",") if cid.strip()]
-
-    @property
     def telegram_allowed_user_ids(self) -> list[int]:
         if not self.telegram_allowed_users:
             return []
         return [int(uid.strip()) for uid in self.telegram_allowed_users.split(",") if uid.strip()]
 
-
     @property
     def telegram_target_chat_id(self) -> str | None:
-        """Resolve the Telegram chat ID for sending notifications."""
         if self.telegram_notification_chat_id:
             return self.telegram_notification_chat_id
         allowed = (self.telegram_allowed_users or "").split(",")
@@ -140,7 +100,6 @@ class Settings(BaseSettings):
 
     @property
     def identity(self) -> str:
-        """Load user identity from workspace/identity.md."""
         for search_path in [self.identity_file, f"../{self.identity_file}"]:
             path = Path(search_path)
             if path.exists():
@@ -149,7 +108,6 @@ class Settings(BaseSettings):
 
     @property
     def bot_personality(self) -> dict:
-        """Extract bot personality fields from identity file."""
         text = self.identity
         if not text:
             return {"name": self.bot_name, "tone": "", "style": ""}

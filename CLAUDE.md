@@ -2,40 +2,53 @@
 
 ## What is this?
 
-Mission Control is a personal AI-powered command center (v0.6, 99/145 features).
-One PostgreSQL (or SQLite) database is the single source of truth. Agents (defined
-as YAML skill files or created via the Agent Builder UI) read from and write to
-the database. A dashboard shows the status.
-Telegram/Discord/Slack bots, MCP server, email ingestion, and push notifications provide input channels.
+Mission Control is a Telegram-first personal AI assistant. One PostgreSQL (or SQLite)
+database is the single source of truth. You talk to it via Telegram — it manages tasks,
+spawns agents for research/coding/marketing, reminds you of things, and helps build
+your personal brand on X, LinkedIn, Instagram, and YouTube.
+
+A simple dashboard provides an overview and lets you manage agents and scheduled tasks.
 
 ## Architecture
 
-- **Backend**: Python/FastAPI at `backend/app/` — 35 API routers
-- **Dashboard**: Next.js/TypeScript at `dashboard/` — 5 pages, fully complete
+- **Telegram Bot**: Primary interface — natural language chat + slash commands
+- **Backend**: Python/FastAPI at `backend/app/`
+- **Dashboard**: Next.js/TypeScript at `dashboard/` — simple overview UI
 - **Agent Skills**: YAML files at `backend/skills/`
-- **Database**: PostgreSQL with pgvector — 25 tables, 6 migrations
+- **Database**: PostgreSQL with pgvector (or SQLite for dev)
 - **Agent Runtime**: Claude Agent SDK (supports API key + OAuth)
 
 ## Key Files
 
-- `backend/app/main.py` — FastAPI app entry point (35 routers mounted)
+- `backend/app/main.py` — FastAPI app entry point
 - `backend/app/db/models.py` — All database models (SQLAlchemy)
-- `backend/app/config.py` — Settings with multi-auth support
-- `backend/app/orchestrator/runner.py` — Agent execution engine (retry, timeout, chaining, approval)
-- `backend/app/orchestrator/scheduler.py` — Interval-based scheduler
+- `backend/app/config.py` — Settings
+- `backend/app/orchestrator/runner.py` — Agent execution engine (retry, timeout, chaining)
+- `backend/app/orchestrator/scheduler.py` — Interval/cron-based scheduler
 - `backend/app/agents/skill_loader.py` — YAML → DB sync
-- `backend/app/api/workflows.py` — Agent workflow DAGs with dependency resolution
-- `backend/app/api/routines.py` — Routine builder API (morning/evening checklists)
-- `backend/app/api/dedup.py` — Deduplication detection for tasks/ideas
-- `backend/app/api/smart_priority.py` — Smart prioritization suggestions
-- `backend/app/api/push.py` — Browser push notification subscriptions
-- `backend/app/api/backup.py` — Database backup/restore API
-- `backend/app/api/notes.py` — Notes CRUD (markdown supported)
 - `backend/app/integrations/telegram.py` — Telegram bot
-- `backend/app/integrations/discord_bot.py` — Discord bot
-- `backend/app/integrations/mcp_server.py` — MCP server for Claude Code
-- `dashboard/app/page.tsx` — Main dashboard UI (tasks, calendar, routines, etc.)
-- `dashboard/app/lib/api.ts` — API client (all endpoints)
+- `backend/app/integrations/chat.py` — LLM chat with tool use
+- `backend/app/integrations/commands.py` — Shared command handlers
+- `backend/app/notifications/dispatcher.py` — Telegram notification delivery
+- `backend/app/notifications/morning.py` — Morning briefing generator
+- `dashboard/app/page.tsx` — Main dashboard UI
+- `dashboard/app/lib/api.ts` — API client
+
+## Database Tables
+
+- **projects** — What you're building
+- **tasks** — Things to do (status, priority, due dates)
+- **notes** — Ideas, reading notes, reflections (markdown)
+- **agent_configs** — Agent definitions (from YAML skills)
+- **agent_runs** — Execution log for every agent run
+- **agent_memories** — Persistent memory (per-agent + shared scratchpad)
+- **agent_approvals** — Actions queued for human approval
+- **chat_sessions** — Telegram conversation history
+- **brand_profile** — Personal brand (tone, topics, social handles)
+- **marketing_signals** — Leads/opportunities found by agents
+- **marketing_content** — Content drafts for social platforms
+- **notifications** — Sent via Telegram
+- **event_log** — Audit trail
 
 ## Commands
 
@@ -51,46 +64,21 @@ cd dashboard && npm run dev
 
 # Run migrations
 cd backend && alembic upgrade head
-
-# Create a migration
-cd backend && alembic revision --autogenerate -m "description"
 ```
 
 ## Conventions
 
-- All API routes are at `/api/<resource>`
-- WebSocket at `/ws` for live dashboard updates
+- Telegram is the primary interface — most interaction happens there
+- Dashboard is for overview and management (agents, scheduled tasks)
 - Agent skill files are YAML in `backend/skills/`
 - Agent output must be JSON with `summary` and `actions` fields
 - The `event_log` table tracks all changes for audit
 - Use Haiku for cheap agents, Sonnet for smart ones
-- Migrations numbered sequentially: `001_initial_schema.py` through `006_workflows_and_sort_order.py`
-
-## Removed Features
-
-Journal, Habits, Goals/OKRs, and Reading List have been removed to keep the system focused.
-Notes (markdown) replaces Journal. Reading items can be tracked as notes with tags.
-
-## Completed Sprints
-
-- **Sprint 5**: Inline editing, filters, responsive design, dark mode
-- **Sprint 6**: pgvector, auto-tagging, triggers, agent memory, analytics
-- **Sprint 7**: GitHub integration, RSS feeds, notes, API keys, Discord bot
-- **Sprint 8**: Multi-page layout, Kanban board, bulk actions, keyboard shortcuts, project dashboards
-- **Sprint 9**: Test suites, Alembic migrations, seed data, agent timeout, error handling
-- **Sprint 10**: Agent learning loop, shared scratchpad, daily standup, output validation, retry logic
-- **Sprint 11**: Routine builder, project health scoring, calendar view, quick capture, deduplication
-- **Sprint 12**: Workflow DAGs, smart prioritization, drag-and-drop, push notifications
-- **Sprint 13**: Agent self-evaluation, time-based context, timeline/Gantt view, backup/restore
-- **Sprint 14**: User pattern learning, health diagnostics, webhook templates, API rate limiting, agent versioning
-- **Sprint 15**: Web researcher, code reviewer, opportunity scout agents, marketplace, pipeline builder, A/B testing, budget management
-- **Sprint 16**: Streamline — removed Journal, Habits, Goals, Reading; consolidated into Notes
-- **Sprint 17**: Foundation — SQLite mode, setup wizard, install script, GHCR Docker images
-- **Sprint 18**: Integrations — Slack bot, email ingestion, voice input, Linear/Notion/Todoist, Zapier, SDKs, plugin system
+- Content is generated for: X, LinkedIn, Instagram, YouTube, blog
 
 ## Auth
 
-The system supports multiple LLM auth methods (see `.env.example`):
+Multiple LLM auth methods (see `.env.example`):
 1. `ANTHROPIC_API_KEY` — Standard API (recommended)
 2. `CLAUDE_CODE_OAUTH_TOKEN` — Pro/Max subscription
 3. `OPENROUTER_API_KEY` — Multi-provider via OpenRouter

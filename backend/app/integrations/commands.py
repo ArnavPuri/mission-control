@@ -1,24 +1,21 @@
 """
 Shared Bot Command Handlers
 
-Platform-agnostic command implementations used by both Telegram and Discord
-(and any future bot adapters). Each handler takes a BotContext and args string,
-performs the action, and returns a reply string.
+Platform-agnostic command implementations. Each handler takes args and source,
+performs the action, and returns a CommandResult.
 """
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
-from typing import Callable, Awaitable
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import async_session
 from app.db.models import (
-    Task, Idea, ReadingItem, Project, AgentConfig, AgentRun, Note,
-    TaskStatus, AgentStatus, EventLog, Habit, HabitCompletion,
-    Goal, GoalStatus, JournalEntry, AgentApproval, ApprovalStatus,
+    Task, Project, AgentConfig, AgentRun, Note,
+    TaskStatus, AgentStatus, EventLog, AgentApproval, ApprovalStatus,
     BrandProfile,
 )
 from app.orchestrator.runner import AgentRunner
@@ -28,9 +25,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class CommandResult:
-    """Result of a bot command execution."""
     text: str
-    parse_mode: str | None = None  # "Markdown" for Telegram, None for plain
+    parse_mode: str | None = None
 
 
 async def cmd_task(args: str, source: str) -> CommandResult:
@@ -48,44 +44,6 @@ async def cmd_task(args: str, source: str) -> CommandResult:
         await db.commit()
 
     return CommandResult(f"Task added: {args}")
-
-
-async def cmd_idea(args: str, source: str) -> CommandResult:
-    """Capture an idea with optional #tags."""
-    if not args:
-        return CommandResult("Usage: /idea <description>")
-
-    tags = [w.lstrip("#") for w in args.split() if w.startswith("#")]
-    clean_text = " ".join(w for w in args.split() if not w.startswith("#"))
-
-    async with async_session() as db:
-        idea = Idea(text=clean_text, tags=tags, source=source)
-        db.add(idea)
-        await db.commit()
-
-    tag_str = f" [{', '.join(tags)}]" if tags else ""
-    return CommandResult(f"Idea captured: {clean_text}{tag_str}")
-
-
-async def cmd_read(args: str, source: str) -> CommandResult:
-    """Add to reading list."""
-    if not args:
-        return CommandResult("Usage: /read <title> [url]")
-
-    words = args.split()
-    url = None
-    if words[-1].startswith("http"):
-        url = words[-1]
-        title = " ".join(words[:-1]) or url
-    else:
-        title = args
-
-    async with async_session() as db:
-        item = ReadingItem(title=title, url=url, source=source)
-        db.add(item)
-        await db.commit()
-
-    return CommandResult(f"Added to reading list: {title}")
 
 
 async def cmd_note(args: str, source: str) -> CommandResult:
@@ -107,21 +65,11 @@ async def cmd_status(source: str) -> CommandResult:
         tasks_open = await db.scalar(
             select(func.count(Task.id)).where(Task.status != TaskStatus.DONE)
         )
-        ideas_count = await db.scalar(select(func.count(Idea.id)))
-        reading_count = await db.scalar(
-            select(func.count(ReadingItem.id)).where(ReadingItem.is_read == False)
-        )
         agents_running = await db.scalar(
             select(func.count(AgentConfig.id)).where(AgentConfig.status == AgentStatus.RUNNING)
         )
         projects_active = await db.scalar(
             select(func.count(Project.id)).where(Project.status == "active")
-        )
-        habits_active = await db.scalar(
-            select(func.count(Habit.id)).where(Habit.is_active == True)
-        )
-        goals_active = await db.scalar(
-            select(func.count(Goal.id)).where(Goal.status == GoalStatus.ACTIVE)
         )
         notes_count = await db.scalar(select(func.count(Note.id)))
         approvals_pending = await db.scalar(
@@ -135,11 +83,7 @@ async def cmd_status(source: str) -> CommandResult:
         "",
         f"- Projects: {projects_active} active",
         f"- Tasks: {tasks_open} open",
-        f"- Ideas: {ideas_count}",
-        f"- Reading: {reading_count} unread",
         f"- Notes: {notes_count}",
-        f"- Habits: {habits_active} active",
-        f"- Goals: {goals_active} active",
         f"- Agents: {agents_running} running",
     ]
     if approvals_pending:
@@ -183,105 +127,12 @@ async def cmd_projects(source: str) -> CommandResult:
     if not projects:
         return CommandResult("No projects yet. Add one from the dashboard.")
 
-    status_icons = {"active": "+", "planning": "~", "paused": "-", "archived": "x"}
+    status_icons = {"active": "+", "planning": "~", "launched": "!", "paused": "-", "archived": "x"}
     lines = [
         f"[{status_icons.get(p.status.value, '?')}] {p.name} - {p.description[:60]}"
         for p in projects
     ]
     return CommandResult("Projects\n\n" + "\n".join(lines))
-
-
-async def cmd_habit(args: str, source: str) -> CommandResult:
-    """Complete or create a habit, or list all habits."""
-    if not args:
-        async with async_session() as db:
-            result = await db.execute(select(Habit).where(Habit.is_active == True))
-            habits = result.scalars().all()
-        if not habits:
-            return CommandResult("No habits yet. Use /habit <name> to create one.")
-
-        today = datetime.now(timezone.utc).date()
-        lines = []
-        for h in habits:
-            done = any(c.completed_at.date() == today for c in (h.completions or []))
-            icon = "[x]" if done else "[ ]"
-            streak = f" streak:{h.current_streak}" if h.current_streak > 0 else ""
-            lines.append(f"{icon} {h.name}{streak}")
-        return CommandResult("Habits\n\n" + "\n".join(lines))
-
-    async with async_session() as db:
-        result = await db.execute(select(Habit).where(Habit.is_active == True))
-        habits = result.scalars().all()
-        match = next((h for h in habits if args.lower() in h.name.lower()), None)
-
-        if match:
-            today = datetime.now(timezone.utc).date()
-            already = any(c.completed_at.date() == today for c in (match.completions or []))
-            if already:
-                return CommandResult(f"Already completed {match.name} today!")
-
-            completion = HabitCompletion(habit_id=match.id)
-            db.add(completion)
-            yesterday = today - timedelta(days=1)
-            had_yesterday = any(c.completed_at.date() == yesterday for c in (match.completions or []))
-            if had_yesterday or match.current_streak == 0:
-                match.current_streak += 1
-            else:
-                match.current_streak = 1
-            match.best_streak = max(match.best_streak, match.current_streak)
-            match.total_completions += 1
-            await db.commit()
-            return CommandResult(f"{match.name} completed! Streak: {match.current_streak} days")
-        else:
-            habit = Habit(name=args, source=source)
-            db.add(habit)
-            await db.commit()
-            return CommandResult(f"New habit created: {args}")
-
-
-async def cmd_goal(args: str, source: str) -> CommandResult:
-    """List goals or create one."""
-    if not args:
-        async with async_session() as db:
-            result = await db.execute(select(Goal).where(Goal.status == GoalStatus.ACTIVE))
-            goals = result.scalars().all()
-        if not goals:
-            return CommandResult("No active goals. Use /goal <title> to create one.")
-        lines = []
-        for g in goals:
-            pct = round(g.progress * 100)
-            lines.append(f"- {g.title} ({pct}%)")
-        return CommandResult("Goals\n\n" + "\n".join(lines))
-
-    async with async_session() as db:
-        goal = Goal(title=args)
-        db.add(goal)
-        await db.commit()
-    return CommandResult(f"Goal created: {args}")
-
-
-async def cmd_journal(args: str, source: str) -> CommandResult:
-    """View recent journal or write an entry."""
-    if not args:
-        async with async_session() as db:
-            result = await db.execute(
-                select(JournalEntry).order_by(JournalEntry.created_at.desc()).limit(3)
-            )
-            entries = result.scalars().all()
-        if not entries:
-            return CommandResult("No journal entries. Use /journal <text> to write one.")
-        lines = []
-        for e in entries:
-            date = e.created_at.strftime("%b %d")
-            mood = f" ({e.mood.value})" if e.mood else ""
-            lines.append(f"- {date}{mood}: {e.content[:80]}{'...' if len(e.content) > 80 else ''}")
-        return CommandResult("Journal\n\n" + "\n".join(lines))
-
-    async with async_session() as db:
-        entry = JournalEntry(content=args, source=source)
-        db.add(entry)
-        await db.commit()
-    return CommandResult("Journal entry saved.")
 
 
 async def cmd_approve(args: str, source: str) -> CommandResult:
@@ -331,12 +182,9 @@ async def cmd_brand(source: str) -> CommandResult:
         profile = result.scalar_one_or_none()
 
     if not profile or not profile.name:
-        return CommandResult("No brand profile configured yet.\nSet it up via the API: PUT /api/brand-profile")
+        return CommandResult("No brand profile configured yet.\nSet it up via the dashboard or API.")
 
-    lines = [
-        f"*{profile.name}*",
-        "",
-    ]
+    lines = [f"*{profile.name}*", ""]
     if profile.bio:
         lines.append(profile.bio)
         lines.append("")
@@ -441,12 +289,7 @@ async def cmd_help(source: str) -> CommandResult:
     return CommandResult(
         f"{bot_name} Commands\n\n"
         "/task <text> - Add a task\n"
-        "/idea <text> #tags - Capture an idea\n"
-        "/read <title> [url] - Add to reading list\n"
         "/note <title> - Create a note\n"
-        "/habit [name] - List habits or complete/create one\n"
-        "/goal [title] - List goals or create one\n"
-        "/journal [text] - View or write journal\n"
         "/approve [n] - List or approve pending actions\n"
         "/status - Dashboard stats\n"
         "/run <agent> - Trigger an agent\n"
@@ -455,5 +298,6 @@ async def cmd_help(source: str) -> CommandResult:
         "/agents — View agent status\n"
         "/brand — View your brand profile\n"
         "/morning — Get your morning briefing\n"
-        "/help - This message"
+        "/help - This message\n\n"
+        "Or just send a message — I understand natural language."
     )

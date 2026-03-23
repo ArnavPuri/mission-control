@@ -1,5 +1,4 @@
 from uuid import UUID
-from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,8 +6,8 @@ from pydantic import BaseModel
 
 from app.db.session import get_db
 from app.db.models import (
-    Project, ProjectStatus, Task, TaskStatus, Goal, GoalStatus,
-    AgentRun, AgentRunStatus, EventLog, Idea, MarketingSignal, MarketingContent,
+    Project, ProjectStatus, Task, TaskStatus,
+    EventLog, MarketingSignal, MarketingContent,
 )
 
 router = APIRouter()
@@ -46,18 +45,6 @@ async def list_projects(db: AsyncSession = Depends(get_db)):
         .correlate(Project)
         .scalar_subquery()
     )
-    idea_count_sq = (
-        select(func.count(Idea.id))
-        .where(Idea.project_id == Project.id)
-        .correlate(Project)
-        .scalar_subquery()
-    )
-    feedback_count_sq = (
-        select(func.count(MarketingSignal.id))
-        .where(MarketingSignal.project_id == Project.id)
-        .correlate(Project)
-        .scalar_subquery()
-    )
     content_count_sq = (
         select(func.count(MarketingContent.id))
         .where(MarketingContent.project_id == Project.id)
@@ -70,8 +57,6 @@ async def list_projects(db: AsyncSession = Depends(get_db)):
             Project,
             task_count_sq.label("task_count"),
             open_task_count_sq.label("open_task_count"),
-            idea_count_sq.label("idea_count"),
-            feedback_count_sq.label("feedback_count"),
             content_count_sq.label("content_count"),
         ).order_by(Project.created_at.desc())
     )
@@ -87,13 +72,11 @@ async def list_projects(db: AsyncSession = Depends(get_db)):
             "metadata": p.metadata_ or {},
             "task_count": task_count,
             "open_task_count": open_task_count,
-            "idea_count": idea_count,
-            "feedback_count": feedback_count,
             "content_count": content_count,
             "agent_count": len(p.agents) if p.agents else 0,
             "created_at": p.created_at.isoformat(),
         }
-        for p, task_count, open_task_count, idea_count, feedback_count, content_count in rows
+        for p, task_count, open_task_count, content_count in rows
     ]
 
 
@@ -113,16 +96,6 @@ async def get_project(project_id: UUID, db: AsyncSession = Depends(get_db)):
     project = await db.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    counts = await db.execute(
-        select(
-            func.count(Task.id).filter(Task.project_id == project_id).label("task_count"),
-            func.count(Task.id).filter(Task.project_id == project_id, Task.status != TaskStatus.DONE).label("open_task_count"),
-            func.count(Idea.id).filter(Idea.project_id == project_id).label("idea_count"),
-            func.count(MarketingSignal.id).filter(MarketingSignal.project_id == project_id).label("feedback_count"),
-            func.count(MarketingContent.id).filter(MarketingContent.project_id == project_id).label("content_count"),
-        )
-    )
-    c = counts.one()
     return {
         "id": str(project.id),
         "name": project.name,
@@ -131,11 +104,6 @@ async def get_project(project_id: UUID, db: AsyncSession = Depends(get_db)):
         "color": project.color,
         "url": project.url,
         "metadata": project.metadata_ or {},
-        "task_count": c.task_count,
-        "open_task_count": c.open_task_count,
-        "idea_count": c.idea_count,
-        "feedback_count": c.feedback_count,
-        "content_count": c.content_count,
         "agent_count": len(project.agents) if project.agents else 0,
         "created_at": project.created_at.isoformat(),
         "updated_at": project.updated_at.isoformat(),
@@ -163,122 +131,3 @@ async def delete_project(project_id: UUID, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Project not found")
     await db.delete(project)
     return {"deleted": True}
-
-
-@router.get("/{project_id}/health")
-async def project_health(project_id: UUID, db: AsyncSession = Depends(get_db)):
-    """Calculate project health score and return detailed metrics."""
-    project = await db.get(Project, project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    now = datetime.now(timezone.utc)
-    thirty_days_ago = now - timedelta(days=30)
-    seven_days_ago = now - timedelta(days=7)
-
-    # Task metrics
-    all_tasks = await db.execute(
-        select(Task).where(Task.project_id == project_id)
-    )
-    tasks = all_tasks.scalars().all()
-    total_tasks = len(tasks)
-    done_tasks = sum(1 for t in tasks if t.status == TaskStatus.DONE)
-    overdue_tasks = sum(
-        1 for t in tasks
-        if t.due_date and t.due_date < now and t.status != TaskStatus.DONE
-    )
-    blocked_tasks = sum(1 for t in tasks if t.status == TaskStatus.BLOCKED)
-
-    # Completion rate
-    completion_rate = (done_tasks / total_tasks * 100) if total_tasks > 0 else 0
-
-    # Recent velocity — tasks completed in last 7 days
-    recent_completions = sum(
-        1 for t in tasks
-        if t.status == TaskStatus.DONE
-        and t.completed_at
-        and t.completed_at >= seven_days_ago
-    )
-
-    # Goal progress
-    goals_result = await db.execute(
-        select(Goal).where(
-            Goal.project_id == project_id,
-            Goal.status == GoalStatus.ACTIVE,
-        )
-    )
-    goals = goals_result.scalars().all()
-    avg_goal_progress = (
-        sum(g.progress for g in goals) / len(goals)
-        if goals else 0
-    )
-
-    # Recent activity — events in last 30 days
-    activity_count = await db.scalar(
-        select(func.count(EventLog.id)).where(
-            EventLog.entity_id == project_id,
-            EventLog.created_at >= thirty_days_ago,
-        )
-    ) or 0
-
-    # Also count task-level activity for this project
-    task_ids = [t.id for t in tasks]
-    if task_ids:
-        task_activity = await db.scalar(
-            select(func.count(EventLog.id)).where(
-                EventLog.entity_id.in_(task_ids),
-                EventLog.created_at >= thirty_days_ago,
-            )
-        ) or 0
-        activity_count += task_activity
-
-    # Calculate health score (0-100)
-    score = 100
-    # Penalize for overdue tasks (-5 each, max -30)
-    score -= min(overdue_tasks * 5, 30)
-    # Penalize for blocked tasks (-3 each, max -15)
-    score -= min(blocked_tasks * 3, 15)
-    # Penalize for low completion rate
-    if total_tasks > 5 and completion_rate < 20:
-        score -= 20
-    elif total_tasks > 5 and completion_rate < 50:
-        score -= 10
-    # Reward recent velocity
-    if recent_completions >= 5:
-        score += 5
-    elif recent_completions == 0 and total_tasks > 3:
-        score -= 10
-    # Penalize for inactivity
-    if activity_count == 0 and total_tasks > 0:
-        score -= 15
-    # Factor in goal progress
-    if goals:
-        score += int(avg_goal_progress * 10)  # up to +10
-
-    score = max(0, min(100, score))
-
-    # Determine status color
-    if score >= 70:
-        status = "healthy"
-    elif score >= 40:
-        status = "needs_attention"
-    else:
-        status = "at_risk"
-
-    return {
-        "project_id": str(project_id),
-        "project_name": project.name,
-        "score": score,
-        "status": status,
-        "metrics": {
-            "total_tasks": total_tasks,
-            "done_tasks": done_tasks,
-            "overdue_tasks": overdue_tasks,
-            "blocked_tasks": blocked_tasks,
-            "completion_rate": round(completion_rate, 1),
-            "weekly_velocity": recent_completions,
-            "active_goals": len(goals),
-            "avg_goal_progress": round(avg_goal_progress * 100, 1),
-            "monthly_activity": activity_count,
-        },
-    }
