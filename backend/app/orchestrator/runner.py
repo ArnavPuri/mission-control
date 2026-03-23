@@ -1,9 +1,7 @@
 """
 Agent Runner - Executes agents using the Claude Agent SDK.
 
-Supports multiple auth methods:
-  - ANTHROPIC_API_KEY (standard API)
-  - CLAUDE_CODE_OAUTH_TOKEN (subscription-based)
+Uses Claude Code subscription (OAuth) exclusively.
 """
 
 import asyncio
@@ -17,7 +15,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings, LLMProvider
+from app.config import settings
 from app.db.models import (
     AgentConfig, AgentRun, AgentStatus, AgentRunStatus,
     Project, Task, EventLog, TaskStatus,
@@ -315,8 +313,6 @@ class AgentRunner:
         options_kwargs["allowed_tools"] = allowed_tools
 
         env = dict(os.environ)
-        if settings.anthropic_api_key:
-            env["ANTHROPIC_API_KEY"] = settings.anthropic_api_key
         if settings.claude_code_oauth_token:
             env["CLAUDE_CODE_OAUTH_TOKEN"] = settings.claude_code_oauth_token
         options_kwargs["env"] = env
@@ -380,83 +376,18 @@ class AgentRunner:
         except (json.JSONDecodeError, IndexError):
             return {"summary": full_response, "actions": [], "raw": True}
 
-    async def execute_with_anthropic_api(self, prompt: str, agent: AgentConfig) -> dict:
-        import httpx
-
-        if not settings.anthropic_api_key:
-            raise RuntimeError("Direct API fallback requires ANTHROPIC_API_KEY.")
-
-        headers = {
-            "Content-Type": "application/json",
-            "anthropic-version": "2023-06-01",
-            "x-api-key": settings.anthropic_api_key,
-        }
-
-        try:
-            async with httpx.AsyncClient(timeout=120) as client:
-                resp = await client.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers=headers,
-                    json={
-                        "model": agent.model or settings.default_model,
-                        "max_tokens": 4096,
-                        "system": self._build_system_prompt(agent),
-                        "messages": [{"role": "user", "content": prompt}],
-                    },
-                )
-
-            if resp.status_code == 401:
-                raise RuntimeError("LLM authentication failed.")
-            if resp.status_code == 429:
-                raise RuntimeError("LLM rate limit exceeded.")
-            if resp.status_code >= 500:
-                raise RuntimeError(f"LLM provider error (HTTP {resp.status_code}).")
-            if resp.status_code >= 400:
-                raise RuntimeError(f"LLM request failed (HTTP {resp.status_code}): {resp.text[:200]}")
-
-            data = resp.json()
-        except httpx.ConnectError:
-            raise RuntimeError("Cannot connect to LLM provider.")
-        except httpx.TimeoutException:
-            raise RuntimeError("LLM request timed out.")
-
-        if "error" in data:
-            err_msg = data["error"].get("message", str(data["error"]))
-            raise RuntimeError(f"LLM API error: {err_msg}")
-
-        text = ""
-        for block in data.get("content", []):
-            if block.get("type") == "text":
-                text += block["text"]
-
-        try:
-            cleaned = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-            return json.loads(cleaned)
-        except json.JSONDecodeError:
-            return {"summary": text, "actions": [], "raw": True}
-
     async def _execute_llm(self, prompt: str, agent: AgentConfig) -> dict:
         timeout_seconds = (agent.config or {}).get("timeout_seconds", 300)
         max_retries = 3
         base_delay = 2.0
 
-        async def _run():
-            provider = settings.llm_provider
-            if provider in (LLMProvider.ANTHROPIC_API, LLMProvider.ANTHROPIC_OAUTH):
-                try:
-                    return await self.execute_with_agent_sdk(prompt, agent)
-                except Exception as sdk_err:
-                    logger.error(f"Agent SDK failed: {sdk_err}", exc_info=True)
-                    if provider == LLMProvider.ANTHROPIC_OAUTH:
-                        raise RuntimeError(f"Agent SDK failed: {sdk_err}") from sdk_err
-                    return await self.execute_with_anthropic_api(prompt, agent)
-            else:
-                return await self.execute_with_anthropic_api(prompt, agent)
-
         last_error = None
         for attempt in range(max_retries):
             try:
-                return await asyncio.wait_for(_run(), timeout=timeout_seconds)
+                return await asyncio.wait_for(
+                    self.execute_with_agent_sdk(prompt, agent),
+                    timeout=timeout_seconds,
+                )
             except asyncio.TimeoutError:
                 raise TimeoutError(f"Agent {agent.name} timed out after {timeout_seconds}s.")
             except RuntimeError as e:

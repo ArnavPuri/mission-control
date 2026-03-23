@@ -9,12 +9,9 @@ database setup, and optional integrations.
    If missing, offer to install them.
 
 2. **Configure authentication**:
-   - Ask: "How would you like to authenticate with Claude?"
-     - **API Key** (recommended): Ask user to paste their ANTHROPIC_API_KEY
-     - **Claude Subscription** (Pro/Max): Tell user to run `claude setup-token` in another terminal, then paste CLAUDE_CODE_OAUTH_TOKEN
-     - **OpenRouter**: Ask for OPENROUTER_API_KEY
-     - **Ollama (local)**: Ask for OLLAMA_BASE_URL (default: http://localhost:11434)
-   - Write the chosen credentials to `.env` (copy from `.env.example` first)
+   - Requires a Claude Pro/Max subscription.
+   - Tell user to run `claude auth login` to authenticate, then paste CLAUDE_CODE_OAUTH_TOKEN
+   - Write the credential to `.env` (copy from `.env.example` first)
 
 3. **Configure Telegram (optional)**:
    - Ask: "Do you want to add items via Telegram?"

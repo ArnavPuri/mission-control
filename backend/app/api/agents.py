@@ -23,11 +23,13 @@ class ExpandPromptRequest(BaseModel):
 @router.post("/expand-prompt")
 async def expand_prompt(data: ExpandPromptRequest):
     """Use LLM to expand a brief description into a full agent prompt template."""
-    import httpx
+    from claude_agent_sdk import query, ClaudeAgentOptions
     from app.config import settings
+    import os
+    import shutil
 
-    if not settings.anthropic_api_key and not settings.claude_code_oauth_token:
-        raise HTTPException(status_code=503, detail="No LLM provider configured")
+    if not settings.llm_configured:
+        raise HTTPException(status_code=503, detail="CLAUDE_CODE_OAUTH_TOKEN not configured")
 
     available_vars = ", ".join(f"{{{{{r}}}}}" for r in data.data_reads) if data.data_reads else "none selected yet"
     write_targets = ", ".join(data.data_writes) if data.data_writes else "none selected yet"
@@ -47,34 +49,31 @@ Rules:
 - Keep the prompt focused, clear, and under 500 words
 - Do NOT include markdown fences or explanations — output ONLY the prompt template text"""
 
-    headers = {"Content-Type": "application/json", "anthropic-version": "2023-06-01"}
-    if settings.anthropic_api_key:
-        headers["x-api-key"] = settings.anthropic_api_key
-    elif settings.claude_code_oauth_token:
-        headers["Authorization"] = f"Bearer {settings.claude_code_oauth_token}"
+    env = dict(os.environ)
+    env["CLAUDE_CODE_OAUTH_TOKEN"] = settings.claude_code_oauth_token
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            "https://api.anthropic.com/v1/messages",
-            headers=headers,
-            json={
-                "model": settings.default_model,
-                "max_tokens": 1024,
-                "system": system_prompt,
-                "messages": [{"role": "user", "content": data.description}],
-            },
-        )
+    options_kwargs = {
+        "system_prompt": system_prompt,
+        "model": settings.default_model,
+        "max_turns": 1,
+        "env": env,
+    }
+    cli_path = shutil.which("claude")
+    if cli_path:
+        options_kwargs["cli_path"] = cli_path
 
-    if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"LLM request failed: {resp.status_code}")
+    options = ClaudeAgentOptions(**options_kwargs)
 
-    result = resp.json()
-    text = ""
-    for block in result.get("content", []):
-        if block.get("type") == "text":
-            text += block["text"]
+    full_response = ""
+    async for message in query(prompt=data.description, options=options):
+        if hasattr(message, "result"):
+            full_response = message.result
+        elif hasattr(message, "content"):
+            for block in getattr(message, "content", []):
+                if hasattr(block, "text"):
+                    full_response += block.text
 
-    return {"prompt": text.strip()}
+    return {"prompt": full_response.strip()}
 
 
 def _slugify(name: str) -> str:

@@ -1,8 +1,8 @@
 """
 Chat Assistant — LLM-powered conversational handler for Telegram.
 
-Manages session memory, builds prompts with DB context, calls the
-Anthropic Messages API with tool_use, and executes actions.
+Manages session memory, builds prompts with DB context, calls
+Claude via the Agent SDK (OAuth), and executes actions.
 """
 
 import json
@@ -10,7 +10,6 @@ import time
 import logging
 from datetime import datetime, timezone
 
-import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -269,49 +268,41 @@ You help manage projects, tasks, notes, agents, and content creation for social 
 - When listing items, use compact formatting
 - Match tasks by text content, not by ID
 - You can create content drafts for X, LinkedIn, Instagram, YouTube, blog
-- You can spawn agents for research, coding, marketing tasks"""
+- You can spawn agents for research, coding, marketing tasks
+
+## Actions
+When you need to take an action (create task, update task, create note, trigger agent, create content),
+include a JSON block in your response like this:
+
+```json
+{{"reply": "Your message to the user", "actions": [{{"type": "create_task", "text": "...", "priority": "medium"}}]}}
+```
+
+Available action types:
+- create_task: text (required), priority (critical/high/medium/low), project_name
+- update_task: task_text (required, fuzzy match), status (todo/in_progress/blocked/done), priority
+- create_note: title (required), content, tags
+- trigger_agent: agent_slug (required)
+- create_content_draft: title (required), body (required), channel (x/linkedin/instagram/youtube/blog)
+
+If no action is needed, just reply normally as plain text."""
 
 
-# --- LLM Call ---
+# --- LLM Call (Claude Agent SDK) ---
 
-async def call_anthropic(
-    messages: list[dict],
-    system: str,
-    tools: list[dict] | None = None,
-) -> dict:
-    if not settings.anthropic_api_key:
-        raise ValueError("Chat assistant requires ANTHROPIC_API_KEY.")
-
-    headers = {
-        "Content-Type": "application/json",
-        "anthropic-version": "2023-06-01",
-        "x-api-key": settings.anthropic_api_key,
-    }
-
-    body = {
-        "model": settings.chat_model,
-        "max_tokens": 2048,
-        "system": system,
-        "messages": messages,
-    }
-    if tools:
-        body["tools"] = tools
-
-    async with httpx.AsyncClient(timeout=60) as client:
-        resp = await client.post(
-            "https://api.anthropic.com/v1/messages",
-            headers=headers,
-            json=body,
-        )
-        resp.raise_for_status()
-        return resp.json()
-
-
-async def call_anthropic_via_sdk(
+async def call_llm(
     messages: list[dict],
     system: str,
 ) -> str:
+    """Call Claude via the Agent SDK using OAuth token."""
     from claude_agent_sdk import query, ClaudeAgentOptions
+    import os
+
+    if not settings.claude_code_oauth_token:
+        raise ValueError(
+            "CLAUDE_CODE_OAUTH_TOKEN is required. "
+            "Run `claude auth login` to authenticate with your Claude Code subscription."
+        )
 
     prompt_parts = []
     for msg in messages:
@@ -320,11 +311,22 @@ async def call_anthropic_via_sdk(
         prompt_parts.append(f"[{role}]: {content}")
 
     prompt = "\n\n".join(prompt_parts)
-    options = ClaudeAgentOptions(
-        system_prompt=system,
-        model=settings.chat_model,
-        max_turns=1,
-    )
+
+    env = dict(os.environ)
+    env["CLAUDE_CODE_OAUTH_TOKEN"] = settings.claude_code_oauth_token
+
+    import shutil
+    options_kwargs = {
+        "system_prompt": system,
+        "model": settings.chat_model,
+        "max_turns": 1,
+        "env": env,
+    }
+    cli_path = shutil.which("claude")
+    if cli_path:
+        options_kwargs["cli_path"] = cli_path
+
+    options = ClaudeAgentOptions(**options_kwargs)
 
     full_response = ""
     async for message in query(prompt=prompt, options=options):
@@ -488,45 +490,64 @@ async def handle_chat(user_id: int, user_message: str, db: AsyncSession) -> list
     system_prompt = build_system_prompt(db_context)
     messages = await session_store.get_api_messages(user_id, db=db)
 
-    if settings.anthropic_api_key:
-        reply_text = await _handle_with_tools(messages, system_prompt, db)
-    else:
-        reply_text = await call_anthropic_via_sdk(messages, system_prompt)
+    reply_text = await call_llm(messages, system_prompt)
+
+    # Check if the LLM embedded action blocks in the response
+    actions, clean_reply = _extract_actions(reply_text)
+    if actions:
+        action_results = []
+        for action in actions:
+            result = await execute_tool_call(action["name"], action.get("input", {}), db)
+            action_results.append(result)
+        await db.commit()
+        if clean_reply:
+            reply_text = clean_reply
+        else:
+            reply_text = "\n".join(action_results)
 
     await session_store.add(user_id, "assistant", reply_text, db=db)
     return split_message(reply_text)
 
 
-async def _handle_with_tools(
-    messages: list[dict], system_prompt: str, db: AsyncSession
-) -> str:
-    max_tool_rounds = 5
+def _extract_actions(text: str) -> tuple[list[dict], str]:
+    """Extract JSON action blocks from LLM response if present.
 
-    for _ in range(max_tool_rounds):
-        response = await call_anthropic(messages, system_prompt, CHAT_TOOLS)
-        tool_uses = [b for b in response.get("content", []) if b.get("type") == "tool_use"]
+    Looks for ```json blocks containing action arrays, or a top-level
+    JSON object with "actions" key.
+    """
+    import re
 
-        if not tool_uses:
-            break
+    # Try to find ```json blocks with actions
+    pattern = r'```json\s*(\{[^`]*"actions"\s*:\s*\[[^`]*\})\s*```'
+    match = re.search(pattern, text, re.DOTALL)
+    if match:
+        try:
+            data = json.loads(match.group(1))
+            actions = data.get("actions", [])
+            clean = text[:match.start()].strip() + text[match.end():].strip()
+            # Convert to tool call format
+            tool_calls = []
+            for a in actions:
+                if isinstance(a, dict) and "type" in a:
+                    name = a.pop("type")
+                    tool_calls.append({"name": name, "input": a})
+            return tool_calls, clean
+        except (json.JSONDecodeError, KeyError):
+            pass
 
-        messages.append({"role": "assistant", "content": response["content"]})
+    # Try parsing entire response as JSON (for structured responses)
+    stripped = text.strip()
+    if stripped.startswith("{") and stripped.endswith("}"):
+        try:
+            data = json.loads(stripped)
+            if "actions" in data and isinstance(data["actions"], list):
+                tool_calls = []
+                for a in data["actions"]:
+                    if isinstance(a, dict) and "type" in a:
+                        name = a.pop("type")
+                        tool_calls.append({"name": name, "input": a})
+                return tool_calls, data.get("reply", data.get("summary", ""))
+        except json.JSONDecodeError:
+            pass
 
-        tool_results = []
-        for tool_use in tool_uses:
-            result_text = await execute_tool_call(tool_use["name"], tool_use["input"], db)
-            tool_results.append({
-                "type": "tool_result",
-                "tool_use_id": tool_use["id"],
-                "content": result_text,
-            })
-
-        messages.append({"role": "user", "content": tool_results})
-        await db.commit()
-    else:
-        return "I got a bit carried away there. Could you rephrase?"
-
-    text_parts = [b["text"] for b in response.get("content", []) if b.get("type") == "text"]
-    reply_text = "\n".join(text_parts) if text_parts else "Done."
-
-    await db.commit()
-    return reply_text
+    return [], text

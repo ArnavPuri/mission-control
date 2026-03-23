@@ -1,19 +1,11 @@
 """
 Mission Control - Configuration
 
-Telegram-first AI assistant. Supports multiple LLM auth methods.
+Telegram-first AI assistant. Uses Claude Code subscription (OAuth) exclusively.
 """
 
 from pathlib import Path
 from pydantic_settings import BaseSettings
-from enum import Enum
-
-
-class LLMProvider(str, Enum):
-    ANTHROPIC_API = "anthropic_api"
-    ANTHROPIC_OAUTH = "anthropic_oauth"
-    OPENROUTER = "openrouter"
-    OLLAMA = "ollama"
 
 
 class Settings(BaseSettings):
@@ -23,11 +15,8 @@ class Settings(BaseSettings):
     sqlite_path: str = "data/mission_control.db"
     redis_url: str = "redis://localhost:6379/0"
 
-    # --- LLM Auth ---
-    anthropic_api_key: str | None = None
+    # --- LLM Auth (Claude Code subscription) ---
     claude_code_oauth_token: str | None = None
-    openrouter_api_key: str | None = None
-    ollama_base_url: str | None = None
 
     # --- Model Defaults ---
     default_model: str = "claude-haiku-4-5"
@@ -71,19 +60,8 @@ class Settings(BaseSettings):
         return self.use_sqlite or self.database_url.startswith("sqlite")
 
     @property
-    def llm_provider(self) -> LLMProvider:
-        if self.anthropic_api_key:
-            return LLMProvider.ANTHROPIC_API
-        if self.claude_code_oauth_token:
-            return LLMProvider.ANTHROPIC_OAUTH
-        if self.openrouter_api_key:
-            return LLMProvider.OPENROUTER
-        if self.ollama_base_url:
-            return LLMProvider.OLLAMA
-        raise ValueError(
-            "No LLM provider configured. Set ANTHROPIC_API_KEY, "
-            "CLAUDE_CODE_OAUTH_TOKEN, OPENROUTER_API_KEY, or OLLAMA_BASE_URL"
-        )
+    def llm_configured(self) -> bool:
+        return bool(self.claude_code_oauth_token)
 
     @property
     def telegram_allowed_user_ids(self) -> list[int]:

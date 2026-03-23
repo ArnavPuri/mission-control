@@ -78,8 +78,6 @@ cd backend && alembic upgrade head
 
 ## Auth
 
-Multiple LLM auth methods (see `.env.example`):
-1. `ANTHROPIC_API_KEY` — Standard API (recommended)
-2. `CLAUDE_CODE_OAUTH_TOKEN` — Pro/Max subscription
-3. `OPENROUTER_API_KEY` — Multi-provider via OpenRouter
-4. `OLLAMA_BASE_URL` — Local/self-hosted
+Uses Claude Code subscription (OAuth) exclusively:
+- `CLAUDE_CODE_OAUTH_TOKEN` — Required. Get via `claude auth login`.
+- No API key needed. Works with Claude Pro/Max subscription.
