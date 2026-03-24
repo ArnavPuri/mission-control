@@ -28,15 +28,10 @@ async def health_check(db: AsyncSession = Depends(get_db)):
     except Exception:
         pass
 
-    try:
-        provider = settings.llm_provider.value
-    except ValueError:
-        provider = "not_configured"
-
     return {
         "status": "ok" if db_ok else "degraded",
         "database": "connected" if db_ok else "disconnected",
-        "llm_provider": provider,
+        "llm": "configured" if settings.llm_configured else "not_configured",
         "telegram": "configured" if settings.telegram_bot_token else "not_configured",
     }
 
@@ -80,21 +75,20 @@ async def detailed_health_check(db: AsyncSession = Depends(get_db)):
             "error": str(e)[:200],
         }
 
-    # 2. LLM Provider
-    try:
-        provider = settings.llm_provider.value
+    # 2. LLM (Claude Code subscription)
+    if settings.llm_configured:
         components["llm"] = {
             "status": "ok",
-            "provider": provider,
+            "provider": "claude_code_oauth",
             "default_model": settings.default_model,
             "smart_model": settings.smart_model,
             "max_budget_usd": settings.max_agent_budget_usd,
         }
-    except ValueError as e:
+    else:
         overall_status = "degraded"
         components["llm"] = {
             "status": "not_configured",
-            "error": str(e)[:200],
+            "error": "CLAUDE_CODE_OAUTH_TOKEN not set. Run `claude auth login`.",
         }
 
     # 3. Agents
@@ -164,14 +158,7 @@ async def detailed_health_check(db: AsyncSession = Depends(get_db)):
         "allowed_users": len(settings.telegram_allowed_user_ids),
     }
 
-    # 6. Discord
-    components["discord"] = {
-        "status": "ok" if settings.discord_bot_token else "not_configured",
-        "configured": bool(settings.discord_bot_token),
-        "allowed_channels": len(settings.discord_channel_ids),
-    }
-
-    # 7. Data summary
+    # 6. Data summary
     try:
         task_count = (await db.execute(select(func.count(Task.id)))).scalar() or 0
         event_count = (await db.execute(select(func.count(EventLog.id)))).scalar() or 0

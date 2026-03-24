@@ -1,35 +1,25 @@
 """
 Shared DB context builder for the chat assistant.
 
-Builds a JSON-serializable dict of current Mission Control state
-with size limits to keep LLM prompts reasonable.
+Builds a JSON-serializable dict of current Mission Control state.
 """
 
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
-    Project, Task, Idea, ReadingItem, AgentConfig,
-    TaskStatus, Habit, Goal, GoalStatus, JournalEntry,
+    Project, Task, AgentConfig, Note, TaskStatus,
 )
 
-
-# Size limits for chat context
 MAX_TASKS = 30
-MAX_IDEAS = 15
-MAX_READING = 10
-MAX_JOURNAL = 5
+MAX_NOTES = 15
 
 
 async def build_db_context(db: AsyncSession) -> dict:
-    """Build a complete DB context snapshot for the chat assistant.
-
-    Returns a dict with: projects, tasks, ideas, reading, agents.
-    Each section is a list of dicts, size-limited for prompt efficiency.
-    """
+    """Build a complete DB context snapshot for the chat assistant."""
     context = {}
 
-    # Projects — all (typically <10)
+    # Projects
     result = await db.execute(select(Project).order_by(Project.name))
     context["projects"] = [
         {
@@ -41,7 +31,7 @@ async def build_db_context(db: AsyncSession) -> dict:
         for p in result.scalars().all()
     ]
 
-    # Open tasks — most recent
+    # Open tasks
     result = await db.execute(
         select(Task)
         .where(Task.status != TaskStatus.DONE)
@@ -59,76 +49,21 @@ async def build_db_context(db: AsyncSession) -> dict:
         for t in result.scalars().all()
     ]
 
-    # Ideas — most recent
+    # Recent notes
     result = await db.execute(
-        select(Idea).order_by(desc(Idea.created_at)).limit(MAX_IDEAS)
+        select(Note).order_by(desc(Note.updated_at)).limit(MAX_NOTES)
     )
-    context["ideas"] = [
+    context["notes"] = [
         {
-            "text": i.text,
-            "tags": i.tags or [],
-            "id_prefix": str(i.id)[:8],
+            "title": n.title,
+            "content": n.content[:120] if n.content else "",
+            "tags": n.tags or [],
+            "is_pinned": n.is_pinned,
         }
-        for i in result.scalars().all()
+        for n in result.scalars().all()
     ]
 
-    # Unread reading items
-    result = await db.execute(
-        select(ReadingItem)
-        .where(ReadingItem.is_read == False)
-        .order_by(desc(ReadingItem.created_at))
-        .limit(MAX_READING)
-    )
-    context["reading"] = [
-        {
-            "title": r.title,
-            "url": r.url,
-            "id_prefix": str(r.id)[:8],
-        }
-        for r in result.scalars().all()
-    ]
-
-    # Habits — active ones
-    result = await db.execute(select(Habit).where(Habit.is_active == True))
-    context["habits"] = [
-        {
-            "name": h.name,
-            "streak": h.current_streak,
-            "best_streak": h.best_streak,
-            "frequency": h.frequency.value,
-        }
-        for h in result.scalars().all()
-    ]
-
-    # Goals — active ones
-    result = await db.execute(
-        select(Goal).where(Goal.status == GoalStatus.ACTIVE)
-    )
-    context["goals"] = [
-        {
-            "title": g.title,
-            "progress": f"{round(g.progress * 100)}%",
-            "id_prefix": str(g.id)[:8],
-        }
-        for g in result.scalars().all()
-    ]
-
-    # Journal — recent entries
-    result = await db.execute(
-        select(JournalEntry)
-        .order_by(desc(JournalEntry.created_at))
-        .limit(MAX_JOURNAL)
-    )
-    context["journal"] = [
-        {
-            "content": j.content[:120],
-            "mood": j.mood.value if j.mood else None,
-            "date": j.created_at.strftime("%b %d"),
-        }
-        for j in result.scalars().all()
-    ]
-
-    # Agents — all with status info
+    # Agents
     result = await db.execute(select(AgentConfig).order_by(AgentConfig.name))
     context["agents"] = [
         {

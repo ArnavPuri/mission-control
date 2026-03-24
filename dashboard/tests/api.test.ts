@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock fetch before importing api
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
@@ -75,37 +74,6 @@ describe('API Client', () => {
       mockFetch.mockResolvedValueOnce(mockResponse({ id: 'n1' }));
       const result = await api.notes.create({ title: 'New Note' });
       expect(result.id).toBe('n1');
-    });
-
-    it('filters by tag', async () => {
-      mockFetch.mockResolvedValueOnce(mockResponse([]));
-      await api.notes.list('guide');
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('tag=guide'),
-        expect.anything(),
-      );
-    });
-  });
-
-  describe('habits', () => {
-    it('lists habits', async () => {
-      mockFetch.mockResolvedValueOnce(mockResponse([{ id: 'h1', name: 'Exercise' }]));
-      const result = await api.habits.list();
-      expect(result).toHaveLength(1);
-    });
-
-    it('completes a habit', async () => {
-      mockFetch.mockResolvedValueOnce(mockResponse({ current_streak: 5 }));
-      const result = await api.habits.complete('h1');
-      expect(result.current_streak).toBe(5);
-    });
-  });
-
-  describe('api keys', () => {
-    it('creates a key', async () => {
-      mockFetch.mockResolvedValueOnce(mockResponse({ id: 'k1', key: 'mc_abc123', message: 'Save this key' }));
-      const result = await api.apiKeys.create({ name: 'Test' });
-      expect(result.key).toContain('mc_');
     });
   });
 

@@ -3,77 +3,43 @@
 import { useState, useEffect, useCallback } from 'react';
 import * as api from '../lib/api';
 import {
-  Settings, Key, Globe, Rss, Shield, Plus, X, Loader2,
-  Copy, Check, ExternalLink, Trash2, Bell,
+  Settings, Bell, Loader2, Save,
 } from 'lucide-react';
 import { clsx } from 'clsx';
-import { Card, Badge, EmptyState, InlineInput } from '../components/shared';
+import { Card } from '../components/shared';
 
 export default function SettingsPage() {
-  const [health, setHealth] = useState<api.HealthStatus | null>(null);
-  const [apiKeysList, setApiKeys] = useState<api.ApiKeyRecord[]>([]);
-  const [feedsList, setFeeds] = useState<api.RSSFeed[]>([]);
-  const [reposList, setRepos] = useState<api.GitHubRepo[]>([]);
+  const [brand, setBrand] = useState<api.BrandProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [newKeyName, setNewKeyName] = useState('');
-  const [showNewKey, setShowNewKey] = useState(false);
-  const [createdKey, setCreatedKey] = useState<string | null>(null);
-  const [copiedKey, setCopiedKey] = useState(false);
-  const [showAddFeed, setShowAddFeed] = useState(false);
-  const [showAddRepo, setShowAddRepo] = useState(false);
-  const [activeTab, setActiveTab] = useState<'general' | 'notifications' | 'api-keys' | 'github' | 'feeds'>('general');
-  const [notifPrefs, setNotifPrefs] = useState<api.NotificationPrefs | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
-      const [h, keys, feeds, repos, np] = await Promise.all([
-        api.health.check(),
-        api.apiKeys.list().catch(() => []),
-        api.feeds.list().catch(() => []),
-        api.github.repos().catch(() => []),
-        api.getNotificationPrefs().catch(() => ({ agent_completions: true, agent_failures: true, signal_summary: true, content_drafts: true })),
-      ]);
-      setHealth(h); setApiKeys(keys); setFeeds(feeds); setRepos(repos); setNotifPrefs(np);
+      const b = await api.brand.get().catch(() => null);
+      setBrand(b);
     } catch {} finally { setLoading(false); }
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const createApiKey = async () => {
-    if (!newKeyName.trim()) return;
-    const result = await api.apiKeys.create({ name: newKeyName.trim(), scopes: ['read', 'write'] });
-    setCreatedKey(result.key);
-    setNewKeyName('');
-    setShowNewKey(false);
-    loadData();
+  const saveBrand = async () => {
+    if (!brand) return;
+    setSaving(true);
+    try {
+      await api.brand.update(brand);
+    } catch (e) {
+      console.error('Failed to save brand profile:', e);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const revokeKey = async (id: string) => { await api.apiKeys.revoke(id); loadData(); };
-
-  const addFeed = async (url: string) => {
-    await api.feeds.create({ title: new URL(url).hostname, url });
-    setShowAddFeed(false);
-    loadData();
-  };
-
-  const deleteFeed = async (id: string) => { await api.feeds.delete(id); loadData(); };
-
-  const fetchFeed = async (id: string) => { await api.feeds.fetch(id); loadData(); };
-
-  const addRepo = async (fullName: string) => {
-    const [owner, repo] = fullName.split('/');
-    if (!owner || !repo) return;
-    await api.github.addRepo({ owner, repo, auto_create_tasks: true });
-    setShowAddRepo(false);
-    loadData();
-  };
-
-  const removeRepo = async (id: string) => { await api.github.removeRepo(id); loadData(); };
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedKey(true);
-    setTimeout(() => setCopiedKey(false), 2000);
+  const toggleNotifPref = async (key: keyof api.NotificationPrefs) => {
+    if (!brand) return;
+    const prefs = brand.notification_prefs || { agent_completions: true, agent_failures: true, signal_summary: true, content_drafts: true };
+    const updated = { ...prefs, [key]: !prefs[key] };
+    setBrand({ ...brand, notification_prefs: updated });
+    try { await api.brand.update({ notification_prefs: updated }); } catch {}
   };
 
   if (loading) {
@@ -84,23 +50,6 @@ export default function SettingsPage() {
     );
   }
 
-  const toggleNotifPref = async (key: keyof api.NotificationPrefs) => {
-    if (!notifPrefs) return;
-    const updated = { ...notifPrefs, [key]: !notifPrefs[key] };
-    setNotifPrefs(updated);
-    try { await api.updateNotificationPrefs({ [key]: updated[key] }); } catch {
-      setNotifPrefs(notifPrefs); // rollback
-    }
-  };
-
-  const tabs = [
-    { key: 'general', label: 'General', icon: Settings },
-    { key: 'notifications', label: 'Notifications', icon: Bell },
-    { key: 'api-keys', label: 'API Keys', icon: Key },
-    { key: 'github', label: 'GitHub', icon: Globe },
-    { key: 'feeds', label: 'RSS Feeds', icon: Rss },
-  ] as const;
-
   return (
     <div className="min-h-screen bg-mc-bg dark:bg-gray-950 transition-colors">
       <header className="px-4 sm:px-6 lg:px-8 py-3 bg-white dark:bg-gray-900 border-b border-mc-border dark:border-gray-800 sticky top-0 z-30">
@@ -110,269 +59,102 @@ export default function SettingsPage() {
         </div>
       </header>
 
-      <main className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* Tabs */}
-        <div className="flex gap-1 mb-6 border-b border-mc-border dark:border-gray-800 pb-0">
-          {tabs.map((tab) => (
+      <main className="max-w-[800px] mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col gap-6">
+        {/* Brand Profile */}
+        <Card className="p-5">
+          <h3 className="text-sm font-semibold text-mc-text dark:text-gray-100 mb-4">Brand Profile</h3>
+          <div className="flex flex-col gap-4">
+            <div>
+              <label className="text-xs text-mc-muted block mb-1">Name</label>
+              <input
+                value={brand?.name || ''}
+                onChange={(e) => setBrand({ ...brand!, name: e.target.value })}
+                className="w-full border border-mc-border dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-mc-text dark:text-gray-200 bg-white dark:bg-gray-800 outline-none focus:border-mc-accent"
+                placeholder="Your name or brand name"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-mc-muted block mb-1">Bio</label>
+              <textarea
+                value={brand?.bio || ''}
+                onChange={(e) => setBrand({ ...brand!, bio: e.target.value })}
+                rows={3}
+                className="w-full border border-mc-border dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-mc-text dark:text-gray-200 bg-white dark:bg-gray-800 outline-none focus:border-mc-accent resize-none"
+                placeholder="Short bio for content generation"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-mc-muted block mb-1">Tone</label>
+              <input
+                value={brand?.tone || ''}
+                onChange={(e) => setBrand({ ...brand!, tone: e.target.value })}
+                className="w-full border border-mc-border dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-mc-text dark:text-gray-200 bg-white dark:bg-gray-800 outline-none focus:border-mc-accent"
+                placeholder="e.g. Professional but approachable, technical yet clear"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-mc-muted block mb-1">Topics (comma-separated)</label>
+              <input
+                value={(brand?.topics || []).join(', ')}
+                onChange={(e) => setBrand({ ...brand!, topics: e.target.value.split(',').map(t => t.trim()).filter(Boolean) })}
+                className="w-full border border-mc-border dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-mc-text dark:text-gray-200 bg-white dark:bg-gray-800 outline-none focus:border-mc-accent"
+                placeholder="e.g. AI, startups, product development"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-mc-muted block mb-1">Avoid (comma-separated)</label>
+              <input
+                value={(brand?.avoid || []).join(', ')}
+                onChange={(e) => setBrand({ ...brand!, avoid: e.target.value.split(',').map(t => t.trim()).filter(Boolean) })}
+                className="w-full border border-mc-border dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-mc-text dark:text-gray-200 bg-white dark:bg-gray-800 outline-none focus:border-mc-accent"
+                placeholder="e.g. Politics, controversial opinions"
+              />
+            </div>
             <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={clsx(
-                'flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-all cursor-pointer bg-transparent border-b-2 -mb-px',
-                activeTab === tab.key
-                  ? 'border-mc-accent text-mc-accent'
-                  : 'border-transparent text-mc-muted hover:text-mc-text'
-              )}
+              onClick={saveBrand}
+              disabled={saving}
+              className="self-end flex items-center gap-2 px-4 py-2 bg-mc-accent text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors cursor-pointer disabled:opacity-50"
             >
-              <tab.icon size={14} />
-              {tab.label}
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              Save
             </button>
-          ))}
-        </div>
-
-        {/* General */}
-        {activeTab === 'general' && health && (
-          <div className="flex flex-col gap-4 max-w-2xl">
-            <Card className="p-4">
-              <h3 className="text-sm font-semibold text-mc-text dark:text-gray-100 mb-3">System Status</h3>
-              <div className="flex flex-col gap-2.5">
-                {[
-                  { label: 'Database', value: health.database, ok: health.database === 'connected' },
-                  { label: 'LLM Provider', value: health.llm_provider, ok: true },
-                  { label: 'Telegram', value: health.telegram, ok: health.telegram !== 'not configured' },
-                  { label: 'Status', value: health.status, ok: health.status === 'ok' },
-                ].map((item) => (
-                  <div key={item.label} className="flex items-center justify-between py-1">
-                    <span className="text-sm text-mc-muted dark:text-gray-400">{item.label}</span>
-                    <div className="flex items-center gap-2">
-                      <span className={clsx('w-2 h-2 rounded-full', item.ok ? 'bg-mc-green' : 'bg-mc-yellow')} />
-                      <span className="text-sm text-mc-text dark:text-gray-200">{item.value}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
           </div>
-        )}
+        </Card>
 
-        {/* Notifications */}
-        {activeTab === 'notifications' && notifPrefs && (
-          <div className="flex flex-col gap-4 max-w-2xl">
-            <p className="text-sm text-mc-muted dark:text-gray-400">
-              Control which notifications are sent to Telegram. Urgent notifications are sent immediately, routine ones are batched into a morning digest.
-            </p>
-            <Card className="p-4">
-              <h3 className="text-sm font-semibold text-mc-text dark:text-gray-100 mb-4">Telegram Notifications</h3>
-              <div className="flex flex-col gap-3">
-                {([
-                  { key: 'agent_completions' as const, label: 'Agent completions', desc: 'When an agent finishes a scheduled run (routine)' },
-                  { key: 'agent_failures' as const, label: 'Agent failures', desc: 'When an agent run fails or errors out (urgent)' },
-                  { key: 'signal_summary' as const, label: 'New leads found', desc: 'Summary count of new marketing signals discovered (urgent if high relevance)' },
-                  { key: 'content_drafts' as const, label: 'Content drafts ready', desc: 'When agents create new content drafts for review (routine)' },
-                ]).map((item) => (
-                  <div key={item.key} className="flex items-center justify-between py-2 border-b border-mc-border/40 dark:border-gray-800/40 last:border-0">
-                    <div>
-                      <div className="text-sm font-medium text-mc-text dark:text-gray-200">{item.label}</div>
-                      <div className="text-xs text-mc-dim mt-0.5">{item.desc}</div>
-                    </div>
-                    <button
-                      onClick={() => toggleNotifPref(item.key)}
-                      className={clsx(
-                        'relative w-10 h-5 rounded-full transition-colors cursor-pointer',
-                        notifPrefs[item.key] ? 'bg-mc-accent' : 'bg-gray-300 dark:bg-gray-600'
-                      )}
-                    >
-                      <span className={clsx(
-                        'absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform',
-                        notifPrefs[item.key] ? 'translate-x-5' : 'translate-x-0.5'
-                      )} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </Card>
+        {/* Notification Preferences */}
+        <Card className="p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Bell size={16} className="text-mc-accent" />
+            <h3 className="text-sm font-semibold text-mc-text dark:text-gray-100">Telegram Notifications</h3>
           </div>
-        )}
-
-        {/* API Keys */}
-        {activeTab === 'api-keys' && (
-          <div className="flex flex-col gap-4 max-w-2xl">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-mc-muted dark:text-gray-400">Manage API keys for external access to your Mission Control data.</p>
-              <button
-                onClick={() => setShowNewKey(true)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-mc-accent text-white text-sm font-medium rounded-lg hover:bg-mc-accent-hover transition-colors cursor-pointer"
-              >
-                <Plus size={14} /> New Key
-              </button>
-            </div>
-
-            {createdKey && (
-              <Card className="p-4 border-mc-green-light dark:border-mc-green-dark bg-mc-green-bg dark:bg-mc-green-bg-dark">
-                <div className="flex items-center gap-2 mb-2">
-                  <Shield size={14} className="text-mc-green" />
-                  <span className="text-sm font-semibold text-mc-green-dark dark:text-mc-green">API Key Created</span>
+          <div className="flex flex-col gap-3">
+            {([
+              { key: 'agent_completions' as const, label: 'Agent completions', desc: 'When an agent finishes a run' },
+              { key: 'agent_failures' as const, label: 'Agent failures', desc: 'When an agent run fails' },
+              { key: 'signal_summary' as const, label: 'New leads found', desc: 'Summary of new marketing signals' },
+              { key: 'content_drafts' as const, label: 'Content drafts ready', desc: 'When agents create content drafts' },
+            ]).map((item) => (
+              <div key={item.key} className="flex items-center justify-between py-2 border-b border-mc-border/40 dark:border-gray-800/40 last:border-0">
+                <div>
+                  <div className="text-sm font-medium text-mc-text dark:text-gray-200">{item.label}</div>
+                  <div className="text-xs text-mc-dim mt-0.5">{item.desc}</div>
                 </div>
-                <p className="text-xs text-mc-green dark:text-mc-green mb-2">Copy this key now — it won't be shown again.</p>
-                <div className="flex items-center gap-2">
-                  <code className="text-xs bg-white dark:bg-gray-800 border border-mc-green-light dark:border-mc-green-dark rounded px-2 py-1 font-mono flex-1 truncate">{createdKey}</code>
-                  <button
-                    onClick={() => copyToClipboard(createdKey)}
-                    className="px-2 py-1 rounded-lg border border-mc-green-light dark:border-mc-green-dark bg-white dark:bg-gray-800 text-mc-green hover:bg-mc-green-bg cursor-pointer transition-colors"
-                  >
-                    {copiedKey ? <Check size={14} /> : <Copy size={14} />}
-                  </button>
-                </div>
-              </Card>
-            )}
-
-            {showNewKey && (
-              <Card className="p-4">
-                <div className="flex gap-2">
-                  <input
-                    value={newKeyName}
-                    onChange={(e) => setNewKeyName(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') createApiKey(); if (e.key === 'Escape') setShowNewKey(false); }}
-                    placeholder="Key name (e.g., Dashboard Bot)"
-                    className="flex-1 border border-mc-border dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-mc-text dark:text-gray-200 bg-white dark:bg-gray-800 outline-none focus:border-mc-accent"
-                    autoFocus
-                  />
-                  <button onClick={createApiKey} className="px-3 py-2 bg-mc-accent text-white text-sm rounded-lg hover:bg-mc-accent-hover cursor-pointer">Create</button>
-                  <button onClick={() => setShowNewKey(false)} className="px-2 py-2 border border-mc-border rounded-lg text-mc-muted hover:bg-gray-50 cursor-pointer bg-white dark:bg-gray-800 dark:border-gray-700">
-                    <X size={14} />
-                  </button>
-                </div>
-              </Card>
-            )}
-
-            {apiKeysList.map((k) => (
-              <Card key={k.id} className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-medium text-mc-text dark:text-gray-200">{k.name}</span>
-                      <Badge variant={k.is_active ? 'success' : 'error'}>{k.is_active ? 'Active' : 'Revoked'}</Badge>
-                    </div>
-                    <div className="flex items-center gap-3 text-[11px] text-mc-dim">
-                      <span className="font-mono">{k.key_prefix}...</span>
-                      <span>Scopes: {k.scopes.join(', ')}</span>
-                      {k.last_used_at && <span>Last used: {new Date(k.last_used_at).toLocaleDateString()}</span>}
-                    </div>
-                  </div>
-                  {k.is_active && (
-                    <button
-                      onClick={() => revokeKey(k.id)}
-                      className="text-xs text-mc-dim hover:text-mc-red cursor-pointer bg-transparent border-none transition-colors"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                <button
+                  onClick={() => toggleNotifPref(item.key)}
+                  className={clsx(
+                    'relative w-10 h-5 rounded-full transition-colors cursor-pointer',
+                    brand?.notification_prefs?.[item.key] !== false ? 'bg-mc-accent' : 'bg-gray-300 dark:bg-gray-600'
                   )}
-                </div>
-              </Card>
+                >
+                  <span className={clsx(
+                    'absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform',
+                    brand?.notification_prefs?.[item.key] !== false ? 'translate-x-5' : 'translate-x-0.5'
+                  )} />
+                </button>
+              </div>
             ))}
-            {apiKeysList.length === 0 && !showNewKey && <EmptyState icon={Key} message="No API keys yet" />}
           </div>
-        )}
-
-        {/* GitHub */}
-        {activeTab === 'github' && (
-          <div className="flex flex-col gap-4 max-w-2xl">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-mc-muted dark:text-gray-400">Link GitHub repositories to sync issues and PRs.</p>
-              <button
-                onClick={() => setShowAddRepo(true)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-mc-accent text-white text-sm font-medium rounded-lg hover:bg-mc-accent-hover transition-colors cursor-pointer"
-              >
-                <Plus size={14} /> Add Repo
-              </button>
-            </div>
-
-            {showAddRepo && (
-              <InlineInput placeholder="owner/repo (e.g., acme/project)" onSubmit={addRepo} onCancel={() => setShowAddRepo(false)} />
-            )}
-
-            {reposList.map((r) => (
-              <Card key={r.id} className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <Globe size={14} className="text-mc-muted" />
-                      <span className="text-sm font-medium text-mc-text dark:text-gray-200">{r.full_name}</span>
-                      <Badge variant={r.is_active ? 'success' : 'default'}>{r.is_active ? 'Active' : 'Inactive'}</Badge>
-                    </div>
-                    <div className="flex items-center gap-3 text-[11px] text-mc-dim">
-                      {r.sync_issues && <span>Issues</span>}
-                      {r.sync_prs && <span>PRs</span>}
-                      {r.auto_create_tasks && <span>Auto-tasks</span>}
-                      {r.last_synced_at && <span>Last sync: {new Date(r.last_synced_at).toLocaleDateString()}</span>}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => removeRepo(r.id)}
-                    className="text-xs text-mc-dim hover:text-mc-red cursor-pointer bg-transparent border-none transition-colors"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </Card>
-            ))}
-            {reposList.length === 0 && !showAddRepo && <EmptyState icon={Globe} message="No GitHub repos linked" />}
-          </div>
-        )}
-
-        {/* RSS Feeds */}
-        {activeTab === 'feeds' && (
-          <div className="flex flex-col gap-4 max-w-2xl">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-mc-muted dark:text-gray-400">Subscribe to RSS feeds to auto-import articles to your reading list.</p>
-              <button
-                onClick={() => setShowAddFeed(true)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-mc-accent text-white text-sm font-medium rounded-lg hover:bg-mc-accent-hover transition-colors cursor-pointer"
-              >
-                <Plus size={14} /> Add Feed
-              </button>
-            </div>
-
-            {showAddFeed && (
-              <InlineInput placeholder="Feed URL (e.g., https://blog.example.com/rss)" onSubmit={addFeed} onCancel={() => setShowAddFeed(false)} />
-            )}
-
-            {feedsList.map((f) => (
-              <Card key={f.id} className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Rss size={14} className="text-mc-muted shrink-0" />
-                      <span className="text-sm font-medium text-mc-text dark:text-gray-200 truncate">{f.title}</span>
-                      <Badge variant={f.is_active ? 'success' : 'default'}>{f.is_active ? 'Active' : 'Paused'}</Badge>
-                      {f.error_count > 0 && <Badge variant="error">{f.error_count} errors</Badge>}
-                    </div>
-                    <div className="flex items-center gap-3 text-[11px] text-mc-dim">
-                      <span className="truncate max-w-[200px]">{f.url}</span>
-                      <span>Every {f.fetch_interval_minutes}m</span>
-                      {f.last_fetched_at && <span>Last: {new Date(f.last_fetched_at).toLocaleDateString()}</span>}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => fetchFeed(f.id)}
-                      className="text-xs text-mc-accent hover:underline cursor-pointer bg-transparent border-none"
-                    >
-                      Fetch
-                    </button>
-                    <button
-                      onClick={() => deleteFeed(f.id)}
-                      className="text-mc-dim hover:text-mc-red cursor-pointer bg-transparent border-none transition-colors"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-              </Card>
-            ))}
-            {feedsList.length === 0 && !showAddFeed && <EmptyState icon={Rss} message="No RSS feeds yet" />}
-          </div>
-        )}
+        </Card>
       </main>
     </div>
   );

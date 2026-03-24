@@ -128,30 +128,11 @@ All agents active, frequent manual triggers, Telegram chat sessions.
 |-----|---------|
 | **Reduce Pulse frequency** — change `12h` to `24h` in `reddit-scout.yaml` | Saves ~$2/mo |
 | **Disable Pulse entirely** — comment out its schedule | Saves ~$4/mo — it's ~50% of API cost |
-| **Use Ollama** — set `OLLAMA_BASE_URL` for local models | $0 API cost (needs 8+ GB RAM, quality varies) |
-| **Use OpenRouter** — set `OPENROUTER_API_KEY` | Access cheaper models, some free tiers |
 | **Lower per-run budgets** — reduce `max_budget_usd` in skill YAML | Hard cap prevents runaway costs |
 
-### Best-value setup
+### Recommended setup
 
-> Hetzner CX22 ($5/mo) + Anthropic API with default settings = **~$13/mo total** for a fully autonomous personal command center.
-
----
-
-## Free/Self-Hosted Option
-
-Mission Control works fully offline with Ollama:
-
-```bash
-# In .env
-OLLAMA_BASE_URL=http://localhost:11434
-```
-
-| Requirement | Spec |
-|-------------|------|
-| RAM | 8-16 GB (for 7B-13B models) |
-| GPU | Optional but recommended (NVIDIA, Apple Silicon) |
-| Storage | +5-10 GB per model |
+> Claude Pro/Max subscription ($20-100/mo) + Hetzner CX22 ($5/mo) for hosting = fully autonomous personal command center included in your subscription.
 | API cost | $0 |
 
 Trade-offs: slower inference, lower quality on complex reasoning tasks (idea validation, weekly reviews). Works great for daily check-ins and simple task management.

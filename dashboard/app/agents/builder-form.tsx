@@ -20,7 +20,7 @@ function slugify(name: string): string {
 // ─── Data Access Options ─────────────────────────────────
 
 const DATA_OPTIONS = [
-  'projects', 'tasks', 'ideas', 'notes',
+  'projects', 'tasks', 'notes',
   'marketing_signals', 'marketing_content',
 ] as const;
 
@@ -36,7 +36,6 @@ const MODELS = [
 const VARIABLE_MAP: Record<string, string> = {
   projects: '{{projects}}',
   tasks: '{{tasks}}',
-  ideas: '{{ideas}}',
   notes: '{{notes}}',
   marketing_signals: '{{marketing_signals}}',
   marketing_content: '{{marketing_content}}',
@@ -45,7 +44,6 @@ const VARIABLE_MAP: Record<string, string> = {
 const PREVIEW_MAP: Record<string, string> = {
   projects: '[3 projects]',
   tasks: '[5 tasks]',
-  ideas: '[2 ideas]',
   notes: '[5 notes]',
   marketing_signals: '[6 signals]',
   marketing_content: '[3 content pieces]',

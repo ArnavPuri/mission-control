@@ -42,17 +42,13 @@ Scheduler       ──read───▶  └────────────�
 
 ## Authentication Architecture
 
-The system supports a hierarchy of LLM auth methods:
+Uses Claude Code subscription (OAuth) exclusively:
 
 ```
-ANTHROPIC_API_KEY          → Direct API (recommended)
-CLAUDE_CODE_OAUTH_TOKEN    → Subscription-based via Agent SDK
-OPENROUTER_API_KEY         → Third-party proxy
-OLLAMA_BASE_URL            → Local/self-hosted
+CLAUDE_CODE_OAUTH_TOKEN    → Claude Pro/Max subscription via Agent SDK
 ```
 
-The runner tries Agent SDK first (which handles both API key and OAuth natively),
-then falls back to direct API calls if the SDK fails.
+All LLM calls go through the Claude Agent SDK. No API key needed.
 
 ## Database Schema
 

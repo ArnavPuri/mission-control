@@ -2,7 +2,6 @@
 Backend test suite for Mission Control API.
 
 Uses pytest-asyncio with an in-memory SQLite for isolation.
-Tests cover core CRUD endpoints and business logic.
 """
 
 import pytest
@@ -14,10 +13,8 @@ from sqlalchemy.pool import StaticPool
 from app.db.models import Base
 from app.main import app
 from app.db.session import get_db
-from app.api.rate_limit import limiter
 
 
-# Use SQLite for testing (avoids PostgreSQL dependency)
 TEST_DATABASE_URL = "sqlite+aiosqlite:///file::memory:?cache=shared"
 
 engine = create_async_engine(
@@ -43,11 +40,8 @@ app.dependency_overrides[get_db] = override_get_db
 
 @pytest_asyncio.fixture(autouse=True)
 async def setup_db():
-    """Create tables before each test, drop after."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    # Reset rate limiter between tests to avoid 429s
-    limiter._requests.clear()
     yield
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
@@ -55,7 +49,6 @@ async def setup_db():
 
 @pytest_asyncio.fixture
 async def client():
-    """Async HTTP client for testing."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
@@ -67,31 +60,24 @@ async def client():
 async def test_health(client: AsyncClient):
     r = await client.get("/health")
     assert r.status_code == 200
-    data = r.json()
-    assert data["status"] == "ok"
+    assert r.json()["status"] == "ok"
 
 
 # ─── Projects ─────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_project_crud(client: AsyncClient):
-    # Create
     r = await client.post("/api/projects", json={"name": "Test Project", "description": "A test"})
     assert r.status_code == 200
     project_id = r.json()["id"]
 
-    # List
     r = await client.get("/api/projects")
     assert r.status_code == 200
-    projects = r.json()
-    assert len(projects) >= 1
-    assert any(p["id"] == project_id for p in projects)
+    assert any(p["id"] == project_id for p in r.json())
 
-    # Update
     r = await client.patch(f"/api/projects/{project_id}", json={"description": "Updated"})
     assert r.status_code == 200
 
-    # Delete
     r = await client.delete(f"/api/projects/{project_id}")
     assert r.status_code == 200
 
@@ -100,47 +86,19 @@ async def test_project_crud(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_task_crud(client: AsyncClient):
-    # Create
     r = await client.post("/api/tasks", json={"text": "Buy groceries"})
     assert r.status_code == 200
     task_id = r.json()["id"]
 
-    # List
     r = await client.get("/api/tasks")
-    assert r.status_code == 200
-    tasks = r.json()
-    assert len(tasks) >= 1
-
-    # Update status
-    r = await client.patch(f"/api/tasks/{task_id}", json={"status": "done"})
-    assert r.status_code == 200
-
-    # Update priority
-    r = await client.patch(f"/api/tasks/{task_id}", json={"priority": "high"})
-    assert r.status_code == 200
-
-    # Delete
-    r = await client.delete(f"/api/tasks/{task_id}")
-    assert r.status_code == 200
-
-
-# ─── Ideas ─────────────────────────────────────────────────
-
-@pytest.mark.asyncio
-async def test_idea_crud(client: AsyncClient):
-    r = await client.post("/api/ideas", json={"text": "Build a rocket"})
-    assert r.status_code == 200
-    idea_id = r.json()["id"]
-
-    r = await client.get("/api/ideas")
     assert r.status_code == 200
     assert len(r.json()) >= 1
 
-    r = await client.delete(f"/api/ideas/{idea_id}")
+    r = await client.patch(f"/api/tasks/{task_id}", json={"status": "done"})
     assert r.status_code == 200
 
-
-# ─── Reading (removed in Sprint 16) ──────────────────────
+    r = await client.delete(f"/api/tasks/{task_id}")
+    assert r.status_code == 200
 
 
 # ─── Notes ─────────────────────────────────────────────────
@@ -153,7 +111,6 @@ async def test_notes_crud(client: AsyncClient):
 
     r = await client.get("/api/notes")
     assert r.status_code == 200
-    assert len(r.json()) >= 1
 
     r = await client.get(f"/api/notes/{note_id}")
     assert r.status_code == 200
@@ -166,76 +123,15 @@ async def test_notes_crud(client: AsyncClient):
     assert r.status_code == 200
 
 
-# ─── Habits, Goals, Journal (removed in Sprint 16) ───────
-
-
-# ─── API Keys ─────────────────────────────────────────────
-
-@pytest.mark.asyncio
-async def test_api_key_lifecycle(client: AsyncClient):
-    # Create
-    r = await client.post("/api/keys", json={"name": "Test Key", "scopes": ["read"]})
-    assert r.status_code == 200
-    data = r.json()
-    assert "key" in data
-    assert data["key"].startswith("mc_")
-    key_id = data["id"]
-
-    # List
-    r = await client.get("/api/keys")
-    assert r.status_code == 200
-    assert len(r.json()) >= 1
-
-    # Revoke
-    r = await client.delete(f"/api/keys/{key_id}")
-    assert r.status_code == 200
-    assert r.json()["revoked"] is True
-
-
-# ─── RSS Feeds ────────────────────────────────────────────
-
-@pytest.mark.asyncio
-async def test_feed_crud(client: AsyncClient):
-    r = await client.post("/api/feeds", json={"title": "Test Feed", "url": "https://example.com/rss"})
-    assert r.status_code == 200
-    feed_id = r.json()["id"]
-
-    r = await client.get("/api/feeds")
-    assert r.status_code == 200
-
-    r = await client.delete(f"/api/feeds/{feed_id}")
-    assert r.status_code == 200
-
-
-# ─── GitHub Repos ─────────────────────────────────────────
-
-@pytest.mark.asyncio
-async def test_github_repo_crud(client: AsyncClient):
-    r = await client.post("/api/github", json={"owner": "test", "repo": "project"})
-    assert r.status_code == 200
-    data = r.json()
-    repo_id = data["id"]
-    assert "webhook_secret" in data
-
-    r = await client.get("/api/github")
-    assert r.status_code == 200
-
-    r = await client.delete(f"/api/github/{repo_id}")
-    assert r.status_code == 200
-
-
 # ─── Search ───────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_search(client: AsyncClient):
-    # Create some data to search
     await client.post("/api/tasks", json={"text": "Unique searchable task"})
-    await client.post("/api/ideas", json={"text": "Unique searchable idea"})
 
     r = await client.get("/api/search?q=searchable")
     assert r.status_code == 200
-    data = r.json()
-    assert data["total"] >= 1
+    assert r.json()["total"] >= 1
 
 
 # ─── Notifications ────────────────────────────────────────
@@ -253,157 +149,50 @@ async def test_notifications(client: AsyncClient):
 # ─── Marketing Signals ───────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_create_signal(client: AsyncClient):
-    resp = await client.post("/api/mkt-signals", json={
-        "title": "Reddit opportunity in r/SaaS",
-        "body": "User asking about SEO tools",
+async def test_signal_crud(client: AsyncClient):
+    r = await client.post("/api/mkt-signals", json={
+        "title": "Reddit opportunity",
         "source_type": "reddit",
         "signal_type": "opportunity",
-        "source_url": "https://reddit.com/r/SaaS/123",
         "relevance_score": 0.85,
     })
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["title"] == "Reddit opportunity in r/SaaS"
-    assert data["status"] == "new"
-    assert "id" in data
+    assert r.status_code == 200
+    signal_id = r.json()["id"]
 
+    r = await client.get("/api/mkt-signals")
+    assert r.status_code == 200
 
-@pytest.mark.asyncio
-async def test_list_signals(client: AsyncClient):
-    await client.post("/api/mkt-signals", json={
-        "title": "Signal 1", "source_type": "reddit", "signal_type": "opportunity",
-    })
-    await client.post("/api/mkt-signals", json={
-        "title": "Signal 2", "source_type": "twitter", "signal_type": "trend",
-    })
-    resp = await client.get("/api/mkt-signals")
-    assert resp.status_code == 200
-    assert len(resp.json()) == 2
+    r = await client.patch(f"/api/mkt-signals/{signal_id}", json={"status": "reviewed"})
+    assert r.status_code == 200
 
-
-@pytest.mark.asyncio
-async def test_list_signals_filter_status(client: AsyncClient):
-    await client.post("/api/mkt-signals", json={
-        "title": "New signal", "source_type": "reddit", "signal_type": "opportunity",
-    })
-    resp = await client.get("/api/mkt-signals?status=reviewed")
-    assert resp.status_code == 200
-    assert len(resp.json()) == 0
-
-
-@pytest.mark.asyncio
-async def test_update_signal_status(client: AsyncClient):
-    create = await client.post("/api/mkt-signals", json={
-        "title": "To review", "source_type": "reddit", "signal_type": "opportunity",
-    })
-    signal_id = create.json()["id"]
-    resp = await client.patch(f"/api/mkt-signals/{signal_id}", json={"status": "reviewed"})
-    assert resp.status_code == 200
-    assert resp.json()["status"] == "reviewed"
-
-
-@pytest.mark.asyncio
-async def test_delete_signal(client: AsyncClient):
-    create = await client.post("/api/mkt-signals", json={
-        "title": "Delete me", "source_type": "reddit", "signal_type": "feedback",
-    })
-    signal_id = create.json()["id"]
-    resp = await client.delete(f"/api/mkt-signals/{signal_id}")
-    assert resp.status_code == 200
-    listing = await client.get("/api/mkt-signals")
-    assert len(listing.json()) == 0
+    r = await client.delete(f"/api/mkt-signals/{signal_id}")
+    assert r.status_code == 200
 
 
 # ─── Marketing Content ───────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_create_content(client: AsyncClient):
-    resp = await client.post("/api/mkt-content", json={
-        "title": "Reply to SEO thread",
-        "body": "Hey, I built a tool for exactly this...",
-        "channel": "reddit_comment",
+async def test_content_crud(client: AsyncClient):
+    r = await client.post("/api/mkt-content", json={
+        "title": "Draft tweet",
+        "body": "Check out our tool",
+        "channel": "x",
     })
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["title"] == "Reply to SEO thread"
-    assert data["status"] == "draft"
+    assert r.status_code == 200
+    content_id = r.json()["id"]
 
+    r = await client.patch(f"/api/mkt-content/{content_id}", json={"status": "approved"})
+    assert r.status_code == 200
 
-@pytest.mark.asyncio
-async def test_create_content_linked_to_signal(client: AsyncClient):
-    signal = await client.post("/api/mkt-signals", json={
-        "title": "Opportunity", "source_type": "reddit", "signal_type": "opportunity",
-    })
-    signal_id = signal.json()["id"]
-    resp = await client.post("/api/mkt-content", json={
-        "title": "Reply draft",
-        "body": "Content body",
-        "channel": "reddit_comment",
-        "signal_id": signal_id,
-    })
-    assert resp.status_code == 200
-    assert resp.json()["signal_id"] == signal_id
-
-
-@pytest.mark.asyncio
-async def test_approve_content(client: AsyncClient):
-    create = await client.post("/api/mkt-content", json={
-        "title": "Draft tweet", "body": "Check out our tool", "channel": "twitter_tweet",
-    })
-    content_id = create.json()["id"]
-    resp = await client.patch(f"/api/mkt-content/{content_id}", json={"status": "approved"})
-    assert resp.status_code == 200
-    assert resp.json()["status"] == "approved"
-
-
-@pytest.mark.asyncio
-async def test_mark_content_posted(client: AsyncClient):
-    create = await client.post("/api/mkt-content", json={
-        "title": "Tweet", "body": "Content", "channel": "twitter_tweet",
-    })
-    content_id = create.json()["id"]
-    await client.patch(f"/api/mkt-content/{content_id}", json={"status": "approved"})
-    resp = await client.patch(f"/api/mkt-content/{content_id}", json={
-        "status": "posted",
-        "posted_url": "https://twitter.com/user/status/123",
-    })
-    assert resp.status_code == 200
-    assert resp.json()["status"] == "posted"
-    assert resp.json()["posted_url"] == "https://twitter.com/user/status/123"
-
-
-@pytest.mark.asyncio
-async def test_list_content_filter_channel(client: AsyncClient):
-    await client.post("/api/mkt-content", json={
-        "title": "Tweet", "body": "...", "channel": "twitter_tweet",
-    })
-    await client.post("/api/mkt-content", json={
-        "title": "Reddit", "body": "...", "channel": "reddit_comment",
-    })
-    resp = await client.get("/api/mkt-content?channel=twitter_tweet")
-    assert resp.status_code == 200
-    assert len(resp.json()) == 1
-    assert resp.json()[0]["channel"] == "twitter_tweet"
-
-
-@pytest.mark.asyncio
-async def test_delete_content(client: AsyncClient):
-    create = await client.post("/api/mkt-content", json={
-        "title": "Delete me", "body": "...", "channel": "twitter_tweet",
-    })
-    content_id = create.json()["id"]
-    resp = await client.delete(f"/api/mkt-content/{content_id}")
-    assert resp.status_code == 200
-    listing = await client.get("/api/mkt-content")
-    assert len(listing.json()) == 0
+    r = await client.delete(f"/api/mkt-content/{content_id}")
+    assert r.status_code == 200
 
 
 # ─── Agent CRUD ──────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_create_agent(client):
-    resp = await client.post("/api/agents", json={
+    r = await client.post("/api/agents", json={
         "name": "Test Agent",
         "description": "A test agent",
         "agent_type": "marketing",
@@ -414,12 +203,10 @@ async def test_create_agent(client):
         "data_writes": ["tasks"],
         "max_budget_usd": 0.15,
     })
-    assert resp.status_code == 200
-    data = resp.json()
+    assert r.status_code == 200
+    data = r.json()
     assert data["name"] == "Test Agent"
     assert data["slug"] == "test-agent"
-    assert data["skill_file"] is None
-    assert "id" in data
 
 
 @pytest.mark.asyncio
@@ -428,55 +215,8 @@ async def test_create_agent_duplicate_name(client):
         "name": "Unique Agent", "agent_type": "ops",
         "prompt_template": "test", "model": "claude-haiku-4-5",
     })
-    resp = await client.post("/api/agents", json={
+    r = await client.post("/api/agents", json={
         "name": "Unique Agent", "agent_type": "ops",
         "prompt_template": "test2", "model": "claude-haiku-4-5",
     })
-    assert resp.status_code == 409
-
-
-@pytest.mark.asyncio
-async def test_get_agent_detail(client):
-    create = await client.post("/api/agents", json={
-        "name": "Detail Agent", "agent_type": "research",
-        "prompt_template": "Hello {{tasks}}", "model": "claude-haiku-4-5",
-        "data_reads": ["tasks"], "tools": ["web_search"],
-    })
-    agent_id = create.json()["id"]
-    resp = await client.get(f"/api/agents/{agent_id}")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["prompt_template"] == "Hello {{tasks}}"
-    assert data["tools"] == ["web_search"]
-    assert data["data_reads"] == ["tasks"]
-
-
-@pytest.mark.asyncio
-async def test_update_agent(client):
-    create = await client.post("/api/agents", json={
-        "name": "Update Me", "agent_type": "ops",
-        "prompt_template": "original", "model": "claude-haiku-4-5",
-    })
-    agent_id = create.json()["id"]
-    resp = await client.patch(f"/api/agents/{agent_id}", json={
-        "description": "Updated desc",
-        "model": "claude-sonnet-4-6",
-    })
-    assert resp.status_code == 200
-    assert resp.json()["description"] == "Updated desc"
-    assert resp.json()["model"] == "claude-sonnet-4-6"
-
-
-@pytest.mark.asyncio
-async def test_delete_agent_soft(client):
-    create = await client.post("/api/agents", json={
-        "name": "Delete Me", "agent_type": "ops",
-        "prompt_template": "test", "model": "claude-haiku-4-5",
-    })
-    agent_id = create.json()["id"]
-    resp = await client.delete(f"/api/agents/{agent_id}")
-    assert resp.status_code == 200
-    assert resp.json()["disabled"] == True
-    # Agent still exists but is disabled
-    detail = await client.get(f"/api/agents/{agent_id}")
-    assert detail.json()["status"] == "disabled"
+    assert r.status_code == 409

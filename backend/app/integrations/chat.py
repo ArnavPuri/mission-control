@@ -1,23 +1,24 @@
 """
 Chat Assistant — LLM-powered conversational handler for Telegram.
 
-Manages session memory, builds prompts with DB context, calls the
-Anthropic Messages API with tool_use, and executes actions.
+Manages session memory, builds prompts with DB context, calls
+Claude via the Agent SDK (OAuth), and executes actions.
 """
 
 import json
+import os
+import shutil
 import time
 import logging
 from datetime import datetime, timezone
 
-import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db.models import (
-    Task, Idea, ReadingItem, Project, AgentConfig,
-    AgentStatus, TaskStatus, EventLog,
+    Task, Project, AgentConfig, Note,
+    AgentStatus, TaskStatus, EventLog, MarketingContent,
 )
 from app.db.context import build_db_context
 from app.orchestrator.runner import AgentRunner
@@ -26,7 +27,7 @@ from app.api.ws import broadcast
 logger = logging.getLogger(__name__)
 
 
-# --- Tool Definitions (Anthropic Messages API format) ---
+# --- Tool Definitions ---
 
 CHAT_TOOLS = [
     {
@@ -50,25 +51,14 @@ CHAT_TOOLS = [
         },
     },
     {
-        "name": "create_idea",
-        "description": "Capture a new idea",
+        "name": "create_note",
+        "description": "Create a note for ideas, reading notes, reflections, etc.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "text": {"type": "string", "description": "Idea description"},
-                "tags": {"type": "array", "items": {"type": "string"}, "description": "Tags for the idea"},
-            },
-            "required": ["text"],
-        },
-    },
-    {
-        "name": "add_reading",
-        "description": "Add an item to the reading list",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "title": {"type": "string", "description": "Title of the article/resource"},
-                "url": {"type": "string", "description": "URL (optional)"},
+                "title": {"type": "string", "description": "Note title"},
+                "content": {"type": "string", "description": "Note content (markdown)"},
+                "tags": {"type": "array", "items": {"type": "string"}, "description": "Tags"},
             },
             "required": ["title"],
         },
@@ -96,7 +86,7 @@ CHAT_TOOLS = [
     },
     {
         "name": "trigger_agent",
-        "description": "Trigger a Mission Control agent to run. Check agent status first — don't start already-running agents.",
+        "description": "Trigger a Mission Control agent to run. Check agent status first.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -105,18 +95,29 @@ CHAT_TOOLS = [
             "required": ["agent_slug"],
         },
     },
+    {
+        "name": "create_content_draft",
+        "description": "Create a content draft for social media (X, LinkedIn, Instagram, YouTube, blog)",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Content title"},
+                "body": {"type": "string", "description": "The content/post text"},
+                "channel": {
+                    "type": "string",
+                    "enum": ["x", "linkedin", "instagram", "youtube", "blog"],
+                    "description": "Target platform",
+                },
+            },
+            "required": ["title", "body", "channel"],
+        },
+    },
 ]
 
 
-# --- Session Store (DB-backed with in-memory cache) ---
+# --- Session Store ---
 
 class SessionStore:
-    """Chat session storage backed by the database with in-memory cache.
-
-    Sessions are loaded from DB on first access and written back after changes.
-    Survives backend restarts unlike the previous in-memory-only approach.
-    """
-
     def __init__(self, timeout_minutes: int = 30, max_messages: int = 20):
         self.timeout_minutes = timeout_minutes
         self.max_messages = max_messages
@@ -126,7 +127,6 @@ class SessionStore:
         return f"{platform}:{user_id}"
 
     async def load(self, user_id: int, platform: str = "telegram", db: AsyncSession | None = None):
-        """Load session from DB into cache if not already loaded."""
         key = self._key(user_id, platform)
         if key in self._cache:
             return
@@ -151,7 +151,6 @@ class SessionStore:
                 await _do_load(fallback_db)
 
     async def add(self, user_id: int, role: str, content: str, platform: str = "telegram", db: AsyncSession | None = None):
-        """Add a message and persist to DB."""
         await self.load(user_id, platform, db=db)
         key = self._key(user_id, platform)
 
@@ -161,12 +160,10 @@ class SessionStore:
             "timestamp": time.time(),
         })
 
-        # Prune and save
         self._prune(key)
         await self._save(user_id, platform, db=db)
 
     def _prune(self, key: str):
-        """Remove expired messages and enforce max count."""
         cutoff = time.time() - (self.timeout_minutes * 60)
         self._cache[key] = [
             msg for msg in self._cache[key]
@@ -176,7 +173,6 @@ class SessionStore:
             self._cache[key] = self._cache[key][-self.max_messages:]
 
     async def _save(self, user_id: int, platform: str = "telegram", db: AsyncSession | None = None):
-        """Persist current session to database."""
         key = self._key(user_id, platform)
         messages = self._cache.get(key, [])
 
@@ -211,14 +207,12 @@ class SessionStore:
                 await _do_save(fallback_db, should_commit=True)
 
     async def get(self, user_id: int, platform: str = "telegram", db: AsyncSession | None = None) -> list[dict]:
-        """Get active session messages."""
         await self.load(user_id, platform, db=db)
         key = self._key(user_id, platform)
         self._prune(key)
         return self._cache.get(key, [])
 
     async def get_api_messages(self, user_id: int, platform: str = "telegram", db: AsyncSession | None = None) -> list[dict]:
-        """Get messages formatted for the Anthropic Messages API."""
         messages = await self.get(user_id, platform, db=db)
         return [
             {"role": msg["role"], "content": msg["content"]}
@@ -226,7 +220,6 @@ class SessionStore:
         ]
 
 
-# Singleton session store
 session_store = SessionStore(
     timeout_minutes=settings.chat_session_timeout_minutes,
     max_messages=20,
@@ -236,17 +229,14 @@ session_store = SessionStore(
 # --- System Prompt ---
 
 def build_system_prompt(db_context: dict) -> str:
-    """Build the system prompt for the chat assistant using configurable identity."""
     personality = settings.bot_personality
     bot_name = personality.get("name", "MC")
     tone = personality.get("tone", "")
     style = personality.get("style", "")
 
-    # Build identity section
     identity_section = ""
     identity = settings.identity
     if identity:
-        # Extract the "About Me" section for concise context
         identity_section = f"\n## About the User\n{identity}\n"
 
     tone_section = ""
@@ -256,7 +246,7 @@ def build_system_prompt(db_context: dict) -> str:
         tone_section += f"\nStyle: {style}"
 
     return f"""You are {bot_name}, a personal AI command center assistant.
-You help manage projects, tasks, ideas, habits, goals, and more.{tone_section}
+You help manage projects, tasks, notes, agents, and content creation for social media.{tone_section}
 {identity_section}
 ## Current Data
 
@@ -266,11 +256,8 @@ You help manage projects, tasks, ideas, habits, goals, and more.{tone_section}
 ### Open Tasks ({len(db_context.get("tasks", []))} shown)
 {json.dumps(db_context.get("tasks", []), indent=2)}
 
-### Recent Ideas
-{json.dumps(db_context.get("ideas", []), indent=2)}
-
-### Unread Reading List
-{json.dumps(db_context.get("reading", []), indent=2)}
+### Recent Notes
+{json.dumps(db_context.get("notes", []), indent=2)}
 
 ### Available Agents
 {json.dumps(db_context.get("agents", []), indent=2)}
@@ -278,71 +265,46 @@ You help manage projects, tasks, ideas, habits, goals, and more.{tone_section}
 ## Behavior
 - Act immediately on clear intents and confirm what you did
 - Ask for clarification on ambiguous requests
-- Always confirm before destructive actions (marking tasks done, changing priorities)
+- Always confirm before destructive actions
 - Keep replies concise — this is a chat, not an email
 - When listing items, use compact formatting
 - Match tasks by text content, not by ID
-- Check agent status before triggering (don't start already-running agents)"""
+- You can create content drafts for X, LinkedIn, Instagram, YouTube, blog
+- You can spawn agents for research, coding, marketing tasks
+
+## Actions
+When you need to take an action (create task, update task, create note, trigger agent, create content),
+include a JSON block in your response like this:
+
+```json
+{{"reply": "Your message to the user", "actions": [{{"type": "create_task", "text": "...", "priority": "medium"}}]}}
+```
+
+Available action types:
+- create_task: text (required), priority (critical/high/medium/low), project_name
+- update_task: task_text (required, fuzzy match), status (todo/in_progress/blocked/done), priority
+- create_note: title (required), content, tags
+- trigger_agent: agent_slug (required)
+- create_content_draft: title (required), body (required), channel (x/linkedin/instagram/youtube/blog)
+
+If no action is needed, just reply normally as plain text."""
 
 
-# --- LLM Call ---
+# --- LLM Call (Claude Agent SDK) ---
 
-async def call_anthropic(
-    messages: list[dict],
-    system: str,
-    tools: list[dict] | None = None,
-) -> dict:
-    """Call the Anthropic Messages API. Returns the raw response dict.
-
-    Supports API key auth only. OAuth tokens cannot be used with the
-    Messages API directly — use the Agent SDK for OAuth-based auth.
-    """
-    if not settings.anthropic_api_key:
-        raise ValueError(
-            "Chat assistant requires ANTHROPIC_API_KEY. "
-            "OAuth tokens are not supported for direct API calls."
-        )
-
-    headers = {
-        "Content-Type": "application/json",
-        "anthropic-version": "2023-06-01",
-        "x-api-key": settings.anthropic_api_key,
-    }
-
-    body = {
-        "model": settings.chat_model,
-        "max_tokens": 2048,
-        "system": system,
-        "messages": messages,
-    }
-    if tools:
-        body["tools"] = tools
-
-    async with httpx.AsyncClient(timeout=60) as client:
-        resp = await client.post(
-            "https://api.anthropic.com/v1/messages",
-            headers=headers,
-            json=body,
-        )
-        resp.raise_for_status()
-        return resp.json()
-
-
-async def call_anthropic_via_sdk(
+async def call_llm(
     messages: list[dict],
     system: str,
 ) -> str:
-    """Fallback: call via Claude Agent SDK (supports OAuth).
-
-    This path does NOT support tool_use — it sends the full prompt as text
-    and gets back a plain text response. Used when no API key is available.
-    """
-    import os
-    import shutil
-    import claude_agent_sdk
+    """Call Claude via the Agent SDK using OAuth token."""
     from claude_agent_sdk import query, ClaudeAgentOptions
 
-    # Flatten messages into a single prompt
+    if not settings.claude_code_oauth_token:
+        raise ValueError(
+            "CLAUDE_CODE_OAUTH_TOKEN is required. "
+            "Run `claude auth login` to authenticate with your Claude Code subscription."
+        )
+
     prompt_parts = []
     for msg in messages:
         role = msg["role"].upper()
@@ -351,30 +313,20 @@ async def call_anthropic_via_sdk(
 
     prompt = "\n\n".join(prompt_parts)
 
-    # Resolve CLI path and auth env
     env = dict(os.environ)
-    if settings.anthropic_api_key:
-        env["ANTHROPIC_API_KEY"] = settings.anthropic_api_key
-    if settings.claude_code_oauth_token:
-        env["CLAUDE_CODE_OAUTH_TOKEN"] = settings.claude_code_oauth_token
+    env["CLAUDE_CODE_OAUTH_TOKEN"] = settings.claude_code_oauth_token
 
-    cli_path = shutil.which("claude")
-    if not cli_path:
-        bundled = os.path.join(os.path.dirname(claude_agent_sdk.__file__), "_bundled", "claude")
-        if os.path.isfile(bundled):
-            cli_path = bundled
-
-    opts_kwargs: dict = {
+    options_kwargs = {
         "system_prompt": system,
         "model": settings.chat_model,
-        "max_turns": 5,
-        "allowed_tools": [],
+        "max_turns": 1,
         "env": env,
     }
+    cli_path = shutil.which("claude")
     if cli_path:
-        opts_kwargs["cli_path"] = cli_path
+        options_kwargs["cli_path"] = cli_path
 
-    options = ClaudeAgentOptions(**opts_kwargs)
+    options = ClaudeAgentOptions(**options_kwargs)
 
     full_response = ""
     try:
@@ -404,10 +356,7 @@ async def call_anthropic_via_sdk(
         logger.error(f"Chat SDK call failed: {e}", exc_info=True)
         return None
 
-    if not full_response:
-        print("[chat-sdk] WARNING: empty response", flush=True)
-
-    return full_response or None
+    return full_response or "Sorry, I couldn't generate a response. Please try again."
 
 
 # --- Tool Execution ---
@@ -415,7 +364,6 @@ async def call_anthropic_via_sdk(
 async def execute_tool_call(
     name: str, input_data: dict, db: AsyncSession
 ) -> str:
-    """Execute a single tool call and return a result string."""
 
     if name == "create_task":
         project_id = None
@@ -445,38 +393,17 @@ async def execute_tool_call(
         await broadcast("task.created", {"text": task.text, "source": "telegram:chat"})
         return f"Task created: {task.text} (priority: {task.priority})"
 
-    elif name == "create_idea":
-        idea = Idea(
-            text=input_data["text"],
+    elif name == "create_note":
+        note = Note(
+            title=input_data["title"],
+            content=input_data.get("content", ""),
             tags=input_data.get("tags", []),
             source="telegram:chat",
         )
-        db.add(idea)
-        db.add(EventLog(
-            event_type="idea.created",
-            entity_type="idea",
-            source="telegram:chat",
-            data={"text": idea.text},
-        ))
+        db.add(note)
         await db.flush()
-        await broadcast("idea.created", {"text": idea.text, "source": "telegram:chat"})
-        return f"Idea captured: {idea.text}"
-
-    elif name == "add_reading":
-        item = ReadingItem(
-            title=input_data["title"],
-            url=input_data.get("url"),
-            source="telegram:chat",
-        )
-        db.add(item)
-        db.add(EventLog(
-            event_type="reading.created",
-            entity_type="reading",
-            source="telegram:chat",
-            data={"title": item.title},
-        ))
-        await db.flush()
-        return f"Added to reading list: {item.title}"
+        await broadcast("note.created", {"title": note.title, "source": "telegram:chat"})
+        return f"Note created: {note.title}"
 
     elif name == "update_task":
         task_text = input_data["task_text"]
@@ -534,6 +461,17 @@ async def execute_tool_call(
         except Exception as e:
             return f"Agent {agent.name} failed: {str(e)[:200]}"
 
+    elif name == "create_content_draft":
+        content = MarketingContent(
+            title=input_data["title"],
+            body=input_data["body"],
+            channel=input_data["channel"],
+            source="telegram:chat",
+        )
+        db.add(content)
+        await db.flush()
+        return f"Content draft created for {input_data['channel']}: {input_data['title']}"
+
     return f"Unknown tool: {name}"
 
 
@@ -542,10 +480,7 @@ async def execute_tool_call(
 TELEGRAM_MAX_LENGTH = 4096
 
 
-def split_message(text: str | None) -> list[str]:
-    """Split a message into chunks that fit Telegram's 4096 char limit."""
-    if not text:
-        return ["No response generated."]
+def split_message(text: str) -> list[str]:
     if len(text) <= TELEGRAM_MAX_LENGTH:
         return [text]
 
@@ -555,7 +490,6 @@ def split_message(text: str | None) -> list[str]:
             chunks.append(text)
             break
 
-        # Try to split at a newline
         split_at = text.rfind("\n", 0, TELEGRAM_MAX_LENGTH)
         if split_at == -1:
             split_at = TELEGRAM_MAX_LENGTH
@@ -569,73 +503,70 @@ def split_message(text: str | None) -> list[str]:
 # --- Main Chat Handler ---
 
 async def handle_chat(user_id: int, user_message: str, db: AsyncSession) -> list[str]:
-    """Process a chat message and return response text(s).
-
-    This is the main entry point called by the Telegram handler.
-    Returns a list of strings (split for Telegram's message limit).
-
-    Uses the Messages API with tool_use if an API key is available.
-    Falls back to the Agent SDK (plain text, no tools) for OAuth auth.
-    """
-    # Add user message to session (reuse db session)
     await session_store.add(user_id, "user", user_message, db=db)
 
-    # Build context
     db_context = await build_db_context(db)
     system_prompt = build_system_prompt(db_context)
-
-    # Get conversation history
     messages = await session_store.get_api_messages(user_id, db=db)
 
-    # Choose execution path based on available auth
-    if settings.anthropic_api_key:
-        reply_text = await _handle_with_tools(messages, system_prompt, db)
-    else:
-        # OAuth path — no tool_use, just conversational
-        reply_text = await call_anthropic_via_sdk(messages, system_prompt)
+    reply_text = await call_llm(messages, system_prompt)
 
-    # Store assistant reply in session
+    # Check if the LLM embedded action blocks in the response
+    actions, clean_reply = _extract_actions(reply_text)
+    if actions:
+        action_results = []
+        for action in actions:
+            result = await execute_tool_call(action["name"], action.get("input", {}), db)
+            action_results.append(result)
+        await db.commit()
+        if clean_reply:
+            reply_text = clean_reply
+        else:
+            reply_text = "\n".join(action_results)
+
     await session_store.add(user_id, "assistant", reply_text, db=db)
-
     return split_message(reply_text)
 
 
-async def _handle_with_tools(
-    messages: list[dict], system_prompt: str, db: AsyncSession
-) -> str:
-    """Handle chat with full tool_use support (requires API key)."""
-    max_tool_rounds = 5
+def _extract_actions(text: str) -> tuple[list[dict], str]:
+    """Extract JSON action blocks from LLM response if present.
 
-    for _ in range(max_tool_rounds):
-        response = await call_anthropic(messages, system_prompt, CHAT_TOOLS)
+    Looks for ```json blocks containing action arrays, or a top-level
+    JSON object with "actions" key.
+    """
+    import re
 
-        # Check for tool use
-        tool_uses = [b for b in response.get("content", []) if b.get("type") == "tool_use"]
+    # Try to find ```json blocks with actions
+    pattern = r'```json\s*(\{[^`]*"actions"\s*:\s*\[[^`]*\})\s*```'
+    match = re.search(pattern, text, re.DOTALL)
+    if match:
+        try:
+            data = json.loads(match.group(1))
+            actions = data.get("actions", [])
+            clean = text[:match.start()].strip() + text[match.end():].strip()
+            # Convert to tool call format
+            tool_calls = []
+            for a in actions:
+                if isinstance(a, dict) and "type" in a:
+                    name = a.pop("type")
+                    tool_calls.append({"name": name, "input": a})
+            return tool_calls, clean
+        except (json.JSONDecodeError, KeyError):
+            pass
 
-        if not tool_uses:
-            break
+    # Try parsing entire response as JSON (for structured responses)
+    stripped = text.strip()
+    if stripped.startswith("{") and stripped.endswith("}"):
+        try:
+            data = json.loads(stripped)
+            if "actions" in data and isinstance(data["actions"], list):
+                tool_calls = []
+                for a in data["actions"]:
+                    if isinstance(a, dict) and "type" in a:
+                        name = a.pop("type")
+                        tool_calls.append({"name": name, "input": a})
+                return tool_calls, data.get("reply", data.get("summary", ""))
+        except json.JSONDecodeError:
+            pass
 
-        # Add assistant message with tool_use blocks to conversation
-        messages.append({"role": "assistant", "content": response["content"]})
-
-        # Execute each tool and build tool_result messages
-        tool_results = []
-        for tool_use in tool_uses:
-            result_text = await execute_tool_call(tool_use["name"], tool_use["input"], db)
-            tool_results.append({
-                "type": "tool_result",
-                "tool_use_id": tool_use["id"],
-                "content": result_text,
-            })
-
-        messages.append({"role": "user", "content": tool_results})
-        await db.commit()
-    else:
-        return "I got a bit carried away there. Could you rephrase?"
-
-    # Extract final text response
-    text_parts = [b["text"] for b in response.get("content", []) if b.get("type") == "text"]
-    reply_text = "\n".join(text_parts) if text_parts else "Done."
-
-    await db.commit()
-    return reply_text
+    return [], text

@@ -1,23 +1,14 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import * as api from './lib/api';
-import * as Checkbox from '@radix-ui/react-checkbox';
-import * as Progress from '@radix-ui/react-progress';
-import * as Popover from '@radix-ui/react-popover';
-import * as Dialog from '@radix-ui/react-dialog';
-import * as ScrollArea from '@radix-ui/react-scroll-area';
-import * as Tooltip from '@radix-ui/react-tooltip';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import * as Tabs from '@radix-ui/react-tabs';
+import * as Dialog from '@radix-ui/react-dialog';
 import {
-  Search, Bell, Plus, Play, Square, Check, X, ChevronRight,
-  Zap, FolderOpen, ListTodo, Lightbulb,
-  Clock, DollarSign, Activity, Shield,
-  CircleDot, Loader2, Sun, Moon, Filter,
-  Pencil, Calendar, BarChart3, FileText, Pin,
-  GripVertical, Sparkles, BellRing, GitBranch,
+  Search, Bell, Plus, Play, Check, X, ChevronRight,
+  FolderOpen, ListTodo, Clock, Activity,
+  Loader2, Sun, Moon, Pencil, FileText, Pin,
+  Bot, StickyNote, Megaphone,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -145,667 +136,128 @@ function StatusIndicator({ status }: { status: string }) {
   );
 }
 
-// ─── Panels ──────────────────────────────────────────────
+// ─── Helper ──────────────────────────────────────────────
 
-function HealthBadge({ projectId }: { projectId: string }) {
-  const [health, setHealth] = useState<api.ProjectHealth | null>(null);
-  useEffect(() => {
-    api.projects.health(projectId).then(setHealth).catch(() => {});
-  }, [projectId]);
-  if (!health) return null;
-  const colors: Record<string, string> = {
-    healthy: 'bg-mc-green-bg text-mc-green-dark dark:bg-mc-green-bg-dark dark:text-mc-green',
-    needs_attention: 'bg-mc-yellow-bg text-mc-yellow-dark dark:bg-mc-yellow-bg-dark dark:text-mc-yellow',
-    at_risk: 'bg-mc-red-bg text-mc-red-dark dark:bg-mc-red-bg-dark dark:text-mc-red',
+function timeAgo(dateStr: string | undefined): string {
+  if (!dateStr) return 'never';
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
+const PRIORITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+const PRIORITY_VARIANT: Record<string, 'error' | 'warning' | 'blue' | 'default'> = {
+  critical: 'error', high: 'warning', medium: 'blue', low: 'default',
+};
+
+// ─── Tasks Section ───────────────────────────────────────
+
+function TasksSection({ tasks, onRefresh }: { tasks: api.Task[]; onRefresh: () => void }) {
+  const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+
+  const openTasks = tasks
+    .filter((t) => t.status !== 'done')
+    .sort((a, b) => (PRIORITY_ORDER[a.priority] ?? 9) - (PRIORITY_ORDER[b.priority] ?? 9));
+
+  const handleAdd = async (text: string) => {
+    await api.tasks.create({ text, status: 'todo', priority: 'medium' });
+    setAdding(false);
+    onRefresh();
   };
-  return (
-    <Tooltip.Provider>
-      <Tooltip.Root>
-        <Tooltip.Trigger asChild>
-          <span className={clsx('inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold tabular-nums', colors[health.status])}>
-            {health.score}
-          </span>
-        </Tooltip.Trigger>
-        <Tooltip.Portal>
-          <Tooltip.Content
-            className="bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-[11px] px-3 py-2 rounded-lg shadow-lg max-w-[200px] z-50"
-            sideOffset={5}
-          >
-            <div className="font-medium mb-1">{health.status.replace('_', ' ')}</div>
-            <div>Done: {health.metrics.completion_rate}%</div>
-            <div>Velocity: {health.metrics.weekly_velocity}/wk</div>
-            {health.metrics.overdue_tasks > 0 && <div className="text-mc-red-light dark:text-mc-red">Overdue: {health.metrics.overdue_tasks}</div>}
-            <Tooltip.Arrow className="fill-gray-900 dark:fill-gray-100" />
-          </Tooltip.Content>
-        </Tooltip.Portal>
-      </Tooltip.Root>
-    </Tooltip.Provider>
-  );
-}
 
-function ProjectsPanel({ projects }: { projects: api.Project[] }) {
-  if (projects.length === 0) return <EmptyState icon={FolderOpen} message="No projects yet" />;
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-      {projects.map((p, i) => (
-        <div
-          key={p.id}
-          className="animate-fade-up bg-white dark:bg-gray-900 rounded-xl border border-mc-border dark:border-gray-800 p-4 hover:shadow-card-hover transition-all cursor-pointer"
-          style={{ borderLeftWidth: 3, borderLeftColor: p.color, animationDelay: `${i * 40}ms` }}
-        >
-          <div className="flex items-center gap-2 mb-1.5">
-            <StatusIndicator status={p.status} />
-            <span className="text-sm font-semibold text-mc-text dark:text-gray-100 truncate">{p.name}</span>
-            <HealthBadge projectId={p.id} />
-          </div>
-          <p className="text-xs text-mc-muted dark:text-gray-500 leading-relaxed truncate mb-3">{p.description}</p>
-          <div className="flex items-center gap-2">
-            <Badge variant={p.status === 'active' || p.status === 'launched' ? 'success' : 'warning'}>{p.status}</Badge>
-            <span className="text-[11px] text-mc-dim dark:text-gray-600">{p.open_task_count || 0} open · {p.idea_count || 0} ideas</span>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function AgentsPanel({ agents, projects, onToggle }: {
-  agents: api.Agent[]; projects: api.Project[];
-  onToggle: (id: string, action: 'run' | 'stop') => void;
-}) {
-  if (agents.length === 0) return <EmptyState icon={Zap} message="No agents configured" />;
-  return (
-    <div className="flex flex-col gap-2">
-      {agents.map((a, i) => {
-        const proj = projects.find((p) => p.id === a.project_id);
-        const isRunning = a.status === 'running';
-        return (
-          <div
-            key={a.id}
-            className="animate-fade-up bg-white dark:bg-gray-900 rounded-xl border border-mc-border dark:border-gray-800 px-4 py-3 flex items-center gap-3 hover:shadow-card-hover transition-all"
-            style={{ animationDelay: `${i * 30}ms` }}
-          >
-            <StatusIndicator status={a.status} />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-medium text-mc-text dark:text-gray-100">{a.name}</span>
-                <Badge>{a.agent_type}</Badge>
-                {proj && <Badge variant="blue">{proj.name}</Badge>}
-              </div>
-              <div className="flex items-center gap-3 mt-0.5">
-                <span className="text-xs text-mc-muted dark:text-gray-500 truncate hidden sm:block">{a.description}</span>
-                {a.schedule_value && (
-                  <span className="flex items-center gap-1 text-[11px] text-mc-dim shrink-0">
-                    <Clock size={10} /> {a.schedule_value}
-                  </span>
-                )}
-              </div>
-            </div>
-            <span className="text-xs text-mc-dim whitespace-nowrap hidden md:block">
-              {a.last_run_at ? new Date(a.last_run_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'Never'}
-            </span>
-            <button
-              onClick={() => onToggle(a.id, isRunning ? 'stop' : 'run')}
-              className={clsx(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer border',
-                isRunning
-                  ? 'bg-mc-red-bg dark:bg-mc-red-bg-dark border-mc-red-light dark:border-mc-red-dark text-mc-red dark:text-mc-red hover:bg-mc-red-light'
-                  : 'bg-mc-green-bg dark:bg-mc-green-bg-dark border-mc-green-light dark:border-mc-green-dark text-mc-green-dark dark:text-mc-green hover:bg-mc-green-light',
-              )}
-            >
-              {isRunning ? <><Square size={11} /> Stop</> : <><Play size={11} /> Run</>}
-            </button>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ─── Editable Task Row ───────────────────────────────────
-
-function EditableTaskRow({ task, onToggle, onUpdate, onDelete }: {
-  task: api.Task;
-  onToggle: () => void;
-  onUpdate: (data: Partial<api.Task>) => void;
-  onDelete: () => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [editText, setEditText] = useState(task.text);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const done = task.status === 'done';
-
-  const priorityDots: Record<string, string> = {
-    critical: 'bg-mc-priority-critical', high: 'bg-mc-priority-high', medium: 'bg-mc-priority-medium', low: 'bg-mc-priority-low',
+  const handleComplete = async (id: string) => {
+    await api.tasks.update(id, { status: 'done' });
+    onRefresh();
   };
-  const priorityOrder: api.Task['priority'][] = ['critical', 'high', 'medium', 'low'];
 
-  useEffect(() => {
-    if (editing) inputRef.current?.focus();
-  }, [editing]);
-
-  const saveEdit = () => {
-    if (editText.trim() && editText.trim() !== task.text) {
-      onUpdate({ text: editText.trim() });
+  const handleEditSave = async (id: string) => {
+    if (editText.trim()) {
+      await api.tasks.update(id, { text: editText.trim() });
+      onRefresh();
     }
-    setEditing(false);
+    setEditingId(null);
+  };
+
+  const handlePriorityChange = async (id: string, priority: string) => {
+    await api.tasks.update(id, { priority: priority as api.Task['priority'] });
+    onRefresh();
   };
 
   return (
-    <div className={clsx('flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-mc-subtle dark:hover:bg-gray-800 transition-colors group', done && 'opacity-50')}>
-      <Checkbox.Root
-        checked={done}
-        onCheckedChange={onToggle}
-        className={clsx(
-          'w-[18px] h-[18px] rounded border-2 flex items-center justify-center transition-all cursor-pointer shrink-0',
-          done ? 'bg-mc-accent border-mc-accent' : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 hover:border-mc-accent',
+    <Card className="p-4">
+      <SectionHeader icon={ListTodo} title="Tasks" count={openTasks.length} onAdd={() => setAdding(true)} />
+      {adding && <InlineInput placeholder="New task..." onSubmit={handleAdd} onCancel={() => setAdding(false)} />}
+      <div className="space-y-1 max-h-[400px] overflow-y-auto">
+        {openTasks.length === 0 && (
+          <p className="text-sm text-mc-dim dark:text-gray-500 py-4 text-center">No open tasks</p>
         )}
-      >
-        <Checkbox.Indicator>
-          <Check size={12} className="text-white" strokeWidth={3} />
-        </Checkbox.Indicator>
-      </Checkbox.Root>
-
-      {editing ? (
-        <input
-          ref={inputRef}
-          value={editText}
-          onChange={(e) => setEditText(e.target.value)}
-          onBlur={saveEdit}
-          onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') { setEditText(task.text); setEditing(false); } }}
-          className="flex-1 text-sm bg-white dark:bg-gray-800 border border-mc-accent rounded px-2 py-0.5 outline-none text-mc-text dark:text-gray-200"
-        />
-      ) : (
-        <span
-          className={clsx('flex-1 text-sm cursor-pointer', done ? 'text-mc-dim line-through' : 'text-mc-secondary dark:text-gray-300')}
-          onDoubleClick={() => { if (!done) { setEditText(task.text); setEditing(true); } }}
-        >
-          {task.text}
-        </span>
-      )}
-
-      {task.due_date && (
-        <span className="hidden sm:flex items-center gap-1 text-[11px] text-mc-dim shrink-0">
-          <Calendar size={10} />
-          {new Date(task.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-        </span>
-      )}
-
-      {/* Priority cycle on click */}
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
-          <button className={clsx('w-3 h-3 rounded-full shrink-0 cursor-pointer border-0 p-0', priorityDots[task.priority])} />
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content className="bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-700 rounded-lg shadow-dropdown p-1 z-50" sideOffset={5}>
-            {priorityOrder.map((p) => (
-              <DropdownMenu.Item
-                key={p}
-                onSelect={() => onUpdate({ priority: p })}
-                className="flex items-center gap-2 px-2.5 py-1.5 rounded text-xs cursor-pointer outline-none hover:bg-mc-subtle dark:hover:bg-gray-800 transition-colors text-mc-secondary dark:text-gray-300"
-              >
-                <span className={clsx('w-2.5 h-2.5 rounded-full', priorityDots[p])} />
-                <span className="capitalize">{p}</span>
-                {p === task.priority && <Check size={12} className="ml-auto text-mc-accent" />}
-              </DropdownMenu.Item>
-            ))}
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
-
-      <button
-        onClick={() => { if (!done) { setEditText(task.text); setEditing(true); } }}
-        className="opacity-0 group-hover:opacity-100 text-mc-dim hover:text-mc-accent transition-all cursor-pointer bg-transparent border-none p-0.5"
-      >
-        <Pencil size={12} />
-      </button>
-      <button
-        onClick={onDelete}
-        className="opacity-0 group-hover:opacity-100 text-mc-dim hover:text-mc-red transition-all cursor-pointer bg-transparent border-none p-0.5"
-      >
-        <X size={13} />
-      </button>
-    </div>
-  );
-}
-
-function KanbanColumn({ title, tasks, color, onToggle, onUpdate, onDelete }: {
-  title: string; tasks: api.Task[]; color: string;
-  onToggle: (id: string) => void; onUpdate: (id: string, data: Partial<api.Task>) => void; onDelete: (id: string) => void;
-}) {
-  return (
-    <div className="flex-1 min-w-[140px]">
-      <div className="flex items-center gap-2 mb-2 px-1">
-        <span className={clsx('w-2 h-2 rounded-full', color)} />
-        <span className="text-[11px] font-semibold text-mc-dim uppercase tracking-wide">{title}</span>
-        <span className="text-[10px] text-mc-dim">{tasks.length}</span>
-      </div>
-      <div className="flex flex-col gap-1.5">
-        {tasks.map((t) => {
-          const prioColor: Record<string, string> = { critical: 'border-l-mc-priority-critical', high: 'border-l-mc-priority-high', medium: 'border-l-mc-priority-medium', low: 'border-l-mc-priority-low' };
-          return (
-            <div
-              key={t.id}
-              className={clsx('bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-800 rounded-lg px-2.5 py-2 hover:shadow-card-hover transition-all border-l-2', prioColor[t.priority] || 'border-l-mc-priority-low')}
+        {openTasks.map((task) => (
+          <div
+            key={task.id}
+            className="group flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors"
+          >
+            <button
+              onClick={() => handleComplete(task.id)}
+              className="flex-shrink-0 w-5 h-5 rounded-full border-2 border-mc-border dark:border-gray-600 hover:border-mc-accent hover:bg-mc-accent-light dark:hover:border-blue-500 dark:hover:bg-blue-950 transition-all flex items-center justify-center cursor-pointer"
             >
-              <span className="text-xs text-mc-text dark:text-gray-200 line-clamp-2 leading-relaxed">{t.text}</span>
-              <div className="flex items-center gap-1 mt-1.5">
-                <Badge>{t.priority}</Badge>
-                {t.tags?.slice(0, 1).map((tag) => <Badge key={tag} variant="blue">{tag}</Badge>)}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function TasksPanel({ tasks, projects, onToggle, onUpdate, onAdd, showInput, setShowInput, onDelete, onReorder }: {
-  tasks: api.Task[]; projects: api.Project[];
-  onToggle: (id: string) => void; onUpdate: (id: string, data: Partial<api.Task>) => void;
-  onAdd: (text: string) => void;
-  showInput: boolean; setShowInput: (v: boolean) => void; onDelete: (id: string) => void;
-  onReorder: (taskIds: string[]) => void;
-}) {
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [filterPriority, setFilterPriority] = useState<string>('all');
-  const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [dragId, setDragId] = useState<string | null>(null);
-
-  const filtered = tasks.filter((t) => {
-    if (filterStatus !== 'all' && t.status !== filterStatus) return false;
-    if (filterPriority !== 'all' && t.priority !== filterPriority) return false;
-    return true;
-  });
-
-  const toggleSelect = (id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-
-  const bulkUpdateStatus = (status: string) => {
-    selected.forEach((id) => onUpdate(id, { status } as Partial<api.Task>));
-    setSelected(new Set());
-  };
-
-  const bulkUpdatePriority = (priority: string) => {
-    selected.forEach((id) => onUpdate(id, { priority } as Partial<api.Task>));
-    setSelected(new Set());
-  };
-
-  const bulkDelete = () => {
-    selected.forEach((id) => onDelete(id));
-    setSelected(new Set());
-  };
-
-  const filterBar = (
-    <div className="flex items-center gap-1.5 mb-3 flex-wrap">
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
-          <button className={clsx(
-            'flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium border cursor-pointer transition-colors',
-            filterStatus !== 'all'
-              ? 'bg-mc-blue-bg dark:bg-mc-blue-bg-dark border-mc-blue-light dark:border-mc-blue-dark text-mc-blue-dark dark:text-mc-blue'
-              : 'bg-white dark:bg-gray-800 border-mc-border dark:border-gray-700 text-mc-muted dark:text-gray-400',
-          )}>
-            <Filter size={10} />
-            {filterStatus === 'all' ? 'Status' : filterStatus}
-          </button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content className="bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-700 rounded-lg shadow-dropdown p-1 z-50" sideOffset={5}>
-            {['all', 'todo', 'in_progress', 'blocked', 'done'].map((s) => (
-              <DropdownMenu.Item
-                key={s}
-                onSelect={() => setFilterStatus(s)}
-                className="flex items-center gap-2 px-2.5 py-1.5 rounded text-xs cursor-pointer outline-none hover:bg-mc-subtle dark:hover:bg-gray-800 transition-colors text-mc-secondary dark:text-gray-300 capitalize"
-              >
-                {s === 'all' ? 'All statuses' : s.replace('_', ' ')}
-                {s === filterStatus && <Check size={12} className="ml-auto text-mc-accent" />}
-              </DropdownMenu.Item>
-            ))}
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
-
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
-          <button className={clsx(
-            'flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium border cursor-pointer transition-colors',
-            filterPriority !== 'all'
-              ? 'bg-mc-blue-bg dark:bg-mc-blue-bg-dark border-mc-blue-light dark:border-mc-blue-dark text-mc-blue-dark dark:text-mc-blue'
-              : 'bg-white dark:bg-gray-800 border-mc-border dark:border-gray-700 text-mc-muted dark:text-gray-400',
-          )}>
-            <Filter size={10} />
-            {filterPriority === 'all' ? 'Priority' : filterPriority}
-          </button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content className="bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-700 rounded-lg shadow-dropdown p-1 z-50" sideOffset={5}>
-            {['all', 'critical', 'high', 'medium', 'low'].map((p) => (
-              <DropdownMenu.Item
-                key={p}
-                onSelect={() => setFilterPriority(p)}
-                className="flex items-center gap-2 px-2.5 py-1.5 rounded text-xs cursor-pointer outline-none hover:bg-mc-subtle dark:hover:bg-gray-800 transition-colors text-mc-secondary dark:text-gray-300 capitalize"
-              >
-                {p === 'all' ? 'All priorities' : p}
-                {p === filterPriority && <Check size={12} className="ml-auto text-mc-accent" />}
-              </DropdownMenu.Item>
-            ))}
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
-
-      {(filterStatus !== 'all' || filterPriority !== 'all') && (
-        <button
-          onClick={() => { setFilterStatus('all'); setFilterPriority('all'); }}
-          className="text-[11px] text-mc-accent cursor-pointer bg-transparent border-none hover:underline"
-        >
-          Clear
-        </button>
-      )}
-
-      <div className="ml-auto flex items-center gap-0.5 bg-gray-100 dark:bg-gray-800 rounded-md p-0.5">
-        <button
-          onClick={() => setViewMode('list')}
-          className={clsx('px-2 py-1 rounded text-[11px] font-medium cursor-pointer border-none transition-colors', viewMode === 'list' ? 'bg-white dark:bg-gray-700 text-mc-text dark:text-gray-200 shadow-sm' : 'bg-transparent text-mc-dim')}
-        >
-          List
-        </button>
-        <button
-          onClick={() => setViewMode('kanban')}
-          className={clsx('px-2 py-1 rounded text-[11px] font-medium cursor-pointer border-none transition-colors', viewMode === 'kanban' ? 'bg-white dark:bg-gray-700 text-mc-text dark:text-gray-200 shadow-sm' : 'bg-transparent text-mc-dim')}
-        >
-          Board
-        </button>
-      </div>
-    </div>
-  );
-
-  // Bulk action bar
-  const bulkBar = selected.size > 0 && (
-    <div className="flex items-center gap-2 mb-2 px-2 py-1.5 bg-mc-accent-light dark:bg-blue-950 rounded-lg border border-mc-accent/20">
-      <span className="text-xs font-medium text-mc-accent">{selected.size} selected</span>
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
-          <button className="text-[11px] text-mc-accent hover:underline cursor-pointer bg-transparent border-none">Set status</button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content className="bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-700 rounded-lg shadow-dropdown p-1 z-50" sideOffset={5}>
-            {['todo', 'in_progress', 'blocked', 'done'].map((s) => (
-              <DropdownMenu.Item key={s} onSelect={() => bulkUpdateStatus(s)} className="px-2.5 py-1.5 rounded text-xs cursor-pointer outline-none hover:bg-mc-subtle dark:hover:bg-gray-800 capitalize text-mc-secondary dark:text-gray-300">
-                {s.replace('_', ' ')}
-              </DropdownMenu.Item>
-            ))}
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
-          <button className="text-[11px] text-mc-accent hover:underline cursor-pointer bg-transparent border-none">Set priority</button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content className="bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-700 rounded-lg shadow-dropdown p-1 z-50" sideOffset={5}>
-            {['critical', 'high', 'medium', 'low'].map((p) => (
-              <DropdownMenu.Item key={p} onSelect={() => bulkUpdatePriority(p)} className="px-2.5 py-1.5 rounded text-xs cursor-pointer outline-none hover:bg-mc-subtle dark:hover:bg-gray-800 capitalize text-mc-secondary dark:text-gray-300">
-                {p}
-              </DropdownMenu.Item>
-            ))}
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
-      <button onClick={bulkDelete} className="text-[11px] text-mc-red hover:underline cursor-pointer bg-transparent border-none">Delete</button>
-      <button onClick={() => setSelected(new Set())} className="text-[11px] text-mc-dim hover:underline cursor-pointer bg-transparent border-none ml-auto">Clear</button>
-    </div>
-  );
-
-  return (
-    <div>
-      {showInput && <InlineInput placeholder="What needs to be done?" onSubmit={onAdd} onCancel={() => setShowInput(false)} />}
-      {tasks.length > 3 && filterBar}
-      {bulkBar}
-
-      {viewMode === 'list' ? (
-        <div className="flex flex-col gap-0.5">
-          {filtered.map((t) => (
-            <div
-              key={t.id}
-              draggable
-              onDragStart={() => setDragId(t.id)}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => {
-                if (dragId && dragId !== t.id) {
-                  const ids = filtered.map((x) => x.id);
-                  const fromIdx = ids.indexOf(dragId);
-                  const toIdx = ids.indexOf(t.id);
-                  if (fromIdx >= 0 && toIdx >= 0) {
-                    ids.splice(fromIdx, 1);
-                    ids.splice(toIdx, 0, dragId);
-                    onReorder(ids);
-                  }
-                }
-                setDragId(null);
-              }}
-              onDragEnd={() => setDragId(null)}
-              className={clsx('flex items-center gap-0.5', dragId === t.id && 'opacity-40')}
-            >
-              <GripVertical size={12} className="text-mc-dim cursor-grab shrink-0 hover:text-mc-muted" />
+              <Check size={10} className="text-transparent group-hover:text-mc-accent dark:group-hover:text-blue-400" />
+            </button>
+            {editingId === task.id ? (
               <input
-                type="checkbox"
-                checked={selected.has(t.id)}
-                onChange={() => toggleSelect(t.id)}
-                className="w-3.5 h-3.5 rounded border-mc-border accent-mc-accent cursor-pointer shrink-0"
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                onBlur={() => handleEditSave(task.id)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleEditSave(task.id); if (e.key === 'Escape') setEditingId(null); }}
+                autoFocus
+                className="flex-1 text-sm bg-transparent border-b border-mc-accent outline-none text-mc-text dark:text-gray-200"
               />
-              <div className="flex-1 min-w-0">
-                <EditableTaskRow
-                  task={t}
-                  onToggle={() => onToggle(t.id)}
-                  onUpdate={(data) => onUpdate(t.id, data)}
-                  onDelete={() => onDelete(t.id)}
-                />
-              </div>
-            </div>
-          ))}
-          {filtered.length === 0 && tasks.length > 0 && (
-            <div className="text-xs text-mc-dim text-center py-4">No tasks match filters</div>
-          )}
-          {tasks.length === 0 && !showInput && <EmptyState icon={ListTodo} message="All clear!" small />}
-        </div>
-      ) : (
-        <div className="flex gap-3 overflow-x-auto pb-2">
-          {([
-            { key: 'todo', title: 'To Do', color: 'bg-gray-400' },
-            { key: 'in_progress', title: 'In Progress', color: 'bg-mc-blue' },
-            { key: 'blocked', title: 'Blocked', color: 'bg-mc-red' },
-            { key: 'done', title: 'Done', color: 'bg-mc-green' },
-          ] as const).map((col) => (
-            <KanbanColumn
-              key={col.key}
-              title={col.title}
-              color={col.color}
-              tasks={filtered.filter((t) => t.status === col.key)}
-              onToggle={onToggle}
-              onUpdate={onUpdate}
-              onDelete={onDelete}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function IdeasPanel({ ideas, onAdd, showInput, setShowInput, onDelete }: {
-  ideas: api.Idea[]; onAdd: (text: string) => void;
-  showInput: boolean; setShowInput: (v: boolean) => void; onDelete: (id: string) => void;
-}) {
-  return (
-    <div>
-      {showInput && <InlineInput placeholder="Capture an idea..." onSubmit={onAdd} onCancel={() => setShowInput(false)} />}
-      <div className="flex flex-col gap-2">
-        {ideas.map((idea) => (
-          <div key={idea.id} className="bg-mc-purple-bg/50 dark:bg-mc-purple-bg-dark/30 border border-mc-purple-light dark:border-mc-purple-dark rounded-lg px-3.5 py-2.5 hover:bg-mc-purple-bg dark:hover:bg-mc-purple-bg-dark/50 transition-colors group">
-            <div className="flex justify-between items-start">
-              <span className="text-sm text-mc-secondary dark:text-gray-300 flex-1">{idea.text}</span>
-              <button onClick={() => onDelete(idea.id)} className="opacity-0 group-hover:opacity-100 text-mc-dim hover:text-mc-red transition-all cursor-pointer bg-transparent border-none p-0.5 ml-2">
-                <X size={13} />
-              </button>
-            </div>
-            <div className="flex gap-1.5 mt-2 items-center">
-              {idea.tags?.map((tag) => <Badge key={tag} variant="purple">{tag}</Badge>)}
-              {idea.score != null && <Badge variant={idea.score >= 7 ? 'success' : 'warning'}>{idea.score}/10</Badge>}
-              <span className="text-[11px] text-mc-dim ml-auto">
-                {new Date(idea.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+            ) : (
+              <span
+                className="flex-1 text-sm text-mc-text dark:text-gray-300 truncate cursor-pointer"
+                onDoubleClick={() => { setEditingId(task.id); setEditText(task.text); }}
+              >
+                {task.text}
               </span>
-            </div>
-          </div>
-        ))}
-        {ideas.length === 0 && !showInput && <EmptyState icon={Lightbulb} message="No ideas yet" small />}
-      </div>
-    </div>
-  );
-}
-
-
-function NotesPanel({ notes, onAdd, onDelete, onTogglePin, showInput, setShowInput }: {
-  notes: api.Note[]; onAdd: (title: string) => void; onDelete: (id: string) => void;
-  onTogglePin: (id: string) => void; showInput: boolean; setShowInput: (v: boolean) => void;
-}) {
-  return (
-    <div>
-      {showInput && <InlineInput placeholder="Note title..." onSubmit={onAdd} onCancel={() => setShowInput(false)} />}
-      <div className="flex flex-col gap-2">
-        {notes.slice(0, 8).map((n) => (
-          <div key={n.id} className="bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-800 rounded-lg px-3.5 py-2.5 hover:shadow-card-hover transition-all group">
-            <div className="flex items-center gap-2">
-              <button onClick={() => onTogglePin(n.id)} className={clsx('shrink-0 cursor-pointer bg-transparent border-none p-0', n.is_pinned ? 'text-mc-yellow' : 'text-gray-300 dark:text-gray-700 hover:text-mc-yellow')}>
-                <Pin size={12} />
-              </button>
-              <span className="text-sm text-mc-text dark:text-gray-200 font-medium flex-1 truncate">{n.title}</span>
-              <button onClick={() => onDelete(n.id)} className="opacity-0 group-hover:opacity-100 text-mc-dim hover:text-mc-red transition-all cursor-pointer bg-transparent border-none p-0">
-                <X size={12} />
-              </button>
-            </div>
-            {n.content && (
-              <p className="text-xs text-mc-muted dark:text-gray-500 mt-1 line-clamp-2">{n.content.slice(0, 120)}</p>
             )}
-            <div className="flex items-center gap-1.5 mt-1.5">
-              {n.tags?.map((tag) => <Badge key={tag}>{tag}</Badge>)}
-              <span className="text-[10px] text-mc-dim ml-auto">
-                {new Date(n.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button className="flex-shrink-0 cursor-pointer">
+                  <Badge variant={PRIORITY_VARIANT[task.priority]}>{task.priority}</Badge>
+                </button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content className="bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-700 rounded-lg shadow-dropdown p-1 z-50" sideOffset={4}>
+                  {['critical', 'high', 'medium', 'low'].map((p) => (
+                    <DropdownMenu.Item
+                      key={p}
+                      onSelect={() => handlePriorityChange(task.id, p)}
+                      className="px-3 py-1.5 text-sm text-mc-text dark:text-gray-300 rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 outline-none capitalize"
+                    >
+                      {p}
+                    </DropdownMenu.Item>
+                  ))}
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
+            {task.due_date && (
+              <span className="text-[11px] text-mc-dim dark:text-gray-500 flex-shrink-0">
+                <Clock size={10} className="inline mr-0.5" />
+                {new Date(task.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
               </span>
-            </div>
-          </div>
-        ))}
-        {notes.length === 0 && !showInput && <EmptyState icon={FileText} message="No notes yet" small />}
-      </div>
-    </div>
-  );
-}
-
-function AgentAnalyticsPanel({ analytics, agents }: { analytics: api.AgentAnalyticsOverview | null; agents: api.Agent[] }) {
-  if (!analytics || analytics.agents.length === 0) {
-    return <EmptyState icon={BarChart3} message="No agent analytics yet" small />;
-  }
-
-  const { totals } = analytics;
-
-  return (
-    <div className="flex flex-col gap-3">
-      {/* Summary row */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="bg-mc-subtle dark:bg-gray-800 rounded-lg px-3 py-2 text-center">
-          <div className="text-lg font-bold text-mc-text dark:text-gray-100">{totals.total_runs}</div>
-          <div className="text-[11px] text-mc-dim">Total Runs</div>
-        </div>
-        <div className="bg-mc-subtle dark:bg-gray-800 rounded-lg px-3 py-2 text-center">
-          <div className={clsx('text-lg font-bold', totals.overall_success_rate >= 80 ? 'text-mc-green' : totals.overall_success_rate >= 50 ? 'text-mc-yellow' : 'text-mc-red')}>
-            {Math.round(totals.overall_success_rate)}%
-          </div>
-          <div className="text-[11px] text-mc-dim">Success</div>
-        </div>
-        <div className="bg-mc-subtle dark:bg-gray-800 rounded-lg px-3 py-2 text-center">
-          <div className="text-lg font-bold text-mc-text dark:text-gray-100 font-mono">${totals.total_cost_usd.toFixed(2)}</div>
-          <div className="text-[11px] text-mc-dim">Total Cost</div>
-        </div>
-      </div>
-
-      {/* Per-agent breakdown */}
-      {analytics.agents.map((a) => (
-        <div key={a.agent_id} className="bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-800 rounded-lg px-3 py-2.5">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs font-medium text-mc-text dark:text-gray-200 truncate">{a.agent_name}</span>
-            <span className="text-[11px] text-mc-dim font-mono">{a.model}</span>
-          </div>
-          <div className="flex items-center gap-3 text-[11px]">
-            <span className="text-mc-muted">{a.total_runs} runs</span>
-            <span className={clsx(a.success_rate >= 80 ? 'text-mc-green' : a.success_rate >= 50 ? 'text-mc-yellow' : 'text-mc-red')}>
-              {Math.round(a.success_rate)}% ok
-            </span>
-            <span className={clsx('font-mono', a.total_cost_usd > 0.5 ? 'text-mc-yellow' : 'text-mc-green')}>
-              ${a.total_cost_usd.toFixed(3)}
-            </span>
-            {a.avg_duration_seconds > 0 && (
-              <span className="text-mc-dim">{Math.round(a.avg_duration_seconds)}s avg</span>
             )}
-          </div>
-          {/* Mini cost sparkline */}
-          {Object.keys(a.daily_costs).length > 0 && (
-            <div className="flex items-end gap-px mt-2 h-4">
-              {Object.entries(a.daily_costs).slice(-14).map(([day, cost]) => {
-                const maxCost = Math.max(...Object.values(a.daily_costs), 0.01);
-                const h = Math.max(2, (cost / maxCost) * 16);
-                return (
-                  <div
-                    key={day}
-                    className="flex-1 rounded-t bg-mc-accent/40 dark:bg-blue-500/30"
-                    style={{ height: `${h}px` }}
-                  />
-                );
-              })}
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-
-function ApprovalsPanel({ approvals, onApprove, onReject }: {
-  approvals: api.Approval[]; onApprove: (id: string) => void; onReject: (id: string) => void;
-}) {
-  if (approvals.length === 0) return null;
-  return (
-    <Card className="border-mc-yellow-light dark:border-mc-yellow-dark bg-mc-yellow-bg/30 dark:bg-mc-yellow-bg-dark/20 p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <Shield size={15} className="text-mc-yellow" />
-        <h3 className="text-sm font-semibold text-mc-yellow-dark dark:text-mc-yellow">Pending Approvals</h3>
-        <Badge variant="warning">{approvals.length}</Badge>
-      </div>
-      <div className="flex flex-col gap-2">
-        {approvals.map((a) => (
-          <div key={a.id} className="bg-white dark:bg-gray-900 rounded-lg border border-mc-yellow-light dark:border-mc-yellow-dark px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-0.5">
-                <span className="text-sm font-medium text-mc-text dark:text-gray-100">{a.agent_name}</span>
-                <Badge variant="warning">{a.action_count} actions</Badge>
-              </div>
-              <p className="text-xs text-mc-muted dark:text-gray-500 truncate">{a.summary}</p>
-            </div>
-            <div className="flex gap-2 shrink-0">
-              <button onClick={() => onApprove(a.id)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-mc-green-bg dark:bg-mc-green-bg-dark border border-mc-green-light dark:border-mc-green-dark text-mc-green-dark dark:text-mc-green hover:bg-mc-green-light transition-colors cursor-pointer">
-                <Check size={12} /> Approve
-              </button>
-              <button onClick={() => onReject(a.id)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-mc-red-bg dark:bg-mc-red-bg-dark border border-mc-red-light dark:border-mc-red-dark text-mc-red dark:text-mc-red hover:bg-mc-red-light transition-colors cursor-pointer">
-                <X size={12} /> Reject
-              </button>
-            </div>
+            <button
+              onClick={() => { setEditingId(task.id); setEditText(task.text); }}
+              className="opacity-0 group-hover:opacity-100 text-mc-dim hover:text-mc-text dark:hover:text-gray-200 transition-all cursor-pointer"
+            >
+              <Pencil size={12} />
+            </button>
           </div>
         ))}
       </div>
@@ -813,645 +265,349 @@ function ApprovalsPanel({ approvals, onApprove, onReject }: {
   );
 }
 
-// ─── Notification Bell ───────────────────────────────────
+// ─── Projects Section ────────────────────────────────────
 
-function NotificationBell({ notifications, unreadCount, onMarkRead, onMarkAllRead }: {
-  notifications: api.Notification[]; unreadCount: number;
-  onMarkRead: (id: string) => void; onMarkAllRead: () => void;
-}) {
-  const categoryColors: Record<string, string> = {
-    success: 'bg-mc-green', error: 'bg-mc-red', warning: 'bg-mc-yellow', info: 'bg-mc-blue', approval: 'bg-mc-yellow',
+function ProjectsSection({ projects }: { projects: api.Project[] }) {
+  const statusVariant: Record<string, 'success' | 'warning' | 'default' | 'purple'> = {
+    active: 'success', planning: 'warning', launched: 'purple', paused: 'default', archived: 'default',
   };
+
   return (
-    <Popover.Root>
-      <Popover.Trigger asChild>
-        <button className="relative w-9 h-9 rounded-lg border border-mc-border dark:border-gray-700 bg-white dark:bg-gray-800 text-mc-muted dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-mc-text transition-all flex items-center justify-center cursor-pointer">
-          <Bell size={16} />
-          {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 w-[18px] h-[18px] bg-mc-red rounded-full flex items-center justify-center text-[10px] text-white font-bold">
-              {unreadCount > 9 ? '9+' : unreadCount}
-            </span>
-          )}
-        </button>
-      </Popover.Trigger>
-      <Popover.Portal>
-        <Popover.Content className="w-80 bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-700 rounded-xl shadow-dropdown overflow-hidden z-50" sideOffset={8} align="end">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-mc-border dark:border-gray-800">
-            <span className="text-sm font-semibold text-mc-text dark:text-gray-100">Notifications</span>
-            {unreadCount > 0 && (
-              <button onClick={onMarkAllRead} className="text-xs text-mc-accent bg-transparent border-none cursor-pointer hover:underline font-medium">Mark all read</button>
-            )}
+    <Card className="p-4">
+      <SectionHeader icon={FolderOpen} title="Projects" count={projects.length} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {projects.length === 0 && (
+          <p className="text-sm text-mc-dim dark:text-gray-500 py-4 text-center col-span-2">No projects</p>
+        )}
+        {projects.map((project) => (
+          <div
+            key={project.id}
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-mc-border dark:border-gray-800 hover:shadow-card-hover transition-shadow"
+          >
+            <div
+              className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+              style={{ backgroundColor: project.color || '#6b7280' }}
+            />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-mc-text dark:text-gray-200 truncate">
+                  {project.name}
+                </span>
+                <Badge variant={statusVariant[project.status] || 'default'}>{project.status}</Badge>
+              </div>
+              <div className="flex items-center gap-3 mt-0.5 text-[11px] text-mc-dim dark:text-gray-500">
+                <span>{project.open_task_count} open tasks</span>
+                {project.agent_count > 0 && <span>{project.agent_count} agents</span>}
+              </div>
+            </div>
+            <ChevronRight size={14} className="text-mc-dim dark:text-gray-600 flex-shrink-0" />
           </div>
-          <ScrollArea.Root className="max-h-72">
-            <ScrollArea.Viewport className="w-full">
-              {notifications.slice(0, 10).map((n) => (
-                <div
-                  key={n.id}
-                  className={clsx('px-4 py-3 border-b border-mc-border/50 dark:border-gray-800 hover:bg-mc-subtle dark:hover:bg-gray-800 transition-colors cursor-pointer', n.is_read && 'opacity-50')}
-                  onClick={() => { if (!n.is_read) onMarkRead(n.id); }}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className={clsx('w-2 h-2 rounded-full shrink-0', categoryColors[n.category] || 'bg-gray-400')} />
-                    <span className="text-sm text-mc-text dark:text-gray-200 flex-1 truncate">{n.title}</span>
-                    <span className="text-[11px] text-mc-dim">{new Date(n.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>
-                  </div>
-                  {n.body && <p className="text-xs text-mc-muted dark:text-gray-500 mt-0.5 truncate pl-4">{n.body}</p>}
-                </div>
-              ))}
-              {notifications.length === 0 && <div className="text-sm text-mc-dim text-center py-8">No notifications</div>}
-            </ScrollArea.Viewport>
-          </ScrollArea.Root>
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
-  );
-}
-
-// ─── Activity Heatmap ────────────────────────────────────
-
-function ActivityHeatmap({ tasks }: { tasks: api.Task[] }) {
-  const today = new Date();
-  const days: { date: string; count: number; level: number }[] = [];
-  for (let i = 83; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().split('T')[0];
-    let count = 0;
-    count += tasks.filter((t) => t.created_at.startsWith(dateStr)).length;
-    const level = count === 0 ? 0 : count <= 2 ? 1 : count <= 5 ? 2 : count <= 10 ? 3 : 4;
-    days.push({ date: dateStr, count, level });
-  }
-  const colors = ['bg-gray-100 dark:bg-gray-800', 'bg-blue-100 dark:bg-blue-900', 'bg-blue-200 dark:bg-blue-700', 'bg-blue-400 dark:bg-blue-500', 'bg-blue-600 dark:bg-blue-400'];
-  return (
-    <div>
-      <div className="flex gap-[3px] flex-wrap">
-        {days.map((d) => (
-          <Tooltip.Root key={d.date}>
-            <Tooltip.Trigger asChild>
-              <div className={clsx('w-[11px] h-[11px] rounded-[2px]', colors[d.level])} />
-            </Tooltip.Trigger>
-            <Tooltip.Content className="bg-mc-text text-white text-xs px-2 py-1 rounded-md z-50" sideOffset={5}>
-              {d.date}: {d.count} activities
-            </Tooltip.Content>
-          </Tooltip.Root>
         ))}
       </div>
-      <div className="flex items-center gap-1.5 mt-2">
-        <span className="text-[11px] text-mc-dim">Less</span>
-        {colors.map((c, i) => <div key={i} className={clsx('w-[9px] h-[9px] rounded-[2px]', c)} />)}
-        <span className="text-[11px] text-mc-dim">More</span>
-        <span className="text-[11px] text-mc-dim ml-auto">Last 12 weeks</span>
-      </div>
-    </div>
+    </Card>
   );
 }
 
-// ─── Command Palette ─────────────────────────────────────
+// ─── Agents Section ──────────────────────────────────────
 
-function CommandPalette({ open, onClose, onAction }: {
-  open: boolean; onClose: () => void;
-  onAction: (action: string, value: string) => void;
-}) {
+function AgentsSection({ agents, onRefresh }: { agents: api.Agent[]; onRefresh: () => void }) {
+  const [runningId, setRunningId] = useState<string | null>(null);
+
+  const handleRun = async (id: string) => {
+    setRunningId(id);
+    try {
+      await api.agents.triggerRun(id);
+      onRefresh();
+    } catch {
+      // error handled silently
+    } finally {
+      setRunningId(null);
+    }
+  };
+
+  const statusVariant: Record<string, 'success' | 'error' | 'default'> = {
+    running: 'success', error: 'error', idle: 'default', disabled: 'default',
+  };
+
+  return (
+    <Card className="p-4">
+      <SectionHeader icon={Bot} title="Agents" count={agents.length} />
+      <div className="space-y-2 max-h-[350px] overflow-y-auto">
+        {agents.length === 0 && (
+          <p className="text-sm text-mc-dim dark:text-gray-500 py-4 text-center">No agents configured</p>
+        )}
+        {agents.map((agent) => (
+          <div
+            key={agent.id}
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-mc-border dark:border-gray-800 hover:shadow-card-hover transition-shadow"
+          >
+            <StatusIndicator status={agent.status} />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-mc-text dark:text-gray-200 truncate">
+                  {agent.name}
+                </span>
+                <Badge variant={statusVariant[agent.status] || 'default'}>{agent.status}</Badge>
+              </div>
+              <div className="flex items-center gap-3 mt-0.5 text-[11px] text-mc-dim dark:text-gray-500">
+                <span>{agent.model}</span>
+                <span>Last run: {timeAgo(agent.last_run_at)}</span>
+                {agent.schedule_value && <span>Every {agent.schedule_value}</span>}
+              </div>
+            </div>
+            <button
+              onClick={() => handleRun(agent.id)}
+              disabled={agent.status === 'disabled' || agent.status === 'running' || runningId === agent.id}
+              className={clsx(
+                'w-8 h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer',
+                agent.status === 'disabled' || agent.status === 'running'
+                  ? 'bg-gray-100 dark:bg-gray-800 text-mc-dim cursor-not-allowed'
+                  : 'bg-mc-accent-light dark:bg-blue-950 text-mc-accent dark:text-blue-400 hover:bg-mc-accent hover:text-white dark:hover:bg-blue-900'
+              )}
+            >
+              {runningId === agent.id ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+            </button>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+// ─── Notes Section ───────────────────────────────────────
+
+function NotesSection({ notes, onRefresh }: { notes: api.Note[]; onRefresh: () => void }) {
+  const [adding, setAdding] = useState(false);
+
+  const sorted = [...notes].sort((a, b) => {
+    if (a.is_pinned !== b.is_pinned) return a.is_pinned ? -1 : 1;
+    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+  });
+
+  const handleAdd = async (title: string) => {
+    await api.notes.create({ title, content: '', source: 'dashboard' });
+    setAdding(false);
+    onRefresh();
+  };
+
+  return (
+    <Card className="p-4">
+      <SectionHeader icon={StickyNote} title="Notes" count={notes.length} onAdd={() => setAdding(true)} />
+      {adding && <InlineInput placeholder="Note title..." onSubmit={handleAdd} onCancel={() => setAdding(false)} />}
+      <div className="space-y-1 max-h-[300px] overflow-y-auto">
+        {sorted.length === 0 && (
+          <p className="text-sm text-mc-dim dark:text-gray-500 py-4 text-center">No notes yet</p>
+        )}
+        {sorted.slice(0, 10).map((note) => (
+          <div
+            key={note.id}
+            className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors"
+          >
+            {note.is_pinned ? (
+              <Pin size={12} className="text-mc-accent dark:text-blue-400 flex-shrink-0" />
+            ) : (
+              <FileText size={12} className="text-mc-dim dark:text-gray-500 flex-shrink-0" />
+            )}
+            <span className="flex-1 text-sm text-mc-text dark:text-gray-300 truncate">
+              {note.title || 'Untitled'}
+            </span>
+            {note.tags.length > 0 && (
+              <Badge variant="default">{note.tags[0]}{note.tags.length > 1 ? ` +${note.tags.length - 1}` : ''}</Badge>
+            )}
+            <span className="text-[11px] text-mc-dim dark:text-gray-500 flex-shrink-0">
+              {timeAgo(note.updated_at)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+// ─── Content Section ─────────────────────────────────────
+
+function ContentSection({ content }: { content: api.MarketingContent[] }) {
+  const statusVariant: Record<string, 'default' | 'warning' | 'success' | 'purple'> = {
+    draft: 'warning', approved: 'blue' as any, posted: 'success', archived: 'default',
+  };
+
+  const recent = [...content]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 8);
+
+  return (
+    <Card className="p-4">
+      <SectionHeader icon={Megaphone} title="Content" count={content.length} />
+      <div className="space-y-1 max-h-[300px] overflow-y-auto">
+        {recent.length === 0 && (
+          <p className="text-sm text-mc-dim dark:text-gray-500 py-4 text-center">No content drafts</p>
+        )}
+        {recent.map((item) => (
+          <div
+            key={item.id}
+            className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors"
+          >
+            <span className="flex-1 text-sm text-mc-text dark:text-gray-300 truncate">
+              {item.title}
+            </span>
+            <Badge variant="purple">{item.channel}</Badge>
+            <Badge variant={statusVariant[item.status] || 'default'}>{item.status}</Badge>
+            <span className="text-[11px] text-mc-dim dark:text-gray-500 flex-shrink-0">
+              {timeAgo(item.created_at)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+// ─── Notification Panel ──────────────────────────────────
+
+function NotificationPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [items, setItems] = useState<api.Notification[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setLoading(true);
+      api.notifications.list(false, 20).then(setItems).finally(() => setLoading(false));
+    }
+  }, [open]);
+
+  const handleMarkAllRead = async () => {
+    await api.notifications.markAllRead();
+    setItems((prev) => prev.map((n) => ({ ...n, is_read: true })));
+  };
+
+  const categoryIcon: Record<string, 'success' | 'warning' | 'error' | 'blue' | 'purple' | 'default'> = {
+    success: 'success', warning: 'warning', error: 'error', approval: 'purple', info: 'blue',
+  };
+
+  return (
+    <Dialog.Root open={open} onOpenChange={(v) => !v && onClose()}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 bg-black/30 z-40" />
+        <Dialog.Content className="fixed right-4 top-16 w-96 max-h-[500px] bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-800 rounded-xl shadow-dropdown z-50 flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-mc-border dark:border-gray-800">
+            <Dialog.Title className="text-sm font-semibold text-mc-text dark:text-gray-100">Notifications</Dialog.Title>
+            <div className="flex items-center gap-2">
+              <button onClick={handleMarkAllRead} className="text-[11px] text-mc-accent hover:underline cursor-pointer">
+                Mark all read
+              </button>
+              <Dialog.Close className="text-mc-dim hover:text-mc-text dark:hover:text-gray-200 cursor-pointer">
+                <X size={16} />
+              </Dialog.Close>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {loading && (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 size={20} className="animate-spin text-mc-dim" />
+              </div>
+            )}
+            {!loading && items.length === 0 && (
+              <p className="text-sm text-mc-dim dark:text-gray-500 py-8 text-center">No notifications</p>
+            )}
+            {!loading && items.map((n) => (
+              <div
+                key={n.id}
+                className={clsx(
+                  'px-4 py-3 border-b border-mc-border/50 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/40',
+                  !n.is_read && 'bg-blue-50/50 dark:bg-blue-950/20'
+                )}
+              >
+                <div className="flex items-start gap-2">
+                  <Badge variant={categoryIcon[n.category] || 'default'}>{n.category}</Badge>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-mc-text dark:text-gray-200 truncate">{n.title}</p>
+                    <p className="text-xs text-mc-muted dark:text-gray-400 mt-0.5 line-clamp-2">{n.body}</p>
+                    <span className="text-[10px] text-mc-dim dark:text-gray-500 mt-1 block">{timeAgo(n.created_at)}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+// ─── Search Dialog ───────────────────────────────────────
+
+function SearchDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<api.SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (open) { setQuery(''); setResults([]); setTimeout(() => inputRef.current?.focus(), 50); }
+    if (open) {
+      setQuery('');
+      setResults([]);
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
   }, [open]);
 
   useEffect(() => {
-    if (!query.trim() || query.startsWith('/')) { setResults([]); return; }
+    if (!query.trim()) { setResults([]); return; }
     const timeout = setTimeout(async () => {
       setSearching(true);
-      try { const res = await api.search.query(query); setResults(res.results); } catch { setResults([]); }
-      setSearching(false);
-    }, 200);
+      try {
+        const res = await api.search.query(query.trim());
+        setResults(res.results);
+      } catch {
+        setResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
     return () => clearTimeout(timeout);
   }, [query]);
 
-  const commands = [
-    { label: 'Add Task', key: '/task', Icon: ListTodo },
-    { label: 'Add Idea', key: '/idea', Icon: Lightbulb },
-    { label: 'Add Note', key: '/note', Icon: FileText },
-  ];
-
-  const filteredCommands = query.startsWith('/')
-    ? commands.filter((c) => c.key.includes(query.toLowerCase()))
-    : query ? [] : commands;
-
-  const handleSelect = (cmd: typeof commands[0]) => { onAction(cmd.key.slice(1), ''); onClose(); };
-
-  const typeIcons: Record<string, React.ElementType> = {
-    task: ListTodo, idea: Lightbulb, project: FolderOpen, note: FileText,
+  const typeIcon: Record<string, string> = {
+    task: 'T', project: 'P', note: 'N', agent: 'A',
   };
 
   return (
     <Dialog.Root open={open} onOpenChange={(v) => !v && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/20 dark:bg-black/50 backdrop-blur-sm z-50" />
-        <Dialog.Content className="fixed top-[20vh] left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-lg bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-700 rounded-xl shadow-dropdown overflow-hidden z-50">
+        <Dialog.Overlay className="fixed inset-0 bg-black/30 z-40" />
+        <Dialog.Content className="fixed left-1/2 top-[20%] -translate-x-1/2 w-full max-w-lg bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-800 rounded-xl shadow-dropdown z-50 overflow-hidden">
+          <Dialog.Title className="sr-only">Search</Dialog.Title>
           <div className="flex items-center gap-3 px-4 py-3 border-b border-mc-border dark:border-gray-800">
             <Search size={16} className="text-mc-dim" />
             <input
-              ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search or type / for commands..."
-              className="flex-1 bg-transparent text-sm text-mc-text dark:text-gray-200 outline-none placeholder:text-mc-dim"
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') onClose();
-                if (e.key === 'Enter' && filteredCommands.length > 0 && query.startsWith('/')) handleSelect(filteredCommands[0]);
-              }}
-            />
-            {searching && <Loader2 size={14} className="text-mc-dim animate-spin" />}
-            <kbd className="text-[11px] text-mc-dim border border-mc-border dark:border-gray-700 rounded px-1.5 py-0.5 font-mono">ESC</kbd>
-          </div>
-          <ScrollArea.Root className="max-h-80">
-            <ScrollArea.Viewport className="w-full">
-              {filteredCommands.length > 0 && (
-                <div className="p-2">
-                  <div className="text-[11px] text-mc-dim font-medium tracking-wide uppercase px-2 py-1">Commands</div>
-                  {filteredCommands.map((cmd) => (
-                    <button key={cmd.key} onClick={() => handleSelect(cmd)} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-mc-subtle dark:hover:bg-gray-800 text-left cursor-pointer bg-transparent border-none transition-colors">
-                      <cmd.Icon size={15} className="text-mc-muted" />
-                      <span className="text-sm text-mc-secondary dark:text-gray-300">{cmd.label}</span>
-                      <span className="text-xs text-mc-dim font-mono ml-auto">{cmd.key}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {results.length > 0 && (
-                <div className="p-2">
-                  <div className="text-[11px] text-mc-dim font-medium tracking-wide uppercase px-2 py-1">Results</div>
-                  {results.map((r) => {
-                    const RIcon = typeIcons[r.type] || CircleDot;
-                    return (
-                      <div key={`${r.type}-${r.id}`} className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-mc-subtle dark:hover:bg-gray-800 transition-colors">
-                        <RIcon size={15} className="text-mc-muted" />
-                        <div className="flex-1 min-w-0">
-                          <span className="text-sm text-mc-secondary dark:text-gray-300 truncate block">{r.title}</span>
-                          <span className="text-[11px] text-mc-dim">{r.type}</span>
-                        </div>
-                        {r.status && <Badge>{r.status}</Badge>}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              {query && !query.startsWith('/') && results.length === 0 && !searching && (
-                <div className="text-sm text-mc-dim text-center py-8">No results found</div>
-              )}
-            </ScrollArea.Viewport>
-          </ScrollArea.Root>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
-  );
-}
-
-// ─── Connection Bar ──────────────────────────────────────
-
-function ConnectionBar({ health }: { health: api.HealthStatus | null }) {
-  if (!health) return null;
-  const ok = health.status === 'ok';
-  return (
-    <div className="hidden md:flex items-center gap-3 text-xs text-mc-muted dark:text-gray-500">
-      <span className="flex items-center gap-1.5">
-        <span className={clsx('w-1.5 h-1.5 rounded-full', ok ? 'bg-mc-green' : 'bg-mc-red')} />
-        DB
-      </span>
-      <span>LLM: {health.llm_provider}</span>
-      <span>TG: {health.telegram}</span>
-    </div>
-  );
-}
-
-function EmptyState({ icon: Icon, message, small = false }: { icon: React.ElementType; message: string; small?: boolean }) {
-  return (
-    <div className={clsx('flex flex-col items-center justify-center text-mc-dim', small ? 'py-6' : 'py-10')}>
-      <Icon size={small ? 20 : 28} className="mb-2 text-gray-300 dark:text-gray-700" />
-      <span className={clsx('text-mc-muted dark:text-gray-500', small ? 'text-xs' : 'text-sm')}>{message}</span>
-    </div>
-  );
-}
-
-function StatCard({ label, value, accent }: { label: string; value: string | number; accent?: boolean }) {
-  return (
-    <div className="text-center px-3 sm:px-4">
-      <div className={clsx('text-base sm:text-lg font-bold tabular-nums', accent ? 'text-mc-accent' : 'text-mc-text dark:text-gray-100')}>{value}</div>
-      <div className="text-[10px] sm:text-[11px] text-mc-muted dark:text-gray-500 font-medium tracking-wide uppercase">{label}</div>
-    </div>
-  );
-}
-
-// ─── Quick Capture ───────────────────────────────────────
-
-const CAPTURE_PREFIXES: Record<string, { label: string; Icon: React.ElementType }> = {
-  't:': { label: 'Task', Icon: ListTodo },
-  'i:': { label: 'Idea', Icon: Lightbulb },
-  'n:': { label: 'Note', Icon: FileText },
-};
-
-function QuickCapture({ open, onClose, onCapture }: {
-  open: boolean;
-  onClose: () => void;
-  onCapture: (type: string, text: string) => Promise<void>;
-}) {
-  const [input, setInput] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [lastCapture, setLastCapture] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (open) { setInput(''); setLastCapture(null); setTimeout(() => inputRef.current?.focus(), 50); }
-  }, [open]);
-
-  // Detect type from prefix
-  const detectedPrefix = Object.keys(CAPTURE_PREFIXES).find((p) => input.toLowerCase().startsWith(p));
-  const detected = detectedPrefix ? CAPTURE_PREFIXES[detectedPrefix] : null;
-  const cleanText = detected ? input.slice(detectedPrefix!.length).trim() : input.trim();
-
-  const handleSubmit = async () => {
-    if (!cleanText) return;
-    setSubmitting(true);
-    try {
-      const type = detected ? detectedPrefix!.charAt(0) : 't'; // default to task
-      await onCapture(type, cleanText);
-      const label = detected?.label || 'Task';
-      setLastCapture(`${label} added: ${cleanText.slice(0, 50)}`);
-      setInput('');
-      setTimeout(() => inputRef.current?.focus(), 50);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <Dialog.Root open={open} onOpenChange={(v) => !v && onClose()}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/20 dark:bg-black/50 backdrop-blur-sm z-50" />
-        <Dialog.Content className="fixed top-[18vh] left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-lg bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-700 rounded-xl shadow-dropdown overflow-hidden z-50">
-          <div className="flex items-center gap-3 px-4 py-3 border-b border-mc-border dark:border-gray-800">
-            <Zap size={16} className="text-mc-accent" />
-            <input
               ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Quick capture — type t: i: n: or just text..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search tasks, projects, notes..."
               className="flex-1 bg-transparent text-sm text-mc-text dark:text-gray-200 outline-none placeholder:text-mc-dim"
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') onClose();
-                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); }
-              }}
             />
-            {submitting && <Loader2 size={14} className="text-mc-dim animate-spin" />}
-            <kbd className="text-[11px] text-mc-dim border border-mc-border dark:border-gray-700 rounded px-1.5 py-0.5 font-mono">c</kbd>
+            {searching && <Loader2 size={14} className="animate-spin text-mc-dim" />}
           </div>
-          <div className="px-4 py-3">
-            {detected ? (
-              <div className="flex items-center gap-2 text-xs text-mc-muted dark:text-gray-400">
-                <detected.Icon size={13} />
-                <span>Creating <strong className="text-mc-text dark:text-gray-200">{detected.label}</strong></span>
-                {cleanText && <span className="text-mc-dim ml-auto">Enter to save</span>}
-              </div>
-            ) : (
-              <div className="flex flex-wrap gap-2 text-[11px] text-mc-dim">
-                {Object.entries(CAPTURE_PREFIXES).map(([prefix, { label, Icon }]) => (
-                  <button
-                    key={prefix}
-                    onClick={() => { setInput(prefix + ' '); inputRef.current?.focus(); }}
-                    className="flex items-center gap-1 px-2 py-1 rounded-md bg-mc-subtle dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer border-none"
-                  >
-                    <Icon size={11} />
-                    <span>{prefix}</span>
-                    <span className="text-mc-muted">{label}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-            {lastCapture && (
-              <div className="mt-2 flex items-center gap-2 text-xs text-mc-green dark:text-mc-green">
-                <Check size={13} />
-                <span>{lastCapture}</span>
-              </div>
-            )}
-          </div>
+          {results.length > 0 && (
+            <div className="max-h-72 overflow-y-auto py-1">
+              {results.map((r) => (
+                <div key={`${r.type}-${r.id}`} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800/60 cursor-pointer">
+                  <span className="w-5 h-5 rounded bg-gray-100 dark:bg-gray-800 text-[10px] font-bold text-mc-muted flex items-center justify-center">
+                    {typeIcon[r.type] || '?'}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-mc-text dark:text-gray-200 truncate">{r.title}</p>
+                    <p className="text-[11px] text-mc-dim dark:text-gray-500">{r.type}{r.status ? ` / ${r.status}` : ''}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {query.trim() && !searching && results.length === 0 && (
+            <p className="text-sm text-mc-dim dark:text-gray-500 py-6 text-center">No results found</p>
+          )}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
-  );
-}
-
-// ─── Timeline / Gantt View ───────────────────────────────
-
-function TimelineView({ tasks, projects }: { tasks: api.Task[]; projects: api.Project[] }) {
-  const today = new Date();
-  const todayStr = today.toISOString().split('T')[0];
-
-  // Show tasks with due dates, grouped by project
-  const tasksWithDue = tasks.filter((t) => t.due_date && t.status !== 'done');
-
-  // Build a 4-week window
-  const startDate = new Date(today);
-  startDate.setDate(startDate.getDate() - 3); // start 3 days ago
-  const totalDays = 28;
-  const days: string[] = [];
-  for (let i = 0; i < totalDays; i++) {
-    const d = new Date(startDate);
-    d.setDate(d.getDate() + i);
-    days.push(d.toISOString().split('T')[0]);
-  }
-
-  // Group tasks by project
-  const grouped: Record<string, { project: api.Project | null; tasks: api.Task[] }> = {};
-  for (const t of tasksWithDue) {
-    const key = t.project_id || '_none';
-    if (!grouped[key]) {
-      grouped[key] = { project: projects.find((p) => p.id === t.project_id) || null, tasks: [] };
-    }
-    grouped[key].tasks.push(t);
-  }
-
-  const priorityColors: Record<string, string> = { critical: '#ef4444', high: '#f97316', medium: '#3b82f6', low: '#9ca3af' };
-
-  if (tasksWithDue.length === 0) {
-    return <p className="text-xs text-mc-dim text-center py-4">No tasks with due dates to show on timeline</p>;
-  }
-
-  return (
-    <div className="overflow-x-auto">
-      {/* Header: day labels */}
-      <div className="flex mb-1 min-w-[700px]">
-        <div className="w-28 shrink-0" />
-        {days.map((d) => {
-          const date = new Date(d + 'T00:00:00');
-          const isToday = d === todayStr;
-          const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-          return (
-            <div key={d} className={clsx(
-              'flex-1 text-center text-[9px] py-0.5 min-w-[22px]',
-              isToday ? 'text-mc-accent font-bold' : isWeekend ? 'text-mc-dim/50' : 'text-mc-dim',
-            )}>
-              {date.getDate()}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Rows: one per project group */}
-      {Object.entries(grouped).map(([key, group]) => (
-        <div key={key} className="mb-2">
-          <div className="text-[10px] font-medium text-mc-muted dark:text-gray-500 mb-0.5 px-1">
-            {group.project ? group.project.name : 'No project'}
-          </div>
-          {group.tasks.map((t) => {
-            const dueDateStr = t.due_date!.split('T')[0];
-            const dayIdx = days.indexOf(dueDateStr);
-            const createdStr = t.created_at.split('T')[0];
-            const startIdx = Math.max(0, days.indexOf(createdStr));
-            const endIdx = dayIdx >= 0 ? dayIdx : totalDays - 1;
-            const barStart = Math.min(startIdx, endIdx);
-            const barEnd = endIdx;
-
-            return (
-              <div key={t.id} className="flex items-center min-w-[700px]">
-                <div className="w-28 shrink-0 text-[10px] text-mc-secondary dark:text-gray-400 truncate pr-2">
-                  {t.text.slice(0, 20)}{t.text.length > 20 ? '…' : ''}
-                </div>
-                <div className="flex flex-1 relative h-5">
-                  {days.map((d, i) => (
-                    <div key={d} className={clsx('flex-1 border-r border-mc-border/20 dark:border-gray-800/30 min-w-[22px]', d === todayStr && 'bg-mc-accent/5')} />
-                  ))}
-                  {/* Gantt bar */}
-                  {dayIdx >= 0 && (
-                    <Tooltip.Root>
-                      <Tooltip.Trigger asChild>
-                        <div
-                          className="absolute top-1 h-3 rounded-full opacity-80 hover:opacity-100 transition-opacity"
-                          style={{
-                            left: `${(barStart / totalDays) * 100}%`,
-                            width: `${(Math.max(1, barEnd - barStart + 1) / totalDays) * 100}%`,
-                            background: priorityColors[t.priority] || '#3b82f6',
-                          }}
-                        />
-                      </Tooltip.Trigger>
-                      <Tooltip.Portal>
-                        <Tooltip.Content className="bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-[11px] px-3 py-2 rounded-lg shadow-lg max-w-[250px] z-50" sideOffset={5}>
-                          <div className="font-medium">{t.text}</div>
-                          <div className="text-gray-400 dark:text-gray-600 mt-0.5">Due: {new Date(t.due_date!).toLocaleDateString()}</div>
-                          <div className="text-gray-400 dark:text-gray-600">Priority: {t.priority}</div>
-                          <Tooltip.Arrow className="fill-gray-900 dark:fill-gray-100" />
-                        </Tooltip.Content>
-                      </Tooltip.Portal>
-                    </Tooltip.Root>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ))}
-
-      {/* Today marker label */}
-      <div className="flex mt-1 min-w-[700px]">
-        <div className="w-28 shrink-0" />
-        {days.map((d) => (
-          <div key={d} className="flex-1 min-w-[22px] text-center">
-            {d === todayStr && <span className="text-[9px] text-mc-accent font-bold">Today</span>}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-
-// ─── Routines Panel ──────────────────────────────────────
-
-function RoutinesPanel({ routines, onComplete, onAdd, showInput, setShowInput }: {
-  routines: api.Routine[]; onComplete: (routineId: string, completedItems: string[]) => void;
-  onAdd: (name: string) => void; showInput: boolean; setShowInput: (v: boolean) => void;
-}) {
-  const [checked, setChecked] = useState<Record<string, Set<string>>>({});
-
-  const toggle = (routineId: string, itemId: string) => {
-    setChecked((prev) => {
-      const next = { ...prev };
-      const set = new Set(prev[routineId] || []);
-      if (set.has(itemId)) set.delete(itemId); else set.add(itemId);
-      next[routineId] = set;
-      return next;
-    });
-  };
-
-  const typeIcons: Record<string, string> = { morning: '🌅', evening: '🌙', custom: '📋' };
-
-  return (
-    <div>
-      {showInput && <InlineInput placeholder="Routine name..." onSubmit={onAdd} onCancel={() => setShowInput(false)} />}
-      <div className="flex flex-col gap-3">
-        {routines.map((r) => {
-          const completedSet = checked[r.id] || new Set();
-          const allDone = r.items.length > 0 && completedSet.size === r.items.length;
-          const estMinutes = r.items.reduce((sum, it) => sum + (it.duration_minutes || 0), 0);
-          return (
-            <div key={r.id} className="bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-800 rounded-xl p-4">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm">{typeIcons[r.routine_type] || '📋'}</span>
-                  <span className="text-sm font-semibold text-mc-text dark:text-gray-100">{r.name}</span>
-                  <Badge variant={r.routine_type === 'morning' ? 'warning' : r.routine_type === 'evening' ? 'purple' : 'default'}>
-                    {r.routine_type}
-                  </Badge>
-                </div>
-                <div className="flex items-center gap-2">
-                  {estMinutes > 0 && (
-                    <span className="text-[11px] text-mc-dim flex items-center gap-1">
-                      <Clock size={10} /> {estMinutes}m
-                    </span>
-                  )}
-                  <span className="text-[11px] text-mc-dim">{completedSet.size}/{r.items.length}</span>
-                </div>
-              </div>
-              {r.items.length > 0 && (
-                <div className="flex flex-col gap-1">
-                  {r.items.map((item) => {
-                    const isDone = completedSet.has(item.id);
-                    return (
-                      <div key={item.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-mc-subtle dark:hover:bg-gray-800 transition-colors">
-                        <Checkbox.Root
-                          checked={isDone}
-                          onCheckedChange={() => toggle(r.id, item.id)}
-                          className={clsx(
-                            'w-[16px] h-[16px] rounded border-2 flex items-center justify-center transition-all cursor-pointer shrink-0',
-                            isDone ? 'bg-mc-green border-mc-green' : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 hover:border-mc-green',
-                          )}
-                        >
-                          <Checkbox.Indicator>
-                            <Check size={10} className="text-white" strokeWidth={3} />
-                          </Checkbox.Indicator>
-                        </Checkbox.Root>
-                        <span className={clsx('text-sm flex-1', isDone ? 'text-mc-dim line-through' : 'text-mc-secondary dark:text-gray-300')}>
-                          {item.text}
-                        </span>
-                        {item.duration_minutes && (
-                          <span className="text-[10px] text-mc-dim">{item.duration_minutes}m</span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              {allDone && r.items.length > 0 && (
-                <button
-                  onClick={() => { onComplete(r.id, Array.from(completedSet)); setChecked((prev) => ({ ...prev, [r.id]: new Set() })); }}
-                  className="mt-2 w-full py-1.5 rounded-lg text-xs font-medium bg-mc-green-bg dark:bg-mc-green-bg-dark border border-mc-green-light dark:border-mc-green-dark text-mc-green-dark dark:text-mc-green hover:bg-mc-green-light transition-colors cursor-pointer"
-                >
-                  <Check size={12} className="inline mr-1" /> Complete Routine
-                </button>
-              )}
-              {r.items.length === 0 && (
-                <p className="text-xs text-mc-dim text-center py-3">No items yet — add steps via API</p>
-              )}
-            </div>
-          );
-        })}
-        {routines.length === 0 && !showInput && <EmptyState icon={Clock} message="No routines yet" small />}
-      </div>
-    </div>
-  );
-}
-
-// ─── Calendar View ───────────────────────────────────────
-
-function CalendarView({ tasks }: { tasks: api.Task[] }) {
-  const today = new Date();
-  const [viewMonth, setViewMonth] = useState(today.getMonth());
-  const [viewYear, setViewYear] = useState(today.getFullYear());
-
-  const tasksWithDue = tasks.filter((t) => t.due_date);
-
-  const firstDay = new Date(viewYear, viewMonth, 1);
-  const lastDay = new Date(viewYear, viewMonth + 1, 0);
-  const startPad = firstDay.getDay(); // 0=Sun
-  const totalDays = lastDay.getDate();
-
-  const cells: { day: number; tasks: api.Task[] }[] = [];
-  // Padding for days before month starts
-  for (let i = 0; i < startPad; i++) cells.push({ day: 0, tasks: [] });
-  for (let d = 1; d <= totalDays; d++) {
-    const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    const dayTasks = tasksWithDue.filter((t) => t.due_date!.startsWith(dateStr));
-    cells.push({ day: d, tasks: dayTasks });
-  }
-
-  const prevMonth = () => {
-    if (viewMonth === 0) { setViewMonth(11); setViewYear(viewYear - 1); }
-    else setViewMonth(viewMonth - 1);
-  };
-  const nextMonth = () => {
-    if (viewMonth === 11) { setViewMonth(0); setViewYear(viewYear + 1); }
-    else setViewMonth(viewMonth + 1);
-  };
-
-  const monthName = new Date(viewYear, viewMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-  const priorityColors: Record<string, string> = { critical: 'bg-mc-priority-critical', high: 'bg-mc-priority-high', medium: 'bg-mc-priority-medium', low: 'bg-mc-priority-low' };
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-3">
-        <button onClick={prevMonth} className="px-2 py-1 rounded text-xs text-mc-muted hover:bg-mc-subtle dark:hover:bg-gray-800 cursor-pointer bg-transparent border-none transition-colors">&lt;</button>
-        <span className="text-sm font-semibold text-mc-text dark:text-gray-100">{monthName}</span>
-        <button onClick={nextMonth} className="px-2 py-1 rounded text-xs text-mc-muted hover:bg-mc-subtle dark:hover:bg-gray-800 cursor-pointer bg-transparent border-none transition-colors">&gt;</button>
-      </div>
-      <div className="grid grid-cols-7 gap-px text-center">
-        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
-          <div key={d} className="text-[10px] text-mc-dim font-medium py-1">{d}</div>
-        ))}
-        {cells.map((cell, idx) => {
-          if (cell.day === 0) return <div key={`pad-${idx}`} />;
-          const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(cell.day).padStart(2, '0')}`;
-          const isToday = dateStr === todayStr;
-          const hasTasks = cell.tasks.length > 0;
-          return (
-            <Tooltip.Root key={idx}>
-              <Tooltip.Trigger asChild>
-                <div className={clsx(
-                  'relative rounded-lg py-1.5 text-xs transition-colors',
-                  isToday ? 'bg-mc-accent text-white font-bold' : hasTasks ? 'bg-mc-blue-bg dark:bg-mc-blue-bg-dark text-mc-text dark:text-gray-200 font-medium' : 'text-mc-secondary dark:text-gray-400 hover:bg-mc-subtle dark:hover:bg-gray-800',
-                )}>
-                  {cell.day}
-                  {hasTasks && (
-                    <div className="flex justify-center gap-0.5 mt-0.5">
-                      {cell.tasks.slice(0, 3).map((t) => (
-                        <span key={t.id} className={clsx('w-1 h-1 rounded-full', priorityColors[t.priority] || 'bg-gray-300')} />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </Tooltip.Trigger>
-              {hasTasks && (
-                <Tooltip.Portal>
-                  <Tooltip.Content className="bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-[11px] px-3 py-2 rounded-lg shadow-lg max-w-[220px] z-50" sideOffset={5}>
-                    {cell.tasks.map((t) => (
-                      <div key={t.id} className="flex items-center gap-1.5 py-0.5">
-                        <span className={clsx('w-1.5 h-1.5 rounded-full shrink-0', priorityColors[t.priority])} />
-                        <span className="truncate">{t.text}</span>
-                      </div>
-                    ))}
-                    <Tooltip.Arrow className="fill-gray-900 dark:fill-gray-100" />
-                  </Tooltip.Content>
-                </Tooltip.Portal>
-              )}
-            </Tooltip.Root>
-          );
-        })}
-      </div>
-      {tasksWithDue.length === 0 && (
-        <p className="text-xs text-mc-dim text-center mt-4">No tasks with due dates</p>
-      )}
-    </div>
   );
 }
 
@@ -1459,311 +615,161 @@ function CalendarView({ tasks }: { tasks: api.Task[] }) {
 
 export default function Dashboard() {
   const [theme, setTheme] = useTheme();
-  const [projectsList, setProjects] = useState<api.Project[]>([]);
-  const [agentsList, setAgents] = useState<api.Agent[]>([]);
-  const [tasksList, setTasks] = useState<api.Task[]>([]);
-  const [ideasList, setIdeas] = useState<api.Idea[]>([]);
-  const [approvalsList, setApprovals] = useState<api.Approval[]>([]);
-  const [notificationsList, setNotifications] = useState<api.Notification[]>([]);
+  const [tasks, setTasks] = useState<api.Task[]>([]);
+  const [projects, setProjects] = useState<api.Project[]>([]);
+  const [agents, setAgents] = useState<api.Agent[]>([]);
+  const [notesList, setNotesList] = useState<api.Note[]>([]);
+  const [content, setContent] = useState<api.MarketingContent[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [notesList, setNotes] = useState<api.Note[]>([]);
-  const [agentAnalytics, setAgentAnalytics] = useState<api.AgentAnalyticsOverview | null>(null);
-  const [routinesList, setRoutines] = useState<api.Routine[]>([]);
-  const [healthStatus, setHealth] = useState<api.HealthStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [now, setNow] = useState(new Date());
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
 
-  const [showTaskInput, setShowTaskInput] = useState(false);
-  const [showIdeaInput, setShowIdeaInput] = useState(false);
-  const [showNoteInput, setShowNoteInput] = useState(false);
-  const [showRoutineInput, setShowRoutineInput] = useState(false);
-  const [showCommandPalette, setShowCommandPalette] = useState(false);
-  const [showQuickCapture, setShowQuickCapture] = useState(false);
-
-  const router = useRouter();
-
-  // Vim-style keyboard shortcuts: g+key for navigation, n+key for creation
-  useEffect(() => {
-    let pendingPrefix: string | null = null;
-    let prefixTimeout: ReturnType<typeof setTimeout> | null = null;
-
-    const handler = (e: KeyboardEvent) => {
-      // Don't trigger in inputs
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-
-      // Cmd+K for command palette
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setShowCommandPalette((v) => !v); return; }
-
-      // Shift+T for theme toggle
-      if (e.shiftKey && e.key === 'T') { e.preventDefault(); setTheme(theme === 'light' ? 'dark' : 'light'); return; }
-
-      // Two-key combos: g+<key> for go, n+<key> for new
-      if (pendingPrefix) {
-        const combo = pendingPrefix + e.key.toLowerCase();
-        pendingPrefix = null;
-        if (prefixTimeout) clearTimeout(prefixTimeout);
-
-        switch (combo) {
-          case 'gd': router.push('/'); return;
-          case 'gp': router.push('/projects'); return;
-          case 'ga': router.push('/agents'); return;
-          case 'gs': router.push('/settings'); return;
-          case 'nt': e.preventDefault(); setShowTaskInput(true); return;
-          case 'ni': e.preventDefault(); setShowIdeaInput(true); return;
-          case 'no': e.preventDefault(); setShowNoteInput(true); return;
-        }
-        return;
-      }
-
-      if (e.key === 'g' || e.key === 'n') {
-        pendingPrefix = e.key;
-        prefixTimeout = setTimeout(() => { pendingPrefix = null; }, 500);
-        return;
-      }
-
-      // Single-key shortcuts
-      if (e.key === 'c') { e.preventDefault(); setShowQuickCapture(true); return; }
-      if (e.key === '?') setShowCommandPalette(true);
-    };
-    window.addEventListener('keydown', handler);
-    return () => { window.removeEventListener('keydown', handler); if (prefixTimeout) clearTimeout(prefixTimeout); };
-  }, [theme, setTheme, router]);
-
-  const handleCommandAction = (action: string, _value: string) => {
-    const map: Record<string, (v: boolean) => void> = {
-      task: setShowTaskInput, idea: setShowIdeaInput, note: setShowNoteInput,
-    };
-    map[action]?.(true);
-  };
-
-  useEffect(() => { const i = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(i); }, []);
-
-  const loadData = useCallback(async () => {
+  const fetchAll = useCallback(async () => {
     try {
-      const [p, a, t, i, h, ap, notifs, unread, aAnalytics, n, rout] = await Promise.all([
+      const [t, p, a, n, c, nc] = await Promise.all([
+        api.tasks.list(),
         api.projects.list(),
         api.agents.list(),
-        api.tasks.list(),
-        api.ideas.list(),
-        api.health.check(),
-        api.approvals.list().catch(() => []),
-        api.notifications.list().catch(() => []),
-        api.notifications.unreadCount().catch(() => ({ unread: 0 })),
-        api.agentAnalytics.overview().catch(() => null),
-        api.notes.list().catch(() => []),
-        api.routines.list().catch(() => []),
+        api.notes.list(),
+        api.marketingContent.list(),
+        api.notifications.count(),
       ]);
-      setProjects(p); setAgents(a); setTasks(t); setIdeas(i); setHealth(h);
-      setApprovals(ap);
-      setNotifications(notifs); setUnreadCount(unread.unread);
-      setAgentAnalytics(aAnalytics); setNotes(n); setRoutines(rout);
-      setError(null);
-    } catch (e: any) {
-      setError(e.message || 'Failed to connect to backend');
+      setTasks(t);
+      setProjects(p);
+      setAgents(a);
+      setNotesList(n);
+      setContent(c);
+      setUnreadCount(nc.unread);
+    } catch {
+      // silent — API may not be up
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
-  useEffect(() => { const i = setInterval(loadData, 30000); return () => clearInterval(i); }, [loadData]);
+  useEffect(() => {
+    fetchAll();
+  }, [fetchAll]);
 
+  // WebSocket for live updates
   useEffect(() => {
     const ws = api.connectWebSocket((event) => {
-      if (['agent.', 'task.', 'idea.', 'approval.', 'notification.'].some((p) => event.type.startsWith(p))) {
-        loadData();
+      if (['task_created', 'task_updated', 'task_deleted', 'agent_run_completed', 'notification'].includes(event.type)) {
+        fetchAll();
       }
     });
     return () => { ws?.close(); };
-  }, [loadData]);
+  }, [fetchAll]);
 
-  // --- Handlers ---
-  const toggleAgent = async (id: string, action: 'run' | 'stop') => {
-    try { if (action === 'run') await api.agents.run(id); else await api.agents.stop(id); loadData(); } catch {}
-  };
-  const toggleTask = async (id: string) => {
-    const task = tasksList.find((t) => t.id === id); if (!task) return;
-    await api.tasks.update(id, { status: task.status === 'done' ? 'todo' : 'done' }); loadData();
-  };
-  const updateTask = async (id: string, data: Partial<api.Task>) => {
-    await api.tasks.update(id, data); loadData();
-  };
-  const addTask = async (text: string) => { await api.tasks.create({ text }); setShowTaskInput(false); loadData(); };
-  const addIdea = async (text: string) => { await api.ideas.create({ text }); setShowIdeaInput(false); loadData(); };
-  const deleteTask = async (id: string) => { await api.tasks.delete(id); loadData(); };
-  const deleteIdea = async (id: string) => { await api.ideas.delete(id); loadData(); };
-  const addNote = async (title: string) => { await api.notes.create({ title }); setShowNoteInput(false); loadData(); };
-  const deleteNote = async (id: string) => { await api.notes.delete(id); loadData(); };
-  const reorderTasks = async (taskIds: string[]) => { await api.taskReorder.reorder(taskIds); loadData(); };
-
-  const handleQuickCapture = async (type: string, text: string) => {
-    const handlers: Record<string, (text: string) => Promise<void>> = {
-      t: async (t) => { await api.tasks.create({ text: t }); },
-      i: async (t) => { await api.ideas.create({ text: t }); },
-      n: async (t) => { await api.notes.create({ title: t }); },
+  // Keyboard shortcut: Cmd+K for search
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowSearch(true);
+      }
     };
-    await (handlers[type] || handlers.t)(text);
-    loadData();
-  };
-  const addRoutine = async (name: string) => {
-    await api.routines.create({ name, routine_type: 'custom' });
-    setShowRoutineInput(false); loadData();
-  };
-  const completeRoutine = async (routineId: string, completedItems: string[]) => {
-    await api.routines.complete(routineId, completedItems); loadData();
-  };
-
-  const toggleNotePin = async (id: string) => {
-    const note = notesList.find((n) => n.id === id); if (!note) return;
-    await api.notes.update(id, { is_pinned: !note.is_pinned }); loadData();
-  };
-
-  const handleApprove = async (id: string) => { await api.approvals.approve(id); loadData(); };
-  const handleReject = async (id: string) => { await api.approvals.reject(id); loadData(); };
-  const markNotifRead = async (id: string) => { await api.notifications.markRead(id); loadData(); };
-  const markAllNotifsRead = async () => { await api.notifications.markAllRead(); loadData(); };
-
-  // --- Stats ---
-  const runningAgents = agentsList.filter((a) => a.status === 'running').length;
-  const activeProjects = projectsList.filter((p) => p.status === 'active').length;
-  const openTasks = tasksList.filter((t) => t.status !== 'done').length;
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-mc-bg dark:bg-gray-950 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 size={24} className="text-mc-accent animate-spin mx-auto mb-4" />
-          <p className="text-sm text-mc-muted dark:text-gray-500">Connecting to Mission Control...</p>
-        </div>
+        <Loader2 size={32} className="animate-spin text-mc-accent" />
       </div>
     );
   }
 
+  const openTaskCount = tasks.filter((t) => t.status !== 'done').length;
+  const activeAgents = agents.filter((a) => a.status === 'running').length;
+
   return (
-    <Tooltip.Provider delayDuration={200}>
-      <div className="min-h-screen bg-mc-bg dark:bg-gray-950 transition-colors">
-        {/* Top Bar */}
-        <header className="px-4 sm:px-6 lg:px-8 py-3 bg-white dark:bg-gray-900 border-b border-mc-border dark:border-gray-800 sticky top-0 z-30">
-          <div className="max-w-[1600px] mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-2 sm:gap-4">
-              <h1 className="text-sm sm:text-base font-bold text-mc-text dark:text-gray-100 tracking-tight">Dashboard</h1>
-              <span className="text-[11px] text-mc-dim font-medium bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded hidden sm:block">v0.3</span>
-              <ConnectionBar health={healthStatus} />
-            </div>
-
-            <div className="flex items-center gap-2 sm:gap-3">
-              <button
-                onClick={() => setShowCommandPalette(true)}
-                className="flex items-center gap-2 px-2 sm:px-3 py-1.5 bg-mc-subtle dark:bg-gray-800 border border-mc-border dark:border-gray-700 rounded-lg text-mc-muted hover:bg-gray-100 dark:hover:bg-gray-700 hover:border-gray-300 transition-all cursor-pointer"
-              >
-                <Search size={14} />
-                <span className="text-sm hidden md:block">Search...</span>
-                <kbd className="text-[10px] text-mc-dim border border-mc-border dark:border-gray-700 rounded px-1.5 py-0.5 font-mono bg-white dark:bg-gray-900 hidden md:block">⌘K</kbd>
-              </button>
-              <NotificationBell
-                notifications={notificationsList} unreadCount={unreadCount}
-                onMarkRead={markNotifRead} onMarkAllRead={markAllNotifsRead}
-              />
-              {error && <span className="text-xs text-mc-red font-medium hidden sm:block">{error}</span>}
-            </div>
+    <div className="min-h-screen bg-mc-bg dark:bg-gray-950">
+      {/* ─── Header ─── */}
+      <header className="sticky top-0 z-30 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-mc-border dark:border-gray-800">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Activity size={20} className="text-mc-accent" />
+            <h1 className="text-base font-bold text-mc-text dark:text-gray-100">Mission Control</h1>
           </div>
-        </header>
 
-        {/* Stats Bar */}
-        <div className="bg-white dark:bg-gray-900 border-b border-mc-border dark:border-gray-800">
-          <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between overflow-x-auto">
-            <div className="flex items-center divide-x divide-mc-border dark:divide-gray-800">
-              <StatCard label="Projects" value={activeProjects} accent />
-              <StatCard label="Agents" value={`${runningAgents}/${agentsList.length}`} accent={runningAgents > 0} />
-              <StatCard label="Tasks" value={openTasks} />
-            </div>
-            <div className="text-sm text-mc-muted dark:text-gray-500 font-mono tabular-nums hidden md:block">
-              {now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-              <span className="ml-3 text-mc-dim">{now.toLocaleTimeString('en-US', { hour12: false })}</span>
-            </div>
+          <div className="flex items-center gap-2">
+            {/* Search */}
+            <button
+              onClick={() => setShowSearch(true)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-mc-border dark:border-gray-700 bg-white dark:bg-gray-800 text-mc-muted dark:text-gray-400 hover:border-mc-accent/40 transition-all text-sm cursor-pointer"
+            >
+              <Search size={14} />
+              <span className="hidden sm:inline">Search</span>
+              <kbd className="hidden sm:inline text-[10px] bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded font-mono">
+                {typeof navigator !== 'undefined' && /Mac/.test(navigator.userAgent) ? '\u2318' : 'Ctrl+'}K
+              </kbd>
+            </button>
+
+            {/* Notifications */}
+            <button
+              onClick={() => setShowNotifications(true)}
+              className="relative w-9 h-9 rounded-lg border border-mc-border dark:border-gray-700 bg-white dark:bg-gray-800 text-mc-muted dark:text-gray-400 hover:border-mc-accent/40 transition-all flex items-center justify-center cursor-pointer"
+            >
+              <Bell size={16} />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-mc-red text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </button>
+
+            {/* Theme toggle */}
+            <button
+              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+              className="w-9 h-9 rounded-lg border border-mc-border dark:border-gray-700 bg-white dark:bg-gray-800 text-mc-muted dark:text-gray-400 hover:border-mc-accent/40 transition-all flex items-center justify-center cursor-pointer"
+            >
+              {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+            </button>
           </div>
         </div>
+      </header>
 
-        {/* Main Content */}
-        <main className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
-          <div className="flex flex-col gap-4 sm:gap-6">
-            {approvalsList.length > 0 && (
-              <ApprovalsPanel approvals={approvalsList} onApprove={handleApprove} onReject={handleReject} />
-            )}
-
-            <section>
-              <SectionHeader icon={FolderOpen} title="Projects" count={projectsList.length} />
-              <ProjectsPanel projects={projectsList} />
-            </section>
-
-            <section>
-              <SectionHeader icon={Zap} title="Agents" count={agentsList.length} />
-              <AgentsPanel agents={agentsList} projects={projectsList} onToggle={toggleAgent} />
-            </section>
-
-            {/* 3-Column Layout — stacks on mobile */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-              <Card className="p-4">
-                <SectionHeader icon={ListTodo} title="Tasks" count={openTasks} onAdd={() => setShowTaskInput(true)} />
-                <TasksPanel
-                  tasks={tasksList} projects={projectsList} onToggle={toggleTask} onUpdate={updateTask}
-                  onAdd={addTask} showInput={showTaskInput} setShowInput={setShowTaskInput} onDelete={deleteTask}
-                  onReorder={reorderTasks}
-                />
-              </Card>
-
-              <div className="flex flex-col gap-4 sm:gap-6">
-                <Card className="p-4">
-                  <SectionHeader icon={Clock} title="Routines" count={routinesList.length} onAdd={() => setShowRoutineInput(true)} />
-                  <RoutinesPanel routines={routinesList} onComplete={completeRoutine} onAdd={addRoutine} showInput={showRoutineInput} setShowInput={setShowRoutineInput} />
-                </Card>
-              </div>
-
-              <div className="flex flex-col gap-4 sm:gap-6">
-                <Card className="p-4">
-                  <SectionHeader icon={Lightbulb} title="Ideas" count={ideasList.length} onAdd={() => setShowIdeaInput(true)} />
-                  <IdeasPanel ideas={ideasList} onAdd={addIdea} showInput={showIdeaInput} setShowInput={setShowIdeaInput} onDelete={deleteIdea} />
-                </Card>
-                <Card className="p-4">
-                  <SectionHeader icon={FileText} title="Notes" count={notesList.length} onAdd={() => setShowNoteInput(true)} />
-                  <NotesPanel notes={notesList} onAdd={addNote} onDelete={deleteNote} onTogglePin={toggleNotePin} showInput={showNoteInput} setShowInput={setShowNoteInput} />
-                </Card>
-              </div>
-            </div>
-
-            {/* Timeline Row */}
-            {tasksList.some((t) => t.due_date && t.status !== 'done') && (
-              <Card className="p-4">
-                <SectionHeader icon={GitBranch} title="Timeline" count={tasksList.filter((t) => t.due_date && t.status !== 'done').length} />
-                <TimelineView tasks={tasksList} projects={projectsList} />
-              </Card>
-            )}
-
-            {/* Bottom Row: Calendar + Activity + Agent Analytics */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-              <Card className="p-4">
-                <SectionHeader icon={Calendar} title="Calendar" count={tasksList.filter((t) => t.due_date).length} />
-                <CalendarView tasks={tasksList} />
-              </Card>
-
-              <Card className="p-4">
-                <SectionHeader icon={Activity} title="Activity" count={tasksList.length} />
-                <ActivityHeatmap tasks={tasksList} />
-              </Card>
-
-              <Card className="p-4">
-                <SectionHeader icon={BarChart3} title="Agent Analytics" count={agentsList.length} />
-                <AgentAnalyticsPanel analytics={agentAnalytics} agents={agentsList} />
-              </Card>
-            </div>
+      {/* ─── Stats bar ─── */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+        <div className="flex flex-wrap gap-4 text-sm">
+          <div className="flex items-center gap-2 text-mc-muted dark:text-gray-400">
+            <ListTodo size={14} />
+            <span><strong className="text-mc-text dark:text-gray-200">{openTaskCount}</strong> open tasks</span>
           </div>
-        </main>
-
-        <CommandPalette open={showCommandPalette} onClose={() => setShowCommandPalette(false)} onAction={handleCommandAction} />
-        <QuickCapture open={showQuickCapture} onClose={() => setShowQuickCapture(false)} onCapture={handleQuickCapture} />
+          <div className="flex items-center gap-2 text-mc-muted dark:text-gray-400">
+            <FolderOpen size={14} />
+            <span><strong className="text-mc-text dark:text-gray-200">{projects.filter(p => p.status === 'active').length}</strong> active projects</span>
+          </div>
+          <div className="flex items-center gap-2 text-mc-muted dark:text-gray-400">
+            <Bot size={14} />
+            <span><strong className="text-mc-text dark:text-gray-200">{activeAgents}</strong> agents running</span>
+          </div>
+          <div className="flex items-center gap-2 text-mc-muted dark:text-gray-400">
+            <Megaphone size={14} />
+            <span><strong className="text-mc-text dark:text-gray-200">{content.filter(c => c.status === 'draft').length}</strong> content drafts</span>
+          </div>
+        </div>
       </div>
-    </Tooltip.Provider>
+
+      {/* ─── Main Grid ─── */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 pb-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <TasksSection tasks={tasks} onRefresh={fetchAll} />
+          <AgentsSection agents={agents} onRefresh={fetchAll} />
+          <ProjectsSection projects={projects} />
+          <NotesSection notes={notesList} onRefresh={fetchAll} />
+          <div className="lg:col-span-2">
+            <ContentSection content={content} />
+          </div>
+        </div>
+      </main>
+
+      {/* ─── Dialogs ─── */}
+      <NotificationPanel open={showNotifications} onClose={() => { setShowNotifications(false); api.notifications.count().then(nc => setUnreadCount(nc.unread)).catch(() => {}); }} />
+      <SearchDialog open={showSearch} onClose={() => setShowSearch(false)} />
+    </div>
   );
 }

@@ -1,7 +1,0 @@
-name: example_plugin
-version: "1.0.0"
-description: Example plugin that logs events
-author: Mission Control
-hooks:
-  - "task.created"
-  - "idea.created"

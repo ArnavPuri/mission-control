@@ -80,14 +80,17 @@ This creates example projects, tasks, habits, goals, journal entries, and notes 
 
 ---
 
-## Authentication Options
+## Authentication
 
-| Method | Env Variable | Notes |
-|--------|-------------|-------|
-| Anthropic API Key | `ANTHROPIC_API_KEY` | **Recommended.** Pay-per-token, no expiry. |
-| Claude Subscription | `CLAUDE_CODE_OAUTH_TOKEN` | Uses Pro/Max plan. May expire. |
-| OpenRouter | `OPENROUTER_API_KEY` | Access to many models via one key. |
-| Ollama (local) | `OLLAMA_BASE_URL` | Free, private, runs on your hardware. |
+Requires a **Claude Pro/Max subscription**. No API key needed.
+
+```bash
+# Authenticate with Claude Code
+claude auth login
+
+# Copy the token to your .env file
+# CLAUDE_CODE_OAUTH_TOKEN=<your-token>
+```
 
 ---
 
