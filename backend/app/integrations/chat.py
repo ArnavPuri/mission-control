@@ -6,6 +6,8 @@ Claude via the Agent SDK (OAuth), and executes actions.
 """
 
 import json
+import os
+import shutil
 import time
 import logging
 from datetime import datetime, timezone
@@ -296,7 +298,6 @@ async def call_llm(
 ) -> str:
     """Call Claude via the Agent SDK using OAuth token."""
     from claude_agent_sdk import query, ClaudeAgentOptions
-    import os
 
     if not settings.claude_code_oauth_token:
         raise ValueError(
@@ -315,7 +316,6 @@ async def call_llm(
     env = dict(os.environ)
     env["CLAUDE_CODE_OAUTH_TOKEN"] = settings.claude_code_oauth_token
 
-    import shutil
     options_kwargs = {
         "system_prompt": system,
         "model": settings.chat_model,
@@ -337,7 +337,7 @@ async def call_llm(
                 if hasattr(block, "text"):
                     full_response += block.text
 
-    return full_response
+    return full_response or "Sorry, I couldn't generate a response. Please try again."
 
 
 # --- Tool Execution ---

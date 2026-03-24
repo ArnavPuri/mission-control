@@ -31,5 +31,8 @@ pgdata/
 # Agent workdir
 workdir/
 
+# Build artifacts
+*.tsbuildinfo
+
 # SQLite test artifacts
 file::memory:

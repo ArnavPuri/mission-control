@@ -34,9 +34,9 @@ export default function SettingsPage() {
     }
   };
 
-  const toggleNotifPref = async (key: string) => {
+  const toggleNotifPref = async (key: keyof api.NotificationPrefs) => {
     if (!brand) return;
-    const prefs = brand.notification_prefs || {};
+    const prefs = brand.notification_prefs || { agent_completions: true, agent_failures: true, signal_summary: true, content_drafts: true };
     const updated = { ...prefs, [key]: !prefs[key] };
     setBrand({ ...brand, notification_prefs: updated });
     try { await api.brand.update({ notification_prefs: updated }); } catch {}
@@ -129,10 +129,10 @@ export default function SettingsPage() {
           </div>
           <div className="flex flex-col gap-3">
             {([
-              { key: 'agent_completions', label: 'Agent completions', desc: 'When an agent finishes a run' },
-              { key: 'agent_failures', label: 'Agent failures', desc: 'When an agent run fails' },
-              { key: 'signal_summary', label: 'New leads found', desc: 'Summary of new marketing signals' },
-              { key: 'content_drafts', label: 'Content drafts ready', desc: 'When agents create content drafts' },
+              { key: 'agent_completions' as const, label: 'Agent completions', desc: 'When an agent finishes a run' },
+              { key: 'agent_failures' as const, label: 'Agent failures', desc: 'When an agent run fails' },
+              { key: 'signal_summary' as const, label: 'New leads found', desc: 'Summary of new marketing signals' },
+              { key: 'content_drafts' as const, label: 'Content drafts ready', desc: 'When agents create content drafts' },
             ]).map((item) => (
               <div key={item.key} className="flex items-center justify-between py-2 border-b border-mc-border/40 dark:border-gray-800/40 last:border-0">
                 <div>
@@ -143,12 +143,12 @@ export default function SettingsPage() {
                   onClick={() => toggleNotifPref(item.key)}
                   className={clsx(
                     'relative w-10 h-5 rounded-full transition-colors cursor-pointer',
-                    (brand?.notification_prefs || {})[item.key] !== false ? 'bg-mc-accent' : 'bg-gray-300 dark:bg-gray-600'
+                    brand?.notification_prefs?.[item.key] !== false ? 'bg-mc-accent' : 'bg-gray-300 dark:bg-gray-600'
                   )}
                 >
                   <span className={clsx(
                     'absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform',
-                    (brand?.notification_prefs || {})[item.key] !== false ? 'translate-x-5' : 'translate-x-0.5'
+                    brand?.notification_prefs?.[item.key] !== false ? 'translate-x-5' : 'translate-x-0.5'
                   )} />
                 </button>
               </div>

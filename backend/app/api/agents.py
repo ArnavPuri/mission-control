@@ -1,4 +1,6 @@
+import os
 import re
+import shutil
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -25,8 +27,6 @@ async def expand_prompt(data: ExpandPromptRequest):
     """Use LLM to expand a brief description into a full agent prompt template."""
     from claude_agent_sdk import query, ClaudeAgentOptions
     from app.config import settings
-    import os
-    import shutil
 
     if not settings.llm_configured:
         raise HTTPException(status_code=503, detail="CLAUDE_CODE_OAUTH_TOKEN not configured")

@@ -227,7 +227,7 @@ export default function AgentsPage() {
 
   const totals = analytics?.totals;
   const selected = selectedAgent ? agents.find((a) => a.id === selectedAgent) : null;
-  const selectedAnalytics = analytics?.agents.find((a) => a.agent_id === selectedAgent);
+  const selectedAnalytics = analytics?.agents.find((a: { agent_id: string }) => a.agent_id === selectedAgent);
 
   return (
     <Tooltip.Provider delayDuration={200}>
@@ -278,7 +278,7 @@ export default function AgentsPage() {
               <h2 className="text-xs font-semibold text-mc-dim uppercase tracking-wide mb-1">All Agents</h2>
               {agents.map((a) => {
                 const isSelected = selectedAgent === a.id;
-                const agentAnalytics = analytics?.agents.find((an) => an.agent_id === a.id);
+                const agentAnalytics = analytics?.agents.find((an: { agent_id: string }) => an.agent_id === a.id);
                 const isStarting = runningIds.has(a.id) && a.status !== 'running';
                 return (
                   <button
@@ -384,15 +384,16 @@ export default function AgentsPage() {
                       <h3 className="text-sm font-semibold text-mc-text dark:text-gray-100 mb-3">Daily Cost (14d)</h3>
                       <div className="flex items-end gap-1 h-24">
                         {Object.entries(selectedAnalytics.daily_costs).slice(-14).map(([day, cost]) => {
-                          const maxCost = Math.max(...Object.values(selectedAnalytics.daily_costs), 0.01);
-                          const h = Math.max(4, (cost / maxCost) * 96);
+                          const costNum = cost as number;
+                          const maxCost = Math.max(...(Object.values(selectedAnalytics.daily_costs) as number[]), 0.01);
+                          const h = Math.max(4, (costNum / maxCost) * 96);
                           return (
                             <Tooltip.Root key={day}>
                               <Tooltip.Trigger asChild>
                                 <div className="flex-1 rounded-t bg-mc-accent/60 dark:bg-blue-500/40 hover:bg-mc-accent transition-colors cursor-default" style={{ height: `${h}px` }} />
                               </Tooltip.Trigger>
                               <Tooltip.Content className="bg-mc-text text-white text-xs px-2 py-1 rounded-md" sideOffset={5}>
-                                {day}: ${cost.toFixed(4)}
+                                {day}: ${costNum.toFixed(4)}
                               </Tooltip.Content>
                             </Tooltip.Root>
                           );

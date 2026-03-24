@@ -20,46 +20,42 @@ SEED_TAG = "seed-data"
 
 async def seed_data_if_empty(db: AsyncSession | None = None):
     """Seed the database with example data if no projects exist."""
-    close_session = False
-    if db is None:
-        db = async_session()
-        close_session = True
+    if db is not None:
+        await _do_seed(db)
+    else:
+        async with async_session() as session:
+            await _do_seed(session)
 
-    try:
-        count = await db.scalar(select(func.count(Project.id)))
-        if count and count > 0:
-            return
 
-        # Create a sample project
-        project = Project(
-            name="Mission Control",
-            description="The command center itself — meta!",
-            status="active",
-            color="#00ffc8",
-        )
-        db.add(project)
-        await db.flush()
+async def _do_seed(db: AsyncSession):
+    count = await db.scalar(select(func.count(Project.id)))
+    if count and count > 0:
+        return
 
-        # Sample tasks
-        tasks = [
-            Task(text="Set up Telegram bot token", priority="high", project_id=project.id, tags=[SEED_TAG]),
-            Task(text="Configure brand profile", priority="medium", project_id=project.id, tags=[SEED_TAG]),
-            Task(text="Create first agent skill YAML", priority="medium", project_id=project.id, tags=[SEED_TAG]),
-            Task(text="Test morning briefing", priority="low", project_id=project.id, tags=[SEED_TAG]),
-        ]
-        for t in tasks:
-            db.add(t)
+    project = Project(
+        name="Mission Control",
+        description="The command center itself — meta!",
+        status="active",
+        color="#00ffc8",
+    )
+    db.add(project)
+    await db.flush()
 
-        # Sample note
-        note = Note(
-            title="Getting Started",
-            content="Welcome to Mission Control! Start by:\n\n1. Setting up your Telegram bot\n2. Configuring your brand profile\n3. Creating agent skills in `backend/skills/`\n4. Talking to your bot!",
-            tags=[SEED_TAG],
-            is_pinned=True,
-        )
-        db.add(note)
+    tasks = [
+        Task(text="Set up Telegram bot token", priority="high", project_id=project.id, tags=[SEED_TAG]),
+        Task(text="Configure brand profile", priority="medium", project_id=project.id, tags=[SEED_TAG]),
+        Task(text="Create first agent skill YAML", priority="medium", project_id=project.id, tags=[SEED_TAG]),
+        Task(text="Test morning briefing", priority="low", project_id=project.id, tags=[SEED_TAG]),
+    ]
+    for t in tasks:
+        db.add(t)
 
-        await db.commit()
-    finally:
-        if close_session:
-            await db.close()
+    note = Note(
+        title="Getting Started",
+        content="Welcome to Mission Control! Start by:\n\n1. Setting up your Telegram bot\n2. Configuring your brand profile\n3. Creating agent skills in `backend/skills/`\n4. Talking to your bot!",
+        tags=[SEED_TAG],
+        is_pinned=True,
+    )
+    db.add(note)
+
+    await db.commit()
