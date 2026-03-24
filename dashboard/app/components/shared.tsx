@@ -76,12 +76,12 @@ export function Badge({ children, variant = 'default' }: {
   variant?: 'default' | 'success' | 'warning' | 'error' | 'purple' | 'blue';
 }) {
   const styles: Record<string, string> = {
-    default: 'bg-mc-subtle text-mc-muted dark:bg-gray-800 dark:text-gray-400',
-    success: 'bg-mc-green-bg text-mc-green-dark dark:bg-mc-green-bg-dark dark:text-mc-green',
-    warning: 'bg-mc-yellow-bg text-mc-yellow-dark dark:bg-mc-yellow-bg-dark dark:text-mc-yellow',
-    error: 'bg-mc-red-bg text-mc-red-dark dark:bg-mc-red-bg-dark dark:text-mc-red',
-    purple: 'bg-mc-purple-bg text-mc-purple-dark dark:bg-mc-purple-bg-dark dark:text-mc-purple',
-    blue: 'bg-mc-blue-bg text-mc-blue-text dark:bg-mc-blue-bg-dark dark:text-mc-blue',
+    default: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+    success: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
+    warning: 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-400',
+    error: 'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-400',
+    purple: 'bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-400',
+    blue: 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
   };
   return (
     <span className={clsx('inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium', styles[variant])}>
@@ -105,8 +105,7 @@ export function SectionHeader({ icon: Icon, title, count, onAdd, extra }: {
         {onAdd && (
           <button
             onClick={onAdd}
-            aria-label={`Add ${title}`}
-            className="w-7 h-7 rounded-lg border border-mc-border dark:border-gray-700 bg-white dark:bg-gray-800 text-mc-muted dark:text-gray-400 hover:bg-mc-accent-light hover:text-mc-accent dark:hover:bg-mc-blue-bg-dark dark:hover:text-blue-400 hover:border-mc-accent/30 transition-all flex items-center justify-center cursor-pointer"
+            className="w-7 h-7 rounded-lg border border-mc-border dark:border-gray-700 bg-white dark:bg-gray-800 text-mc-muted dark:text-gray-400 hover:bg-mc-accent-light hover:text-mc-accent dark:hover:bg-blue-950 dark:hover:text-blue-400 hover:border-mc-accent/30 transition-all flex items-center justify-center cursor-pointer"
           >
             <Plus size={14} />
           </button>
@@ -126,18 +125,16 @@ export function InlineInput({ placeholder, onSubmit, onCancel }: {
     <div className="flex gap-2 mb-3">
       <input
         ref={ref} value={val} onChange={(e) => setVal(e.target.value)} placeholder={placeholder}
-        aria-label={placeholder}
-        type="text"
         onKeyDown={(e) => { if (e.key === 'Enter' && val.trim()) { onSubmit(val.trim()); setVal(''); } if (e.key === 'Escape') onCancel(); }}
         className="flex-1 border border-mc-border dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-mc-text dark:text-gray-200 bg-white dark:bg-gray-800 outline-none focus:border-mc-accent focus:ring-2 focus:ring-mc-accent/10 placeholder:text-mc-dim transition-all"
       />
       <button
         onClick={() => { if (val.trim()) { onSubmit(val.trim()); setVal(''); } }}
-        className="px-3 py-2 bg-mc-accent text-white text-sm font-medium rounded-lg hover:bg-mc-accent-hover transition-colors cursor-pointer"
+        className="px-3 py-2 bg-mc-accent text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors cursor-pointer"
       >
         Add
       </button>
-      <button onClick={onCancel} aria-label="Cancel" className="px-2 py-2 bg-white dark:bg-gray-800 border border-mc-border dark:border-gray-700 text-mc-muted rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors cursor-pointer">
+      <button onClick={onCancel} className="px-2 py-2 bg-white dark:bg-gray-800 border border-mc-border dark:border-gray-700 text-mc-muted rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors cursor-pointer">
         <X size={14} />
       </button>
     </div>
@@ -146,19 +143,19 @@ export function InlineInput({ placeholder, onSubmit, onCancel }: {
 
 export function StatusIndicator({ status }: { status: string }) {
   const config: Record<string, { color: string; pulse: boolean }> = {
-    running: { color: 'bg-mc-green', pulse: true },
-    active: { color: 'bg-mc-green', pulse: true },
-    launched: { color: 'bg-mc-green', pulse: false },
+    running: { color: 'bg-emerald-500', pulse: true },
+    active: { color: 'bg-emerald-500', pulse: true },
+    launched: { color: 'bg-emerald-500', pulse: false },
     idle: { color: 'bg-gray-300 dark:bg-gray-600', pulse: false },
-    planning: { color: 'bg-mc-yellow', pulse: false },
-    paused: { color: 'bg-mc-yellow', pulse: false },
-    error: { color: 'bg-mc-red', pulse: false },
+    planning: { color: 'bg-amber-400', pulse: false },
+    paused: { color: 'bg-amber-400', pulse: false },
+    error: { color: 'bg-red-500', pulse: false },
     disabled: { color: 'bg-gray-200 dark:bg-gray-700', pulse: false },
     archived: { color: 'bg-gray-200 dark:bg-gray-700', pulse: false },
   };
   const c = config[status] || { color: 'bg-gray-300', pulse: false };
   return (
-    <span className="relative flex h-2.5 w-2.5" role="status" aria-label={status}>
+    <span className="relative flex h-2.5 w-2.5">
       {c.pulse && <span className={clsx('animate-ping absolute inline-flex h-full w-full rounded-full opacity-50', c.color)} />}
       <span className={clsx('relative inline-flex rounded-full h-2.5 w-2.5', c.color)} />
     </span>

@@ -25,28 +25,6 @@ from app.agents.skill_loader import sync_skills_to_db
 from app.notifications.dispatcher import urgent_dispatch_loop, digest_loop
 
 
-async def _retry_stuck_enrichments():
-    """Retry any project enrichments stuck in 'pending' from a prior restart."""
-    import logging
-    from sqlalchemy import select
-    from app.db.session import async_session
-    from app.db.models import Project
-    from app.api.projects import _enrich_project
-
-    logger = logging.getLogger(__name__)
-    await asyncio.sleep(5)  # let startup settle
-    try:
-        async with async_session() as db:
-            result = await db.execute(select(Project).where(Project.url.isnot(None)))
-            for project in result.scalars().all():
-                meta = project.metadata_ or {}
-                if meta.get("enrichment_status") == "pending":
-                    logger.info(f"Retrying stuck enrichment for {project.name}")
-                    asyncio.create_task(_enrich_project(project.id, project.url))
-    except Exception as e:
-        logger.warning(f"Failed to retry stuck enrichments: {e}")
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup

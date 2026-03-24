@@ -11,14 +11,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <a href="#main-content" className="skip-to-content">
-          Skip to main content
-        </a>
         <Sidebar />
         <MobileNav />
-        <main id="main-content" className="md:ml-14 pb-16 md:pb-0">
+        <div className="md:ml-14 pb-16 md:pb-0">
           {children}
-        </main>
+        </div>
       </body>
     </html>
   );

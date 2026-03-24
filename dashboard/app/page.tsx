@@ -52,11 +52,11 @@ function Badge({ children, variant = 'default' }: {
 }) {
   const styles: Record<string, string> = {
     default: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
-    success: 'bg-mc-green-bg text-mc-green-dark dark:bg-mc-green-bg-dark dark:text-mc-green',
-    warning: 'bg-mc-yellow-bg text-mc-yellow-dark dark:bg-mc-yellow-bg-dark dark:text-mc-yellow',
-    error: 'bg-mc-red-bg text-mc-red-dark dark:bg-mc-red-bg-dark dark:text-mc-red',
-    purple: 'bg-mc-purple-bg text-mc-purple-dark dark:bg-mc-purple-bg-dark dark:text-mc-purple',
-    blue: 'bg-mc-blue-bg text-mc-blue-dark dark:bg-mc-blue-bg-dark dark:text-mc-blue',
+    success: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
+    warning: 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-400',
+    error: 'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-400',
+    purple: 'bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-400',
+    blue: 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
   };
   return (
     <span className={clsx('inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium', styles[variant])}>
@@ -105,7 +105,7 @@ function InlineInput({ placeholder, onSubmit, onCancel }: {
       />
       <button
         onClick={() => { if (val.trim()) { onSubmit(val.trim()); setVal(''); } }}
-        className="px-3 py-2 bg-mc-accent text-white text-sm font-medium rounded-lg hover:bg-mc-accent-hover transition-colors cursor-pointer"
+        className="px-3 py-2 bg-mc-accent text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors cursor-pointer"
       >
         Add
       </button>
@@ -118,12 +118,12 @@ function InlineInput({ placeholder, onSubmit, onCancel }: {
 
 function StatusIndicator({ status }: { status: string }) {
   const config: Record<string, { color: string; pulse: boolean }> = {
-    running: { color: 'bg-mc-green', pulse: true },
-    active: { color: 'bg-mc-green', pulse: true },
+    running: { color: 'bg-emerald-500', pulse: true },
+    active: { color: 'bg-emerald-500', pulse: true },
     idle: { color: 'bg-gray-300 dark:bg-gray-600', pulse: false },
-    planning: { color: 'bg-mc-yellow', pulse: false },
-    paused: { color: 'bg-mc-yellow', pulse: false },
-    error: { color: 'bg-mc-red', pulse: false },
+    planning: { color: 'bg-amber-400', pulse: false },
+    paused: { color: 'bg-amber-400', pulse: false },
+    error: { color: 'bg-red-500', pulse: false },
     disabled: { color: 'bg-gray-200 dark:bg-gray-700', pulse: false },
     archived: { color: 'bg-gray-200 dark:bg-gray-700', pulse: false },
   };

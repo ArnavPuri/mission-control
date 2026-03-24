@@ -31,7 +31,7 @@ function Toast({ message, type, onDone }: { message: string; type: 'success' | '
   return (
     <div className={clsx(
       'fixed top-4 right-4 z-50 px-4 py-2.5 rounded-lg shadow-lg text-sm font-medium flex items-center gap-2 animate-in slide-in-from-top-2',
-      type === 'success' ? 'bg-mc-green text-white' : 'bg-mc-red text-white'
+      type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
     )}>
       {type === 'success' ? <CheckCircle size={16} /> : <XCircle size={16} />}
       {message}
@@ -54,9 +54,9 @@ function RunRow({ run, isExpanded, onToggle }: { run: RunDetail; isExpanded: boo
         className="w-full flex items-center gap-3 py-2.5 text-left cursor-pointer bg-transparent"
       >
         <span className={clsx('w-2 h-2 rounded-full shrink-0',
-          run.status === 'completed' ? 'bg-mc-green' :
-          run.status === 'failed' ? 'bg-mc-red' :
-          run.status === 'running' ? 'bg-mc-yellow animate-pulse' : 'bg-gray-300'
+          run.status === 'completed' ? 'bg-emerald-500' :
+          run.status === 'failed' ? 'bg-red-500' :
+          run.status === 'running' ? 'bg-amber-400 animate-pulse' : 'bg-gray-300'
         )} />
         <span className="text-xs text-mc-text dark:text-gray-300 flex-1">
           {new Date(run.started_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
@@ -70,7 +70,7 @@ function RunRow({ run, isExpanded, onToggle }: { run: RunDetail; isExpanded: boo
       {isExpanded && (summary || run.error) && (
         <div className="pl-5 pb-3 space-y-2">
           {run.error && (
-            <div className="text-xs text-mc-red dark:text-mc-red bg-mc-red-bg dark:bg-mc-red-bg-dark/50 rounded-lg px-3 py-2">
+            <div className="text-xs text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-950/50 rounded-lg px-3 py-2">
               {run.error}
             </div>
           )}
@@ -100,7 +100,7 @@ function RunRow({ run, isExpanded, onToggle }: { run: RunDetail; isExpanded: boo
                   <div key={i} className={clsx(
                     'text-xs px-2.5 py-1.5 rounded',
                     msg.role === 'assistant' ? 'bg-blue-50 dark:bg-blue-950/30 text-mc-text dark:text-gray-300' :
-                    msg.role === 'result' ? 'bg-mc-green-bg dark:bg-mc-green-bg-dark/30 text-mc-green-dark dark:text-mc-green' :
+                    msg.role === 'result' ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400' :
                     'bg-gray-50 dark:bg-gray-800/50 text-mc-muted dark:text-gray-400'
                   )}>
                     <span className="font-medium text-[10px] uppercase text-mc-dim mr-1.5">{msg.role}</span>
@@ -241,7 +241,7 @@ export default function AgentsPage() {
               <h1 className="text-base font-bold text-mc-text dark:text-gray-100">Agents</h1>
               <span className="text-xs text-mc-dim">{agents.length} configured</span>
             </div>
-            <Link href="/agents/new" className="flex items-center gap-1.5 px-3 py-1.5 bg-mc-accent text-white text-sm rounded-lg hover:bg-mc-accent-hover transition-colors">
+            <Link href="/agents/new" className="flex items-center gap-1.5 px-3 py-1.5 bg-mc-accent text-white text-sm rounded-lg hover:bg-blue-700 transition-colors">
               <Plus size={14} /> Create Agent
             </Link>
           </div>
@@ -256,7 +256,7 @@ export default function AgentsPage() {
                 <div className="text-[11px] text-mc-dim">Total Runs</div>
               </Card>
               <Card className="p-4 text-center">
-                <div className={clsx('text-xl font-bold', totals.overall_success_rate >= 80 ? 'text-mc-green' : 'text-mc-yellow')}>
+                <div className={clsx('text-xl font-bold', totals.overall_success_rate >= 80 ? 'text-emerald-600' : 'text-amber-600')}>
                   {Math.round(totals.overall_success_rate)}%
                 </div>
                 <div className="text-[11px] text-mc-dim">Success Rate</div>
@@ -307,8 +307,8 @@ export default function AgentsPage() {
                         className={clsx(
                           'w-7 h-7 rounded-lg flex items-center justify-center transition-all cursor-pointer border',
                           a.status === 'running'
-                            ? 'bg-mc-red-bg dark:bg-mc-red-bg-dark border-mc-red-light dark:border-mc-red-dark text-mc-red hover:bg-mc-red-light'
-                            : 'bg-mc-green-bg dark:bg-mc-green-bg-dark border-mc-green-light dark:border-mc-green-dark text-mc-green hover:bg-mc-green-light',
+                            ? 'bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800 text-red-600 hover:bg-red-100'
+                            : 'bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-800 text-emerald-600 hover:bg-emerald-100',
                           isStarting && 'opacity-60'
                         )}
                       >
@@ -363,7 +363,7 @@ export default function AgentsPage() {
                       </div>
                       <div>
                         <TrendingUp size={16} className="text-mc-muted mx-auto mb-1" />
-                        <div className={clsx('text-sm font-semibold', (selectedAnalytics?.success_rate ?? 100) >= 80 ? 'text-mc-green' : 'text-mc-yellow')}>
+                        <div className={clsx('text-sm font-semibold', (selectedAnalytics?.success_rate ?? 100) >= 80 ? 'text-emerald-600' : 'text-amber-600')}>
                           {Math.round(selectedAnalytics?.success_rate ?? 100)}%
                         </div>
                         <div className="text-[11px] text-mc-dim">Success Rate</div>

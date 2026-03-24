@@ -329,32 +329,13 @@ async def call_llm(
     options = ClaudeAgentOptions(**options_kwargs)
 
     full_response = ""
-    try:
-        async for message in query(prompt=prompt, options=options):
-            msg_type = type(message).__name__
-            if hasattr(message, "result"):
-                print(f"[chat-sdk] {msg_type} result={repr(message.result)[:200]}", flush=True)
-                if message.result:
-                    full_response = message.result
-            elif hasattr(message, "content"):
-                content = getattr(message, "content", [])
-                texts = []
-                if isinstance(content, list):
-                    for block in content:
-                        if hasattr(block, "text"):
-                            texts.append(block.text)
-                elif isinstance(content, str):
-                    texts.append(content)
-                if texts:
-                    joined = "".join(texts)
-                    full_response += joined
-                    print(f"[chat-sdk] {msg_type} text={joined[:200]}", flush=True)
-                else:
-                    print(f"[chat-sdk] {msg_type} content_type={type(content).__name__} content={repr(content)[:200]}", flush=True)
-    except Exception as e:
-        print(f"[chat-sdk] ERROR: {e}", flush=True)
-        logger.error(f"Chat SDK call failed: {e}", exc_info=True)
-        return None
+    async for message in query(prompt=prompt, options=options):
+        if hasattr(message, "result"):
+            full_response = message.result
+        elif hasattr(message, "content"):
+            for block in getattr(message, "content", []):
+                if hasattr(block, "text"):
+                    full_response += block.text
 
     return full_response or "Sorry, I couldn't generate a response. Please try again."
 

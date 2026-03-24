@@ -159,12 +159,6 @@ class Scheduler:
                 if is_due:
                     due_agents.append(agent)
 
-            # Mark due agents as RUNNING immediately to prevent re-triggering
-            for agent in due_agents:
-                agent.status = AgentStatus.RUNNING
-            if due_agents:
-                await db.commit()
-
             # Launch all due agents concurrently with jitter
             async def _run_with_jitter(agent):
                 jitter = random.uniform(0, self.max_jitter)
@@ -176,23 +170,10 @@ class Scheduler:
                 )
                 try:
                     async with async_session() as agent_db:
-                        # Re-load agent in this session so ORM tracking works
-                        fresh_agent = await agent_db.get(AgentConfig, agent.id)
-                        if not fresh_agent:
-                            return
-                        await self.runner.start_run(fresh_agent, trigger="schedule", db=agent_db)
+                        await self.runner.start_run(agent, trigger="schedule", db=agent_db)
                         await agent_db.commit()
                 except Exception as e:
                     logger.error(f"Failed to run agent {agent.name}: {e}")
-                    # Reset status to IDLE on failure so it can retry next cycle
-                    try:
-                        async with async_session() as err_db:
-                            failed_agent = await err_db.get(AgentConfig, agent.id)
-                            if failed_agent and failed_agent.status == AgentStatus.RUNNING:
-                                failed_agent.status = AgentStatus.ERROR
-                                await err_db.commit()
-                    except Exception:
-                        pass
 
             if due_agents:
                 await asyncio.gather(*[_run_with_jitter(a) for a in due_agents])

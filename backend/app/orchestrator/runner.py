@@ -318,17 +318,10 @@ class AgentRunner:
         options_kwargs["env"] = env
 
         cli_path = shutil.which("claude")
-        if not cli_path:
-            # Fallback: the claude_agent_sdk bundles a CLI binary
-            import claude_agent_sdk
-            bundled = os.path.join(os.path.dirname(claude_agent_sdk.__file__), "_bundled", "claude")
-            if os.path.isfile(bundled):
-                cli_path = bundled
         if cli_path:
             options_kwargs["cli_path"] = cli_path
 
         # Session resumption
-        use_resume = False
         if agent.session_id and agent.session_expires_at and agent.session_expires_at > datetime.now(timezone.utc):
             options_kwargs["resume"] = agent.session_id
             if agent.last_message_uuid:

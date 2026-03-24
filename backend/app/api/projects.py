@@ -1,22 +1,14 @@
-import json
-import re
-import logging
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
-from sqlalchemy.orm.attributes import flag_modified
-from app.db.session import get_db, async_session
+from app.db.session import get_db
 from app.db.models import (
     Project, ProjectStatus, Task, TaskStatus,
     EventLog, MarketingSignal, MarketingContent,
 )
-from app.api.ws import broadcast
-from app.config import settings
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -89,27 +81,14 @@ async def list_projects(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("")
-async def create_project(
-    data: ProjectCreate,
-    background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
-):
+async def create_project(data: ProjectCreate, db: AsyncSession = Depends(get_db)):
     fields = data.model_dump(exclude_unset=True)
     if "metadata" in fields:
         fields["metadata_"] = fields.pop("metadata")
-    # If URL provided, set enrichment status to pending
-    if fields.get("url"):
-        meta = fields.get("metadata_") or {}
-        meta["enrichment_status"] = "pending"
-        fields["metadata_"] = meta
     project = Project(**fields)
     db.add(project)
     await db.flush()
-    project_id = project.id
-    # Trigger background enrichment if URL provided
-    if data.url:
-        background_tasks.add_task(_enrich_project, project_id, data.url)
-    return {"id": str(project_id), "name": project.name}
+    return {"id": str(project.id), "name": project.name}
 
 
 @router.get("/{project_id}")
