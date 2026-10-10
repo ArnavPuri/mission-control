@@ -23,7 +23,7 @@ from app.db.models import (
     Project, Task, EventLog, TaskStatus, TaskPriority,
     AgentApproval, AgentMemory, Note, MarketingContent, TaskComment, LEAD_TAG,
 )
-from app.orchestrator import review, threads
+from app.orchestrator import handoffs, review, threads
 from app.db.session import async_session
 from app.api.brand import get_notification_prefs_dict
 from app.api.ws import broadcast
@@ -39,7 +39,50 @@ AUTO_CONTEXT = {
     "brand": "BRAND PROFILE (voice and topics for anything you write)",
     "memory": "YOUR MEMORY",
     "past_runs": "YOUR RECENT RUNS",
+    "teammates": "TEAMMATES (agents you can hand work to)",
 }
+
+# What each running agent is doing right now, by agent id:
+# {"task_id": str | None, "steps": ["Searching the web: …", …]}
+_progress: dict[UUID, dict] = {}
+MAX_PROGRESS_STEPS = 12
+
+
+def current_progress(agent_id: UUID | None, task_id: UUID | None = None) -> list[str]:
+    entry = _progress.get(agent_id) if agent_id else None
+    if not entry or (task_id and entry["task_id"] != str(task_id)):
+        return []
+    return list(entry["steps"])
+
+
+def is_working_on(agent_id: UUID | None, task_id: UUID) -> bool:
+    """True while the agent's current run is about this task (not its scheduled job)."""
+    entry = _progress.get(agent_id) if agent_id else None
+    return bool(entry) and agent_id in _active_runs and entry["task_id"] == str(task_id)
+
+
+def describe_tool_use(name: str, tool_input: dict | None) -> str:
+    """One line for a tool call, e.g. "Searching the web: plausible pricing"."""
+    i = tool_input or {}
+
+    def short(value, n=80):
+        value = str(value or "").strip().replace("\n", " ")
+        return value if len(value) <= n else value[: n - 1] + "…"
+
+    if name == "WebSearch":
+        return f"Searching the web: {short(i.get('query'))}"
+    if name == "WebFetch":
+        url = str(i.get("url") or "")
+        return f"Reading {short(url.split('://', 1)[-1], 70)}"
+    if name == "Read":
+        return f"Reading {Path(str(i.get('file_path') or '')).name or 'a file'}"
+    if name in ("Glob", "Grep"):
+        return f"Looking through files: {short(i.get('pattern'), 60)}"
+    if name == "Bash":
+        return f"Running `{short(i.get('command'), 60)}`"
+    if name in ("Write", "Edit"):
+        return f"Writing {Path(str(i.get('file_path') or '')).name or 'a file'}"
+    return f"Using {name}"
 
 
 class AgentRunner:
@@ -63,6 +106,15 @@ class AgentRunner:
 
         if agent.description:
             parts.append(f"Role: {agent.description}")
+
+        parts.append(
+            "\n## Teammates\n"
+            "Your context lists your teammates. When part of the work is clearly another agent's job\n"
+            "(e.g. you found a lead and the writer should draft the reply), hand it off with an action:\n"
+            '{"type": "handoff", "agent": "<teammate slug>", "request": "<everything they need to know>", '
+            '"task_id": "<id of the task it relates to, if any>"}\n'
+            f"Hand off only when it adds real value; at most {handoffs.MAX_PER_RUN} per run."
+        )
 
         if tone:
             parts.append(f"Tone: {tone}.")
@@ -90,6 +142,9 @@ class AgentRunner:
 
     async def build_context(self, agent: AgentConfig, db: AsyncSession) -> dict:
         context = {}
+        team = await handoffs.teammates(db, agent)
+        if team:
+            context["teammates"] = team
 
         if "projects" in (agent.data_reads or []):
             result = await db.execute(select(Project))
@@ -255,6 +310,7 @@ class AgentRunner:
         result_message = None
 
         async for message in query(prompt=prompt, options=options):
+            await self._report_progress(agent, message)
             if hasattr(message, "total_cost_usd"):
                 result_message = message
             if hasattr(message, "result") and message.result is not None:
@@ -290,6 +346,21 @@ class AgentRunner:
             return json.loads(cleaned)
         except (json.JSONDecodeError, IndexError):
             return {"summary": full_response, "actions": [], "raw": True}
+
+    async def _report_progress(self, agent: AgentConfig, message):
+        """Publish the agent's tool calls as they happen ("Searching the web: …")."""
+        steps = [
+            describe_tool_use(block.name, getattr(block, "input", None))
+            for block in getattr(message, "content", None) or []
+            if type(block).__name__ == "ToolUseBlock"
+        ]
+        if not steps:
+            return
+        entry = _progress.setdefault(agent.id, {"task_id": None, "steps": []})
+        entry["steps"] = (entry["steps"] + steps)[-MAX_PROGRESS_STEPS:]
+        await broadcast("run.progress", {
+            "agent_id": str(agent.id), "task_id": entry["task_id"], "steps": entry["steps"],
+        })
 
     async def _execute_llm(self, prompt: str, agent: AgentConfig) -> dict:
         timeout_seconds = (agent.config or {}).get("timeout_seconds", 300)
@@ -340,6 +411,7 @@ class AgentRunner:
         run_id = run.id
 
         await broadcast("agent.started", {"agent_id": str(agent.id), "run_id": str(run.id)})
+        _progress[agent_id] = {"task_id": str(task_id) if task_id else None, "steps": []}
 
         try:
             context = await self.build_context(agent, db)
@@ -349,7 +421,11 @@ class AgentRunner:
                 if not task:
                     raise RuntimeError(f"Task {task_id} not found")
                 thread = await threads.load_thread(db, task_id)
-                prompt = threads.assignment_prompt(agent, task, thread, context)
+                parent = await db.get(Task, task.parent_task_id) if task.parent_task_id else None
+                prompt = threads.assignment_prompt(
+                    agent, task, thread, context, parent=parent,
+                    handed_by=await handoffs.handed_by(db, task, agent),
+                )
             else:
                 prompt = self.render_prompt(agent.prompt_template, context)
             run.input_data = {
@@ -366,6 +442,8 @@ class AgentRunner:
             if max_actions is not None and len(actions) > max_actions:
                 validation_warnings.append(f"{len(actions) - max_actions} actions over the limit of {max_actions} were dropped")
                 actions = actions[:max_actions]
+            actions, handoff_warnings = _limit_handoffs(actions, task)
+            validation_warnings += handoff_warnings
             if validation_warnings:
                 logger.warning(f"Agent {agent.name} output warnings: {validation_warnings}")
                 result["warnings"] = validation_warnings
@@ -452,6 +530,7 @@ class AgentRunner:
         ))
         await db.commit()
         self._last_transcript = None
+        _progress.pop(agent_id, None)
         return run
 
     async def _finish_failed(self, db: AsyncSession, run_id, agent_id, status: AgentRunStatus, error: str):
@@ -584,6 +663,10 @@ class AgentRunner:
             await db.flush()
             await broadcast("task.created", {"id": str(lead.id), "text": lead.text, "source": lead.source})
 
+        elif action_type == "handoff":
+            task = await handoffs.hand_off(db, agent, action)
+            await broadcast("task.created", {"id": str(task.id), "text": task.text, "source": task.source})
+
         elif action_type == "create_content":
             if "marketing_content" not in writes:
                 return False
@@ -605,6 +688,21 @@ class AgentRunner:
             await broadcast("content.created", {"id": str(content.id), "title": content.title})
 
         return True
+
+
+def _limit_handoffs(actions: list[dict], task: Task | None) -> tuple[list[dict], list[str]]:
+    """Cap handoffs per run; a handoff from an assigned task links back to it."""
+    kept, warnings, count = [], [], 0
+    for action in actions:
+        if action.get("type") == "handoff":
+            count += 1
+            if count > handoffs.MAX_PER_RUN:
+                warnings.append(f"handoff to {action.get('agent')} dropped: more than {handoffs.MAX_PER_RUN} in one run")
+                continue
+            if task and not action.get("task_id"):
+                action = {**action, "task_id": str(task.id)}
+        kept.append(action)
+    return kept, warnings
 
 
 def _lead_priority(relevance) -> str:
@@ -714,6 +812,8 @@ async def _run_in_background(agent_id: UUID, trigger: str, notify: bool, task_id
             raise
         except Exception:
             logger.exception(f"Background run of {agent.name} crashed")
+        finally:
+            _progress.pop(agent_id, None)
 
 
 async def recover_interrupted_runs():

@@ -76,7 +76,8 @@ prompt_template: |
       {"type": "create_note", "title": "...", "content": "markdown", "tags": ["tag"]},
       {"type": "create_lead", "title": "...", "body": "...", "url": "https://...", "source_type": "reddit", "relevance_score": 0.8},
       {"type": "create_content", "title": "...", "body": "...", "channel": "x", "task_id": "<lead id>"},
-      {"type": "save_memory", "key": "...", "value": "..."}
+      {"type": "save_memory", "key": "...", "value": "..."},
+      {"type": "handoff", "agent": "<teammate slug>", "request": "what they should do, with all the context", "task_id": "<related task id>"}
     ]
   }
 

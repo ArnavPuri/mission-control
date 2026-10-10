@@ -13,6 +13,7 @@ import {
   StatusIndicator, TaskStatusIcon, agentDisplay, timeAgo,
 } from './components/shared';
 import { DueBadge, dueInfo } from './components/schedule';
+import { useLatestSteps } from './lib/live';
 
 const PRIORITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
@@ -146,6 +147,7 @@ function NeedsYou() {
 function WithAgents() {
   const { tasks, agents, projects, openTask, openCommandMenu } = useWorkspace();
   const delegated = tasks.filter((t) => t.assigned_agent_id && (t.status === 'todo' || t.status === 'in_progress'));
+  const steps = useLatestSteps();
 
   return (
     <section>
@@ -169,7 +171,7 @@ function WithAgents() {
                 <p className="text-sm text-mc-text truncate">{t.text}</p>
                 <p className="text-xs mt-0.5 flex items-center gap-1.5">
                   {working
-                    ? <span className="text-shimmer">{agentDisplay(t.assigned_agent_name).name} is working…</span>
+                    ? <span className="text-shimmer truncate">{agentDisplay(t.assigned_agent_name).name}{steps[t.id] ? `: ${steps[t.id]}` : ' is working…'}</span>
                     : <span className="text-mc-muted">{agentDisplay(t.assigned_agent_name).name} · in progress</span>}
                   {project && (
                     <span className="flex items-center gap-1 text-mc-dim">

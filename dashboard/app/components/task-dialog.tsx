@@ -4,10 +4,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
-  ArrowUp, Check, ChevronDown, ExternalLink, FolderOpen, GitPullRequest, Link2, MoreHorizontal, Repeat, Trash2, X,
+  ArrowUp, Check, ChevronDown, CornerLeftUp, ExternalLink, FolderOpen, GitPullRequest, Link2, MoreHorizontal, Repeat, Trash2, X,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import * as api from '../lib/api';
+import { subscribe } from '../lib/live';
 import { Markdown } from './markdown';
 import { DuePicker, ReminderPicker, reminderPending } from './schedule';
 import {
@@ -57,15 +58,18 @@ function PropertyTrigger({ children }: { children: React.ReactNode }) {
  * repeat, assignee, project, GitHub), and its thread with the agent working on it. `refreshTick` changes
  * whenever the backend broadcasts an event, so agent replies appear live.
  */
-export function TaskDialog({ taskId, agents, projects, refreshTick, onClose, onChanged }: {
+export function TaskDialog({ taskId, agents, projects, refreshTick, onClose, onChanged, onOpenTask }: {
   taskId: string | null;
   agents: api.Agent[];
   projects: api.Project[];
   refreshTick: number;
   onClose: () => void;
   onChanged: () => void;
+  /** Open another task in the sheet (the task this came from, or a handoff) */
+  onOpenTask?: (id: string) => void;
 }) {
   const [task, setTask] = useState<api.TaskDetail | null>(null);
+  const [progress, setProgress] = useState<string[]>([]);
   const [reply, setReply] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +92,14 @@ export function TaskDialog({ taskId, agents, projects, refreshTick, onClose, onC
   }, [taskId, load]);
 
   useEffect(() => { load(); }, [refreshTick, load]);
+
+  // Live steps from the agent working on this task
+  useEffect(() => { setProgress(task?.agent_running ? task.progress ?? [] : []); }, [task]);
+  useEffect(() => subscribe((event) => {
+    if (event.type === 'run.progress' && taskId && event.data?.task_id === taskId) {
+      setProgress(event.data.steps ?? []);
+    }
+  }), [taskId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView?.({ block: 'end' });
@@ -177,6 +189,15 @@ export function TaskDialog({ taskId, agents, projects, refreshTick, onClose, onC
               <div className="flex-1 overflow-y-auto">
                 {/* Title + properties */}
                 <div className="px-6 pt-5 pb-4 border-b border-mc-line">
+                  {task.parent && (
+                    <button
+                      onClick={() => onOpenTask?.(task.parent!.id)}
+                      className="mb-1.5 inline-flex items-center gap-1 max-w-full text-xs text-mc-muted hover:text-mc-text cursor-pointer"
+                    >
+                      <CornerLeftUp size={12} className="flex-shrink-0" />
+                      <span className="truncate">Part of {task.parent.text}</span>
+                    </button>
+                  )}
                   <Dialog.Title className="text-lg font-semibold text-mc-text leading-snug break-words">{task.text}</Dialog.Title>
                   {task.tags.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-2">
@@ -350,6 +371,31 @@ export function TaskDialog({ taskId, agents, projects, refreshTick, onClose, onC
                   )}
                 </div>
 
+                {/* Work handed to teammates */}
+                {task.handoffs && task.handoffs.length > 0 && (
+                  <div className="px-6 py-4 border-b border-mc-line">
+                    <div className="text-xs font-medium text-mc-muted mb-2">Handed off</div>
+                    <ul className="flex flex-col">
+                      {task.handoffs.map((h) => (
+                        <li key={h.id}>
+                          <button
+                            onClick={() => onOpenTask?.(h.id)}
+                            className="w-full flex items-center gap-2.5 h-9 px-2 -mx-2 rounded-md text-left hover:bg-mc-hover cursor-pointer"
+                          >
+                            <TaskStatusIcon status={h.status} size={14} />
+                            <span className={clsx('flex-1 min-w-0 truncate text-sm', h.status === 'done' ? 'text-mc-muted' : 'text-mc-text')}>{h.text}</span>
+                            {h.assigned_agent_name && (
+                              <span className="flex items-center gap-1.5 text-xs text-mc-muted flex-shrink-0">
+                                <Avatar name={h.assigned_agent_name} size={16} /> {agentDisplay(h.assigned_agent_name).name}
+                              </span>
+                            )}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
                 {/* Thread */}
                 <div className="px-6 py-5">
                   <div className="text-xs font-medium text-mc-muted mb-4">Activity</div>
@@ -385,9 +431,24 @@ export function TaskDialog({ taskId, agents, projects, refreshTick, onClose, onC
                       );
                     })}
                     {task.agent_running && (
-                      <li className="relative flex items-center gap-3">
+                      <li className="relative flex items-start gap-3">
                         <Avatar name={task.assigned_agent_name || 'Agent'} size={24} className="ring-4 ring-mc-panel" />
-                        <span className="text-sm text-shimmer">{assignee?.name ?? 'Agent'} is working on it…</span>
+                        <div className="flex-1 min-w-0 pt-0.5">
+                          <span className="text-sm text-shimmer">{assignee?.name ?? 'Agent'} is working on it…</span>
+                          {progress.length > 0 && (
+                            <ol aria-label="Progress" className="mt-2 flex flex-col gap-1">
+                              {progress.map((step, i) => (
+                                <li key={i} className={clsx(
+                                  'flex items-center gap-2 text-xs min-w-0',
+                                  i === progress.length - 1 ? 'text-mc-secondary' : 'text-mc-dim',
+                                )}>
+                                  {i === progress.length - 1 ? <Spinner size={11} /> : <Check size={11} className="flex-shrink-0" />}
+                                  <span className="truncate">{step}</span>
+                                </li>
+                              ))}
+                            </ol>
+                          )}
+                        </div>
                       </li>
                     )}
                   </ol>

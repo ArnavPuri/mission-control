@@ -27,6 +27,7 @@ function GlobalDialogs({ taskId, setTaskId, project, setProject, commandOpen, se
         refreshTick={tick}
         onClose={() => setTaskId(null)}
         onChanged={refresh}
+        onOpenTask={setTaskId}
       />
       <ProjectDialog project={project} onClose={() => setProject(null)} onSaved={refresh} />
       <CommandMenu open={commandOpen} onOpenChange={setCommandOpen} />

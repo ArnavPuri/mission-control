@@ -38,6 +38,8 @@ def _describe_action(action: dict) -> str:
     if kind == "update_task":
         changes = ", ".join(f"{k}→{action[k]}" for k in ("status", "priority") if action.get(k))
         what = f"{action.get('task_id', '')[:8]} {changes}"
+    elif kind == "handoff":
+        what = f"to {action.get('agent', '?')}: {(action.get('request') or '')[:120]}"
     return f"• {kind}: {what}"[:200]
 
 

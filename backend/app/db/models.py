@@ -120,6 +120,8 @@ class Task(Base):
     priority = Column(Enum(TaskPriority), default=TaskPriority.MEDIUM, nullable=False)
     project_id = Column(Uuid, ForeignKey("projects.id"), nullable=True)
     assigned_agent_id = Column(Uuid, ForeignKey("agent_configs.id"), nullable=True)
+    # Set when an agent handed this off from another task
+    parent_task_id = Column(Uuid, ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True)
     source = Column(String(50), default="manual")
     tags = Column(JSON, default=list)
     due_date = Column(DateTime(timezone=True), nullable=True)
@@ -141,6 +143,7 @@ class Task(Base):
         Index("idx_tasks_priority", "priority"),
         Index("idx_tasks_project", "project_id"),
         Index("idx_tasks_remind_at", "remind_at"),
+        Index("idx_tasks_parent", "parent_task_id"),
     )
 
     @validates("due_date", "remind_at", "reminded_at", "completed_at")

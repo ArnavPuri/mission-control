@@ -167,6 +167,10 @@ You can assign any task to an agent with `/ask`, by asking in chat ("have the re
 
 If the agent is busy with another run, the task waits and the scheduler starts it as soon as the agent is free.
 
+While an agent works, the task sheet shows what it's doing live ("Searching the web: …", "Reading plausible.io/pricing"). The Home page shows the latest step too.
+
+**Agents hand work to each other.** Every agent knows its teammates. When part of the job belongs to someone else, it hands it off. For example, Pulse finds a promising Reddit thread and asks Echo to draft the reply. The handoff becomes a new task assigned to the teammate and linked to the original ("Part of …"). The teammate replies in its own thread and on Telegram, and the original task's thread records the handoff and its outcome. A chain of handoffs is at most 3 tasks deep, and one run can hand off at most 3 times. Handoffs go through approval like any other action when the agent has `requires_approval` set.
+
 ## Coding work with Claude Code
 
 Mission Control doesn't write code itself. Instead, it hands coding work to [Claude Code on GitHub](https://github.com/apps/claude):
@@ -228,7 +232,7 @@ The dashboard is a Next.js app for overview and management, in light and dark mo
 |------|--------------|
 | **Home** (`/`) | Today view: what needs you (approvals, questions from agents, drafts), work delegated to agents, your own tasks, and an activity feed of agent replies |
 | **Tasks** (`/tasks`) | Board by status (To do · In progress · Waiting on you · Done) with drag and drop, filters (mine, delegated, leads) and per-project views |
-| **Task sheet** | Opens from anywhere: status, priority, due date, reminder, repeat, assignee, project, **Send to Claude Code**, and the thread with the agent (rendered markdown) |
+| **Task sheet** | Opens from anywhere: status, priority, due date, reminder, repeat, assignee, project, **Send to Claude Code**, work handed off to other agents, the agent's live progress, and the thread with the agent (rendered markdown) |
 | **Agents** (`/agents`) | Agents with run/stop, 30-day runs, success rate and cost, run output and transcripts, and the agent builder |
 | **Notes** (`/notes`) | Two-pane markdown notes with autosave |
 | **Settings** (`/settings`) | Connection status, brand profile, Telegram notification preferences |

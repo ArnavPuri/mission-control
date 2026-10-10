@@ -11,7 +11,7 @@ from app.db.models import AgentConfig, AgentStatus, Task, TaskComment, TaskStatu
 from app.integrations import github
 from app.orchestrator import reminders, threads
 from app.timeutil import iso
-from app.orchestrator.runner import is_running
+from app.orchestrator.runner import current_progress, is_working_on
 from app.api.ws import broadcast, commit_and_broadcast
 
 router = APIRouter()
@@ -79,6 +79,7 @@ def _serialize(t: Task) -> dict:
         "github_issue": t.url if github.issue_ref(t) else None,
         "assigned_agent_id": str(t.assigned_agent_id) if t.assigned_agent_id else None,
         "assigned_agent_name": t.assigned_agent.name if t.assigned_agent else None,
+        "parent_task_id": str(t.parent_task_id) if t.parent_task_id else None,
         "source": t.source,
         "tags": t.tags or [],
         "due_date": iso(t.due_date),
@@ -107,9 +108,22 @@ async def get_task(task_id: UUID, db: AsyncSession = Depends(get_db)):
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     thread = await threads.load_thread(db, task_id, limit=200)
+    parent = await db.get(Task, task.parent_task_id) if task.parent_task_id else None
+    children = (await db.execute(
+        select(Task).where(Task.parent_task_id == task.id).order_by(Task.created_at)
+    )).scalars().all()
+    running = is_working_on(task.assigned_agent_id, task.id)
     return {
         **_serialize(task),
-        "agent_running": bool(task.assigned_agent_id) and is_running(task.assigned_agent_id),
+        "agent_running": running,
+        # What the agent is doing right now ("Searching the web: …")
+        "progress": current_progress(task.assigned_agent_id, task.id) if running else [],
+        "parent": {"id": str(parent.id), "text": parent.text} if parent else None,
+        "handoffs": [
+            {"id": str(c.id), "text": c.text, "status": c.status.value,
+             "assigned_agent_name": c.assigned_agent.name if c.assigned_agent else None}
+            for c in children
+        ],
         "comments": [_serialize_comment(c) for c in thread],
     }
 

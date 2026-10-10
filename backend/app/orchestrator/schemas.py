@@ -10,6 +10,7 @@ ALLOWED_ACTIONS = {
     "create_note",
     "save_memory",
     "create_lead", "create_content",
+    "handoff",
 }
 
 # Old action names still produced by agents created before leads became tasks
@@ -36,6 +37,10 @@ class AgentAction(BaseModel):
     key: str | None = None
     value: str | None = None
     memory_type: str | None = None
+
+    # Handoff fields: the teammate's slug and what to ask it
+    agent: str | None = None
+    request: str | None = None
 
     # Lead / content fields
     body: str | None = None

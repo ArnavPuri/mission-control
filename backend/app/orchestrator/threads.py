@@ -23,6 +23,7 @@ from app.db.models import (
 )
 from app.api.ws import broadcast
 from app.notifications.dispatcher import send_telegram
+from app.orchestrator.handoffs import handed_by, report_to_parent
 from app.orchestrator.reminders import complete_task
 
 logger = logging.getLogger(__name__)
@@ -111,24 +112,35 @@ async def pending_assignments(db: AsyncSession) -> list[tuple[UUID, UUID]]:
         if not agent or agent.status == AgentStatus.DISABLED:
             continue
         thread = await load_thread(db, task.id, limit=1)
-        if thread and thread[-1].author == USER:
+        if thread and is_agents_turn(thread[-1], agent):
             pending.append((agent.id, task.id))
     return pending
 
 
-def assignment_prompt(agent: AgentConfig, task: Task, thread: list[TaskComment], context: dict) -> str:
-    lines = [f"You have been assigned a task.\n\nTASK: {task.text}"]
+def is_agents_turn(last: TaskComment, agent: AgentConfig) -> bool:
+    """The agent owes an answer to the user, or to a teammate who handed it work."""
+    return last.author == USER or (last.author.startswith("agent:") and last.author != agent_author(agent))
+
+
+def assignment_prompt(agent: AgentConfig, task: Task, thread: list[TaskComment], context: dict,
+                      parent: Task | None = None, handed_by: str | None = None) -> str:
+    if handed_by:
+        lines = [f"Your teammate {handed_by} handed you a task.\n\nTASK: {task.text}"]
+    else:
+        lines = [f"You have been assigned a task.\n\nTASK: {task.text}"]
     if task.description:
         lines.append(f"DETAILS: {task.description}")
     if task.url:
         lines.append(f"LINK: {task.url}")
     if task.project:
         lines.append(f"PROJECT: {task.project.name} — {task.project.description or ''}")
+    if parent:
+        lines.append(f"PART OF: {parent.text}" + (f" — {parent.description[:500]}" if parent.description else ""))
 
     if thread:
         lines.append("\nCONVERSATION SO FAR (oldest first):")
         for c in thread:
-            who = "You" if c.author == agent_author(agent) else c.author
+            who = "You" if c.author == agent_author(agent) else c.author.replace("agent:", "teammate ")
             lines.append(f"[{who}] {c.body}")
 
     lines.append("\nCONTEXT:\n" + json.dumps(context, indent=2, default=str))
@@ -159,8 +171,14 @@ async def post_agent_reply(db: AsyncSession, task: Task, agent: AgentConfig, res
 
     comment = TaskComment(task_id=task.id, author=agent_author(agent), body=reply, run_id=run.id)
     db.add(comment)
+    parent = await report_to_parent(db, task, agent, needs_input)
+    if parent:
+        await broadcast("task.updated", {"id": str(parent.id)})
 
     header = f"🤖 *{agent.name}* · {task.text[:80]}"
+    teammate = await handed_by(db, task, agent)
+    if teammate:
+        header += f"\n_Handed over by {teammate}_"
     footer = "_Reply to this message to answer._" if needs_input else "_Reply to this message to follow up._"
     body = reply if len(reply) <= TELEGRAM_REPLY_LIMIT else reply[:TELEGRAM_REPLY_LIMIT] + "\n\n… (full reply in the dashboard)"
     comment.telegram_message_id = await send_telegram(f"{header}\n\n{body}\n\n{footer}")

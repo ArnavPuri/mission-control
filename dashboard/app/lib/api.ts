@@ -79,6 +79,8 @@ export interface Task {
   github_issue?: string | null;
   assigned_agent_id?: string | null;
   assigned_agent_name?: string | null;
+  /** Set when an agent handed this off from another task */
+  parent_task_id?: string | null;
   source: string;
   tags: string[];
   /** End of the day it's due (overdue once that day is over) */
@@ -101,8 +103,21 @@ export interface TaskComment {
   created_at: string;
 }
 
+export interface TaskHandoff {
+  id: string;
+  text: string;
+  status: Task['status'];
+  assigned_agent_name: string | null;
+}
+
 export interface TaskDetail extends Task {
   agent_running: boolean;
+  /** What the agent is doing right now, oldest first ("Searching the web: …") */
+  progress?: string[];
+  /** The task this was handed off from */
+  parent?: { id: string; text: string } | null;
+  /** Tasks the agent handed to teammates while working on this one */
+  handoffs?: TaskHandoff[];
   comments: TaskComment[];
 }
 
