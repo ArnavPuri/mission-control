@@ -14,6 +14,7 @@ import {
 } from './components/shared';
 import { DueBadge, dueInfo } from './components/schedule';
 import { useLatestSteps } from './lib/live';
+import { DraftDialog } from './components/draft-dialog';
 
 const PRIORITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
@@ -58,11 +59,13 @@ function Row({ children, onClick, className }: { children: React.ReactNode; onCl
 // ─── Needs you ───────────────────────────────────────────
 
 function NeedsYou() {
-  const { approvals, tasks, content, agents, refresh, openTask } = useWorkspace();
+  const { approvals, tasks, content, agents, health, refresh, openTask } = useWorkspace();
   const [busy, setBusy] = useState<string | null>(null);
+  const [openDraftId, setOpenDraftId] = useState<string | null>(null);
 
   const waiting = tasks.filter((t) => t.status === 'blocked');
-  const drafts = content.filter((c) => c.status === 'draft');
+  // Drafts to review, and approved ones still waiting to be posted
+  const drafts = content.filter((c) => c.status === 'draft' || c.status === 'approved');
   const total = approvals.length + waiting.length + drafts.length;
 
   const act = async (id: string, fn: () => Promise<unknown>) => {
@@ -119,17 +122,21 @@ function NeedsYou() {
         ))}
 
         {drafts.slice(0, 5).map((d) => (
-          <Row key={d.id}>
+          <Row key={d.id} onClick={() => setOpenDraftId(d.id)}>
             <span className="w-6 h-6 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-300 flex items-center justify-center flex-shrink-0">
               <Megaphone size={13} />
             </span>
             <div className="flex-1 min-w-0">
-              <p className="text-sm text-mc-text truncate"><span className="text-mc-muted">Draft for {d.channel} · </span>{d.title}</p>
+              <p className="text-sm text-mc-text truncate">
+                <span className="text-mc-muted">{d.status === 'approved' ? `Ready to post on ${d.channel}` : `Draft for ${d.channel}`} · </span>{d.title}
+              </p>
               <p className="text-xs text-mc-muted mt-0.5 line-clamp-2">{d.body}</p>
             </div>
-            <div className="flex gap-0.5 flex-shrink-0">
-              <IconButton label="Approve draft" icon={Check} disabled={busy === d.id}
-                onClick={() => act(d.id, () => api.marketingContent.update(d.id, { status: 'approved' }))} />
+            <div className="flex gap-0.5 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+              {d.status === 'draft' && (
+                <IconButton label="Approve draft" icon={Check} disabled={busy === d.id}
+                  onClick={() => act(d.id, () => api.marketingContent.update(d.id, { status: 'approved' }))} />
+              )}
               <IconButton label="Mark as posted" icon={Send} disabled={busy === d.id}
                 onClick={() => act(d.id, () => api.marketingContent.update(d.id, { status: 'posted' }))} />
               <IconButton label="Discard draft" icon={X} disabled={busy === d.id}
@@ -138,6 +145,12 @@ function NeedsYou() {
           </Row>
         ))}
       </Card>
+      <DraftDialog
+        draft={content.find((c) => c.id === openDraftId) ?? null}
+        publishing={health?.publishing}
+        onClose={() => setOpenDraftId(null)}
+        onChanged={refresh}
+      />
     </section>
   );
 }

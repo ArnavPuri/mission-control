@@ -44,6 +44,7 @@ A simple dashboard provides an overview and lets you manage agents and scheduled
 - `backend/app/integrations/chat.py` — LLM chat that can take actions (tasks, notes, delegation, dev tasks, drafts)
 - `backend/app/integrations/commands.py` — Shared command handlers
 - `backend/app/integrations/github.py` — Dev tasks as GitHub issues for Claude Code
+- `backend/app/integrations/publishing.py` — Publish drafts to X (OAuth 1.0a, threads) and LinkedIn (Posts API)
 - `backend/app/notifications/dispatcher.py` — Telegram notification delivery
 - `backend/app/notifications/morning.py` — Morning briefing generator
 - `dashboard/app/page.tsx` — Home (Today view); `tasks/`, `agents/`, `notes/`, `settings/` are the other pages
@@ -65,7 +66,7 @@ A simple dashboard provides an overview and lets you manage agents and scheduled
 - **agent_approvals** — Actions queued for human approval
 - **chat_sessions** — Telegram conversation history
 - **brand_profile** — Personal brand (tone, topics, social handles)
-- **marketing_content** — Content drafts for social platforms
+- **marketing_content** — Content drafts for social platforms (`posted_url` once published)
 - **notifications** — Sent via Telegram
 - **event_log** — Audit trail
 

@@ -73,11 +73,14 @@ export default function SettingsPage() {
   const set = (patch: Partial<api.BrandProfile>) => brand && setBrand({ ...brand, ...patch });
   const list = (v: string) => v.split(',').map((t) => t.trim()).filter(Boolean);
 
+  const configured = (key: string) => (health as Record<string, string> | null)?.[key] === 'configured';
   const connections = [
-    { name: 'Claude subscription', key: 'llm', env: 'CLAUDE_CODE_OAUTH_TOKEN', what: 'Runs agents and the Telegram chat' },
-    { name: 'Telegram bot', key: 'telegram', env: 'TELEGRAM_BOT_TOKEN', what: 'Your main interface, plus briefings and alerts' },
-    { name: 'GitHub', key: 'github', env: 'GITHUB_TOKEN', what: 'Optional — /dev hands coding work to Claude Code' },
-  ] as const;
+    { name: 'Claude subscription', ok: configured('llm'), env: 'CLAUDE_CODE_OAUTH_TOKEN', what: 'Runs agents and the Telegram chat' },
+    { name: 'Telegram bot', ok: configured('telegram'), env: 'TELEGRAM_BOT_TOKEN', what: 'Your main interface, plus briefings and alerts' },
+    { name: 'GitHub', ok: configured('github'), env: 'GITHUB_TOKEN', what: 'Optional — /dev hands coding work to Claude Code' },
+    { name: 'X', ok: !!health?.publishing?.x, env: 'X_API_KEY', what: 'Optional — publish drafts to X with one tap' },
+    { name: 'LinkedIn', ok: !!health?.publishing?.linkedin, env: 'LINKEDIN_ACCESS_TOKEN', what: 'Optional — publish drafts to LinkedIn with one tap' },
+  ];
 
   return (
     <>
@@ -90,10 +93,9 @@ export default function SettingsPage() {
             <h2 className="text-sm font-semibold text-mc-text">Connections</h2>
             <p className="text-xs text-mc-muted mt-0.5 mb-3">Set in <code className="font-mono">.env</code> on the server; restart after changing.</p>
             <Card className="divide-y divide-mc-line">
-              {connections.map((c) => {
-                const ok = (health as Record<string, string> | null)?.[c.key] === 'configured';
+              {connections.map(({ ok, ...c }) => {
                 return (
-                  <div key={c.key} className="flex items-center gap-3 px-4 py-3">
+                  <div key={c.name} className="flex items-center gap-3 px-4 py-3">
                     <span className={clsx('w-2 h-2 rounded-full flex-shrink-0', health == null ? 'bg-mc-line-strong' : ok ? 'bg-emerald-500' : 'bg-amber-400')} />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm text-mc-text">{c.name}</div>

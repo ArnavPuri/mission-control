@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import text, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.integrations import publishing
 from app.config import settings
 from app.db.session import get_db
 from app.db.models import AgentConfig, AgentRun, AgentRunStatus, AgentStatus, Task, EventLog
@@ -34,6 +35,8 @@ async def health_check(db: AsyncSession = Depends(get_db)):
         "llm": "configured" if settings.llm_configured else "not_configured",
         "telegram": "configured" if settings.telegram_bot_token else "not_configured",
         "github": "configured" if settings.github_token else "not_configured",
+        # Channels drafts can be published to directly
+        "publishing": publishing.configured_channels(),
     }
 
 

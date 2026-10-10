@@ -118,6 +118,10 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     async with async_session() as db:
         outcome = await review.handle_callback(db, query.data or "")
         await db.commit()
+    if isinstance(outcome, review.Confirm):
+        await query.answer(outcome.text[:200])
+        await query.edit_message_reply_markup(_markup(outcome.markup))
+        return
     await query.answer(outcome[:200])
     # Keep the message, drop the buttons, and show what happened
     original = query.message.text if query.message else ""

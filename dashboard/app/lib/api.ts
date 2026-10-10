@@ -341,6 +341,9 @@ export const marketingContent = {
     request<MarketingContent>(`/api/mkt-content/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (id: string) =>
     request<{ deleted: boolean }>(`/api/mkt-content/${id}`, { method: 'DELETE' }),
+  /** Post to X or LinkedIn and mark as posted. */
+  publish: (id: string) =>
+    request<{ posted_url: string }>(`/api/mkt-content/${id}/publish`, { method: 'POST' }),
 };
 
 // --- Brand Profile ---
@@ -415,6 +418,8 @@ export interface Health {
   llm: string;
   telegram: string;
   github?: string;
+  /** Channels drafts can be published to directly */
+  publishing?: { x: boolean; linkedin: boolean };
 }
 
 export interface ActivityItem {

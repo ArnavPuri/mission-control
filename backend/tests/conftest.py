@@ -55,7 +55,9 @@ app.dependency_overrides[get_db] = override_get_db
 async def setup_db(monkeypatch):
     # Tests must not pick up a developer's real .env (login, tokens)
     from app.config import settings
-    for name in ("dashboard_password", "api_token", "telegram_bot_token", "github_token", "claude_code_oauth_token"):
+    for name in ("dashboard_password", "api_token", "telegram_bot_token", "github_token", "claude_code_oauth_token",
+                 "x_api_key", "x_api_secret", "x_access_token", "x_access_token_secret",
+                 "linkedin_access_token", "linkedin_author_urn"):
         monkeypatch.setattr(settings, name, None)
     # Code outside request handlers opens its own sessions; point them at the test DB
     for name, module in list(sys.modules.items()):

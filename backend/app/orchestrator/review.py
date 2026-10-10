@@ -5,20 +5,37 @@ Shared by the API, Telegram commands and Telegram's inline buttons, so an
 approval or draft is handled the same way wherever you tap.
 """
 
+import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.integrations import publishing
 from app.orchestrator import reminders
 from app.db.models import (
-    AgentApproval, AgentConfig, ApprovalStatus, ContentStatus, MarketingContent,
+    AgentApproval, AgentConfig, ApprovalStatus, ContentStatus, EventLog, MarketingContent,
 )
+
+logger = logging.getLogger(__name__)
 
 # Telegram callback_data prefixes (callback_data is limited to 64 bytes)
 APPROVAL_CB = "apr"
 CONTENT_CB = "cnt"
+
+# Content button verbs besides the statuses
+PUBLISH, PUBLISH_NOW, CANCEL = "publish", "publishnow", "cancel"
+CHANNEL_NAMES = {"x": "X", "linkedin": "LinkedIn"}
+
+
+@dataclass
+class Confirm:
+    """A button press that asks a follow-up: show text and swap the buttons."""
+    text: str
+    markup: dict
+
 
 CONTENT_LABELS = {
     ContentStatus.APPROVED: "✅ Approved",
@@ -62,12 +79,42 @@ def approval_message(approval: AgentApproval, agent_name: str) -> tuple[str, dic
 def draft_message(content: MarketingContent) -> tuple[str, dict]:
     body = content.body if len(content.body) <= 3000 else content.body[:3000] + "…"
     text = f"📝 *{content.channel}* · {content.title}\n\n{body}"
-    markup = _keyboard([
+    return text, _draft_keyboard(content)
+
+
+def _draft_keyboard(content: MarketingContent) -> dict:
+    rows = [[
         ("✅ Approve", f"{CONTENT_CB}:approved:{content.id}"),
         ("📤 Posted", f"{CONTENT_CB}:posted:{content.id}"),
         ("🗑 Discard", f"{CONTENT_CB}:archived:{content.id}"),
-    ])
-    return text, markup
+    ]]
+    if publishing.can_publish(content.channel):
+        rows.append([(f"🚀 Publish to {CHANNEL_NAMES[content.channel]}", f"{CONTENT_CB}:{PUBLISH}:{content.id}")])
+    return _keyboard(*rows)
+
+
+async def publish_content(db: AsyncSession, content_id: UUID, source: str = "user") -> tuple[bool, str]:
+    """Publish a draft to its channel. Returns (published, message); the message
+    has the post's URL or why it couldn't be published."""
+    content = await db.get(MarketingContent, content_id)
+    if not content:
+        return False, "That draft no longer exists."
+    if content.status == ContentStatus.POSTED:
+        return False, f"Already posted{': ' + content.posted_url if content.posted_url else '.'}"
+    try:
+        url = await publishing.publish(content.channel, content.body)
+    except publishing.PublishError as e:
+        logger.warning(f"Publishing {content.id} to {content.channel} failed: {e}")
+        return False, f"⚠️ Couldn't publish: {e}"
+    content.status = ContentStatus.POSTED
+    content.posted_at = datetime.now(timezone.utc)
+    content.posted_url = url
+    db.add(EventLog(
+        event_type="content.published", entity_type="content", entity_id=content.id,
+        source=source, data={"channel": content.channel, "url": url},
+    ))
+    await db.flush()
+    return True, f"🚀 Published: {url}"
 
 
 async def pending_approvals(db: AsyncSession) -> list[AgentApproval]:
@@ -134,8 +181,9 @@ async def set_content_status(db: AsyncSession, content_id: UUID, status: Content
     return CONTENT_LABELS.get(status, status.value)
 
 
-async def handle_callback(db: AsyncSession, data: str) -> str:
-    """Apply an inline-button press. Returns the outcome to show on the message."""
+async def handle_callback(db: AsyncSession, data: str) -> str | Confirm:
+    """Apply an inline-button press. Returns the outcome to show on the message,
+    or a Confirm when the press needs a second tap."""
     try:
         kind, verb, raw_id = data.split(":", 2)
         item_id = UUID(raw_id)
@@ -145,6 +193,20 @@ async def handle_callback(db: AsyncSession, data: str) -> str:
         return await reminders.handle_callback(db, verb, item_id)
     if kind == APPROVAL_CB and verb in ("y", "n"):
         return await resolve_approval(db, item_id, approve=verb == "y")
+    if kind == CONTENT_CB and verb in (PUBLISH, PUBLISH_NOW, CANCEL):
+        content = await db.get(MarketingContent, item_id)
+        if not content:
+            return "That draft no longer exists."
+        if verb == PUBLISH:
+            # Posting publicly is one tap too easy to hit by accident: ask once more
+            where = CHANNEL_NAMES.get(content.channel, content.channel)
+            return Confirm(f"Publish this to {where} now?", _keyboard([
+                (f"🚀 Yes, publish to {where}", f"{CONTENT_CB}:{PUBLISH_NOW}:{content.id}"),
+                ("Cancel", f"{CONTENT_CB}:{CANCEL}:{content.id}"),
+            ]))
+        if verb == CANCEL:
+            return Confirm("Not published", _draft_keyboard(content))
+        return (await publish_content(db, item_id, source="telegram"))[1]
     if kind == CONTENT_CB:
         try:
             status = ContentStatus(verb)

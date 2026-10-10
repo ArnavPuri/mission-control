@@ -36,7 +36,7 @@ function SidebarContent({ onNavigate, authEnabled }: { onNavigate?: () => void; 
 
   const openCount = tasks.filter((t) => t.status !== 'done').length;
   const needsYou = tasks.filter((t) => t.status === 'blocked').length + approvals.length
-    + content.filter((c) => c.status === 'draft').length;
+    + content.filter((c) => c.status === 'draft' || c.status === 'approved').length;
   const runningCount = agents.filter((a) => a.status === 'running').length;
   const activeProject = pathname.startsWith('/tasks') ? params.get('project') : null;
 

@@ -41,6 +41,17 @@ class Settings(BaseSettings):
     # Mention @claude in issues so the Claude GitHub app starts working on them
     github_mention_claude: bool = True
 
+    # --- Publishing drafts (optional) ---
+    # X: an app's API key/secret plus your account's access token/secret (OAuth 1.0a, read+write)
+    x_api_key: str | None = None
+    x_api_secret: str | None = None
+    x_access_token: str | None = None
+    x_access_token_secret: str | None = None
+    # LinkedIn: an access token with w_member_social, and your member URN (urn:li:person:...)
+    linkedin_access_token: str | None = None
+    linkedin_author_urn: str | None = None
+    linkedin_api_version: str = "202609"
+
     # --- Voice (optional) ---
     openai_api_key: str | None = None
 

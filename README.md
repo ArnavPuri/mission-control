@@ -118,6 +118,8 @@ All settings live in `.env` (see `.env.example`).
 | `GITHUB_TOKEN` | no | Enables `/dev`. Needs Issues read/write on your repos |
 | `GITHUB_MENTION_CLAUDE` | no | Mention `@claude` in dev issues (default `true`) |
 | `OPENAI_API_KEY` | no | Transcribes Telegram voice messages with Whisper |
+| `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET` | no | Publish drafts to X (an app with read and write access, and your account's access token) |
+| `LINKEDIN_ACCESS_TOKEN`, `LINKEDIN_AUTHOR_URN` | no | Publish drafts to LinkedIn (a `w_member_social` token and your `urn:li:person:…`) |
 | `DEFAULT_MODEL` / `SMART_MODEL` / `CHAT_MODEL` | no | Model defaults (Haiku for cheap agents, Sonnet for chat and smart agents) |
 | `MAX_AGENT_BUDGET_USD` | no | Default per-run budget cap for agents that don't set their own |
 | `IDENTITY_FILE` | no | Markdown file about you, injected into every agent and chat (default `workspace/identity.md`) |
@@ -186,8 +188,17 @@ This needs `GITHUB_TOKEN`, and the Claude GitHub app has to be installed on the 
 ## Reviewing agent output
 
 - **Approvals.** An agent with `requires_approval: true` doesn't act on its own. It sends you a Telegram message listing what it wants to do, with **Approve** and **Reject** buttons. Pending approvals expire after 24 hours. `/approve` lists the ones that are open.
-- **Content drafts.** `/drafts` shows the latest drafts with **Approve**, **Posted** and **Discard** buttons.
-- The dashboard shows the same items in a **Needs your review** card and in the content list.
+- **Content drafts.** `/drafts` shows the latest drafts with **Approve**, **Posted** and **Discard** buttons. If X or LinkedIn is connected, there's also **🚀 Publish**. It asks once more, then posts the draft and saves the link. A draft longer than one X post goes out as a thread.
+- The dashboard shows the same items under **Needs you**. Click a draft to edit it, see its length against the channel's limit, and publish it.
+
+### Publishing to X and LinkedIn
+
+Publishing is optional. Without it, you copy the draft yourself and tap **Posted**.
+
+- **X:** create an app at [developer.x.com](https://developer.x.com) with *Read and write* permissions. Then generate the access token and secret for your own account. Set `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN` and `X_ACCESS_TOKEN_SECRET`. X charges for API posting, so check your plan on the developer portal.
+- **LinkedIn:** you need a member access token with the `w_member_social` scope and your member URN (`urn:li:person:…`). Set `LINKEDIN_ACCESS_TOKEN` and `LINKEDIN_AUTHOR_URN`. LinkedIn tokens expire after 60 days; when publishing reports a rejected token, generate a new one. `LINKEDIN_API_VERSION` (default `202609`) pins the API version; LinkedIn retires versions after about a year.
+
+Instagram, YouTube and blog drafts are posted by hand.
 
 ## Leads and content
 

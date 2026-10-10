@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from app.db.session import get_db
 from app.db.models import MarketingContent, ContentStatus, EventLog
 from app.api.ws import broadcast, commit_and_broadcast
+from app.orchestrator import review
 
 router = APIRouter()
 
@@ -135,3 +136,16 @@ async def delete_content(content_id: UUID, db: AsyncSession = Depends(get_db)):
     await db.delete(content)
     await commit_and_broadcast(db, "content.deleted", {"id": str(content_id)})
     return {"deleted": True}
+
+
+@router.post("/{content_id}/publish")
+async def publish_content(content_id: UUID, db: AsyncSession = Depends(get_db)):
+    """Publish a draft to X or LinkedIn and mark it as posted."""
+    if not await db.get(MarketingContent, content_id):
+        raise HTTPException(status_code=404, detail="Content not found")
+    published, message = await review.publish_content(db, content_id, source="dashboard")
+    if not published:
+        raise HTTPException(status_code=400, detail=message.removeprefix("⚠️ Couldn't publish: "))
+    await commit_and_broadcast(db, "content.updated", {"id": str(content_id)})
+    content = await db.get(MarketingContent, content_id)
+    return {"posted_url": content.posted_url}
