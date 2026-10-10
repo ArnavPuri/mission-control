@@ -67,7 +67,7 @@ export function WorkspaceProvider({ children, onOpenTask, onOpenProject, onOpenC
   useEffect(() => { refresh(); }, [refresh]);
 
   useEffect(() => subscribe((event) => {
-    if (!/^(task|note|content|agent|approval|notification|signal)\./.test(event.type)) return;
+    if (!/^(task|note|project|content|agent|approval|notification)\./.test(event.type)) return;
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       refresh();

@@ -78,6 +78,8 @@ PG_DB="missioncontrol"
 TG_TOKEN=""
 TG_USERS=""
 GITHUB_TOKEN=""
+DASH_PASS=""
+SITE_DOMAIN=""
 
 if [ "$SKIP_ENV" = "false" ]; then
 
@@ -138,6 +140,16 @@ if [ "$SKIP_ENV" = "false" ]; then
         fi
     fi
 
+    # Dashboard login + address
+    echo ""
+    echo -e "  ${DIM}The dashboard needs a password unless you only ever open it on this machine.${NC}"
+    read -s -p "  Dashboard password: " DASH_PASS
+    echo ""
+    if [ -z "$DASH_PASS" ]; then
+        echo -e "  ${YELLOW}⚠ No password — keep the dashboard on localhost only.${NC}"
+    fi
+    read -p "  Domain for HTTPS (e.g. mc.example.com, Enter for http://localhost): " SITE_DOMAIN
+
     # GitHub
     read -p "  GitHub Personal Access Token: " GITHUB_TOKEN
     if [ -n "$GITHUB_TOKEN" ]; then
@@ -177,12 +189,15 @@ POSTGRES_DB=${PG_DB}
 TELEGRAM_BOT_TOKEN=${TG_TOKEN}
 TELEGRAM_ALLOWED_USERS=${TG_USERS}
 
+# --- Dashboard login ---
+DASHBOARD_PASSWORD=${DASH_PASS}
+SITE_ADDRESS=${SITE_DOMAIN:-:80}
+
 # --- GitHub ---
 GITHUB_TOKEN=${GITHUB_TOKEN}
 
 # --- Ports ---
 API_PORT=8000
-DASHBOARD_PORT=3000
 DB_PORT=5432
 
 # --- Agent Defaults ---
@@ -223,17 +238,23 @@ for i in {1..30}; do
     sleep 2
 done
 
-# Check dashboard
-if curl -sf http://localhost:${DASHBOARD_PORT:-3000} > /dev/null 2>&1; then
+# Check dashboard (served by Caddy)
+if curl -sf http://localhost:${HTTP_PORT:-80} > /dev/null 2>&1; then
     echo -e "${GREEN}✓${NC} Dashboard is running"
+fi
+
+SITE=$(grep -E '^SITE_ADDRESS=' .env 2>/dev/null | cut -d= -f2)
+if [ -n "$SITE" ] && [ "$SITE" != ":80" ]; then
+    DASH_URL="https://${SITE}"
+else
+    DASH_URL="http://localhost:${HTTP_PORT:-80}"
 fi
 
 echo ""
 echo -e "${GREEN}${BOLD}Mission Control is ready!${NC}"
 echo ""
-echo -e "  Dashboard:  ${CYAN}http://localhost:${DASHBOARD_PORT:-3000}${NC}"
-echo -e "  API:        ${CYAN}http://localhost:${API_PORT:-8000}/health${NC}"
-echo -e "  API Docs:   ${CYAN}http://localhost:${API_PORT:-8000}/docs${NC}"
+echo -e "  Dashboard:  ${CYAN}${DASH_URL}${NC}"
+echo -e "  API Docs:   ${CYAN}${DASH_URL}/docs${NC}"
 echo ""
 echo -e "  ${DIM}Commands:${NC}"
 echo "    docker compose logs -f    — view logs"

@@ -73,4 +73,4 @@ Mission Control only makes outbound connections. Telegram uses long polling, so 
 | `api.openai.com` | Voice transcription (optional) |
 | The web | Agents with the `web_search` tool |
 
-Your browser needs to reach the dashboard (port 3000) and the API (port 8000). Neither has a login, so don't expose them publicly.
+Your browser reaches everything through Caddy on ports 80/443 (the backend and database ports are bound to localhost). Set `DASHBOARD_PASSWORD` before exposing it, and `SITE_ADDRESS` to your domain for automatic HTTPS.

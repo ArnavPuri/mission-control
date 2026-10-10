@@ -53,6 +53,10 @@ app.dependency_overrides[get_db] = override_get_db
 
 @pytest_asyncio.fixture(autouse=True)
 async def setup_db(monkeypatch):
+    # Tests must not pick up a developer's real .env (login, tokens)
+    from app.config import settings
+    for name in ("dashboard_password", "api_token", "telegram_bot_token", "github_token", "claude_code_oauth_token"):
+        monkeypatch.setattr(settings, name, None)
     # Code outside request handlers opens its own sessions; point them at the test DB
     for name, module in list(sys.modules.items()):
         if name.startswith("app.") and getattr(module, "async_session", None) is not None:

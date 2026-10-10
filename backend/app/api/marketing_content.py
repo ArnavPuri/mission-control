@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from app.db.session import get_db
 from app.db.models import MarketingContent, ContentStatus, EventLog
-from app.api.ws import broadcast
+from app.api.ws import broadcast, commit_and_broadcast
 
 router = APIRouter()
 
@@ -123,7 +123,7 @@ async def update_content(content_id: UUID, data: ContentUpdate, db: AsyncSession
         updates["project_id"] = UUID(updates["project_id"]) if updates["project_id"] else None
     for key, val in updates.items():
         setattr(content, key, val)
-    await db.flush()
+    await commit_and_broadcast(db, "content.updated", {"id": str(content.id)})
     return _serialize(content)
 
 
@@ -133,4 +133,5 @@ async def delete_content(content_id: UUID, db: AsyncSession = Depends(get_db)):
     if not content:
         raise HTTPException(status_code=404, detail="Content not found")
     await db.delete(content)
+    await commit_and_broadcast(db, "content.deleted", {"id": str(content_id)})
     return {"deleted": True}

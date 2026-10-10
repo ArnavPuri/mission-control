@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from app.db.session import get_db
 from app.integrations import github
+from app.api.ws import commit_and_broadcast
 from app.db.models import (
     Project, ProjectStatus, Task, TaskStatus,
     MarketingContent,
@@ -102,7 +103,7 @@ async def create_project(data: ProjectCreate, db: AsyncSession = Depends(get_db)
         fields["metadata_"] = fields.pop("metadata")
     project = Project(**fields)
     db.add(project)
-    await db.flush()
+    await commit_and_broadcast(db, "project.updated", {"project": str(project.id)})
     return {"id": str(project.id), "name": project.name}
 
 
@@ -136,7 +137,7 @@ async def update_project(project_id: UUID, data: ProjectUpdate, db: AsyncSession
         fields["metadata_"] = fields.pop("metadata")
     for key, val in fields.items():
         setattr(project, key, val)
-    await db.flush()
+    await commit_and_broadcast(db, "project.updated", {"project": str(project.id)})
     return {"id": str(project.id), "updated": True}
 
 
@@ -146,4 +147,5 @@ async def delete_project(project_id: UUID, db: AsyncSession = Depends(get_db)):
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     await db.delete(project)
+    await commit_and_broadcast(db, "project.updated", {"project": str(project_id)})
     return {"deleted": True}

@@ -53,13 +53,14 @@ cd mission-control
 cp .env.example .env
 ```
 
-Fill in three values in `.env`:
+Fill in these values in `.env`:
 
 | Variable | How to get it |
 |----------|---------------|
 | `CLAUDE_CODE_OAUTH_TOKEN` | Run `claude setup-token` (or `claude auth login`) with the Claude Code CLI |
 | `TELEGRAM_BOT_TOKEN` | Create a bot with @BotFather |
 | `TELEGRAM_ALLOWED_USERS` | Your numeric Telegram user ID. Message the bot once and it replies with your ID, or ask @userinfobot |
+| `DASHBOARD_PASSWORD` | Any strong password. Required unless you only open the dashboard on this machine |
 
 Then start it:
 
@@ -69,14 +70,33 @@ docker compose up -d                                 # PostgreSQL
 docker compose -f docker-compose.sqlite.yml up -d    # SQLite, no database container
 ```
 
-- Dashboard: http://localhost:3000
-- API: http://localhost:8000 (interactive docs at `/docs`, health check at `/health`)
+Open **http://localhost**. One address serves everything: Caddy serves the dashboard and passes `/api`, `/ws` and `/health` to the backend (interactive API docs at `/docs`).
 
-Prefer a guided setup? Run `./setup.sh`. It asks for the database type, token and integrations, writes `.env`, and starts the containers.
+Prefer a guided setup? Run `./setup.sh`. It asks for the database type, tokens, a dashboard password and an optional domain, writes `.env`, and starts the containers.
 
 The database schema is created and migrated automatically on startup. A database from an older version of Mission Control is converted once, automatically.
 
-> The dashboard and API have no login. Keep them on localhost or a private network. Telegram is protected by `TELEGRAM_ALLOWED_USERS`.
+### Running it on a server
+
+1. Point a domain's DNS (A record) at the server and open ports 80 and 443.
+2. In `.env`, set `SITE_ADDRESS=mc.example.com` and a `DASHBOARD_PASSWORD`.
+3. `docker compose up -d`. Caddy gets an HTTPS certificate on its own; open `https://mc.example.com` and sign in.
+
+The backend and database ports are bound to `127.0.0.1` only. Scripts can call the API with `Authorization: Bearer $API_TOKEN` if you set `API_TOKEN`. Without a `DASHBOARD_PASSWORD` the dashboard is open to anyone who reaches it, and it says so in a banner.
+
+### Backups
+
+The backend backs up the database every night at `BACKUP_HOUR` (default 3:00, your timezone) and keeps the last `BACKUP_KEEP` (14) in the `backend-data` volume (`/app/data/backups`). Run one now with `make backup`. To restore:
+
+```bash
+# SQLite: stop the stack, then copy a backup over the database
+docker compose -f docker-compose.sqlite.yml run --rm backend cp /app/data/backups/<file>.db /app/data/mission_control.db
+
+# PostgreSQL
+docker compose exec backend sh -c 'pg_restore --clean --no-owner -h db -U $POSTGRES_USER -d $POSTGRES_DB /app/data/backups/<file>.dump'
+```
+
+Copy the backups somewhere off the server too (e.g. `docker compose cp backend:/app/data/backups ./backups`).
 
 ### Configuration
 
@@ -87,6 +107,10 @@ All settings live in `.env` (see `.env.example`).
 | `CLAUDE_CODE_OAUTH_TOKEN` | yes | Claude Pro/Max subscription token used for agents and chat |
 | `TELEGRAM_BOT_TOKEN` | yes | Your Telegram bot |
 | `TELEGRAM_ALLOWED_USERS` | yes | Comma-separated Telegram user IDs. The bot rejects everyone else and tells them their ID |
+| `DASHBOARD_PASSWORD` | yes, off localhost | Password for the dashboard and API |
+| `SITE_ADDRESS` | no | Your domain, for automatic HTTPS (default `:80`, plain HTTP) |
+| `API_TOKEN` | no | Bearer token for scripts calling the API |
+| `BACKUP_HOUR` / `BACKUP_KEEP` | no | Nightly backup time and how many to keep (3, 14) |
 | `TELEGRAM_NOTIFICATION_CHAT_ID` | no | Where notifications go. Defaults to the first allowed user |
 | `NOTIFICATION_TIMEZONE` | no | Timezone for the 8:00 morning briefing and agent cron schedules, e.g. `Europe/Berlin` (default `UTC`) |
 | `USE_SQLITE` / `SQLITE_PATH` | no | Use SQLite instead of PostgreSQL |
@@ -227,7 +251,7 @@ cd backend && alembic upgrade head
 cd backend && alembic revision --autogenerate -m "description"
 ```
 
-When the backend runs outside Docker, it reads `.env` from the repo root. Set `USE_SQLITE=true` for local work without PostgreSQL.
+`make dev` runs both with live reload. When the backend runs outside Docker, it reads `.env` from the repo root; set `USE_SQLITE=true` for local work without PostgreSQL. In dev the dashboard (`:3000`) talks to the backend on `:8000` (see `dashboard/.env.development`).
 
 ## Project structure
 

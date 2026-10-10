@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from app.db.session import get_db
 from app.db.models import Note
+from app.api.ws import commit_and_broadcast
 
 router = APIRouter()
 
@@ -78,7 +79,7 @@ async def get_note(note_id: UUID, db: AsyncSession = Depends(get_db)):
 async def create_note(data: NoteCreate, db: AsyncSession = Depends(get_db)):
     note = Note(**data.model_dump())
     db.add(note)
-    await db.flush()
+    await commit_and_broadcast(db, "note.created", {"id": str(note.id)})
     return {"id": str(note.id), "title": note.title}
 
 
@@ -89,7 +90,7 @@ async def update_note(note_id: UUID, data: NoteUpdate, db: AsyncSession = Depend
         raise HTTPException(status_code=404, detail="Note not found")
     for key, val in data.model_dump(exclude_unset=True).items():
         setattr(note, key, val)
-    await db.flush()
+    await commit_and_broadcast(db, "note.updated", {"id": str(note.id)})
     return {"id": str(note.id), "updated": True}
 
 
@@ -99,4 +100,5 @@ async def delete_note(note_id: UUID, db: AsyncSession = Depends(get_db)):
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
     await db.delete(note)
+    await commit_and_broadcast(db, "note.deleted", {"id": str(note_id)})
     return {"deleted": True}

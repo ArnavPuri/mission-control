@@ -196,3 +196,75 @@ async def test_activity_feed_lists_thread_messages_newest_first(client, db_sessi
         ("Ace (Assistant)", "Plausible is cheaper"), ("You", "Assigned"),
     ]
     assert feed[0]["task"]["text"] == "Compare pricing"
+
+
+# ─── Auth ─────────────────────────────────────────────────
+
+@pytest.fixture
+def password(monkeypatch):
+    from app.auth import _failures
+    from app.config import settings
+    _failures.clear()
+    monkeypatch.setattr(settings, "dashboard_password", "hunter2")
+    monkeypatch.setattr(settings, "api_token", "script-token")
+    return "hunter2"
+
+
+@pytest.mark.asyncio
+async def test_api_is_open_without_a_password(client):
+    assert (await client.get("/api/tasks")).status_code == 200
+    assert (await client.get("/api/auth/me")).json() == {"auth_enabled": False, "authenticated": True}
+
+
+@pytest.mark.asyncio
+async def test_login_protects_the_api(client, password):
+    assert (await client.get("/api/tasks")).status_code == 401
+    assert (await client.get("/health")).status_code == 200  # healthchecks stay public
+
+    r = await client.post("/api/auth/login", json={"password": "wrong"})
+    assert r.status_code == 401
+
+    r = await client.post("/api/auth/login", json={"password": password})
+    assert r.status_code == 200 and "mc_session" in r.cookies
+    assert (await client.get("/api/tasks")).status_code == 200
+    assert (await client.get("/api/auth/me")).json()["authenticated"] is True
+
+    await client.post("/api/auth/logout")
+    client.cookies.clear()
+    assert (await client.get("/api/tasks")).status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_api_token_works_for_scripts(client, password):
+    r = await client.get("/api/tasks", headers={"Authorization": "Bearer script-token"})
+    assert r.status_code == 200
+    r = await client.get("/api/tasks", headers={"Authorization": "Bearer nope"})
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_forged_or_expired_sessions_are_rejected(client, password):
+    from app.auth import make_session
+    client.cookies.set("mc_session", make_session(now=0))  # expired long ago
+    assert (await client.get("/api/tasks")).status_code == 401
+    payload, sig = make_session().rsplit(".", 1)
+    client.cookies.set("mc_session", f"{payload}.{'0' * len(sig)}")
+    assert (await client.get("/api/tasks")).status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_login_attempts_are_rate_limited(client, password):
+    for _ in range(5):
+        await client.post("/api/auth/login", json={"password": "wrong"})
+    r = await client.post("/api/auth/login", json={"password": password})
+    assert r.status_code == 429
+
+
+def test_websocket_requires_login(password):
+    from starlette.testclient import TestClient
+    from starlette.websockets import WebSocketDisconnect
+    from app.main import app
+    tc = TestClient(app)  # no `with`: skip app startup (scheduler, real DB)
+    with pytest.raises(WebSocketDisconnect):
+        with tc.websocket_connect("/ws") as ws:
+            ws.receive_text()

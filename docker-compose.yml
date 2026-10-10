@@ -1,4 +1,7 @@
-version: "3.9"
+# Mission Control with PostgreSQL.
+#   docker compose up -d   → http://localhost (or https://$SITE_ADDRESS)
+# Caddy is the only service exposed publicly; it serves the dashboard and
+# proxies /api, /health and /ws to the backend.
 
 services:
   db:
@@ -11,17 +14,15 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "127.0.0.1:${DB_PORT:-5432}:5432"   # localhost only
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-missionctl} -d ${POSTGRES_DB:-missioncontrol}"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 10
 
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    build: ./backend
     restart: unless-stopped
     depends_on:
       db:
@@ -29,24 +30,45 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-missionctl}:${POSTGRES_PASSWORD:-missionctl}@db:5432/${POSTGRES_DB:-missioncontrol}
-    ports:
-      - "${API_PORT:-8000}:8000"
+      BACKUP_DIR: /app/data/backups
     volumes:
-      - ./backend:/app
+      - ./backend/skills:/app/skills          # edit agents without rebuilding
+      - ./workspace:/app/workspace:ro         # identity.md
+      - backend-data:/app/data                # nightly backups
       - agent-workdir:/app/workdir
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"   # localhost only, for scripts/debugging
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
   dashboard:
-    build:
-      context: ./dashboard
-      dockerfile: Dockerfile
+    build: ./dashboard
     restart: unless-stopped
     depends_on:
       - backend
-    ports:
-      - "${DASHBOARD_PORT:-3000}:3000"
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - dashboard
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:${API_PORT:-8000}
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
 
 volumes:
   pgdata:
+  backend-data:
   agent-workdir:
+  caddy-data:
+  caddy-config:

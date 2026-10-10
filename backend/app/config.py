@@ -44,6 +44,19 @@ class Settings(BaseSettings):
     # --- Voice (optional) ---
     openai_api_key: str | None = None
 
+    # --- Dashboard & API login ---
+    # Required whenever the dashboard is reachable from anywhere but localhost
+    dashboard_password: str | None = None
+    # Optional bearer token for scripts calling the API
+    api_token: str | None = None
+    # Optional; by default derived from the password
+    auth_secret: str | None = None
+
+    # --- Backups ---
+    backup_dir: str = "data/backups"
+    backup_keep: int = 14  # nightly backups to keep
+    backup_hour: int = 3   # local time (NOTIFICATION_TIMEZONE)
+
     # --- Paths ---
     agent_workdir: str = "workdir"  # relative to the backend dir; /app/workdir in Docker
     skills_dir: str = "skills"

@@ -6,12 +6,14 @@ Dashboard provides a simple overview and management UI.
 """
 
 import asyncio
+import logging
 import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.auth import AuthMiddleware, router as auth_router
 from app.config import settings
 from app.db.session import init_db
 from app.api import (
@@ -28,6 +30,10 @@ from app.notifications.dispatcher import urgent_dispatch_loop, digest_loop
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    if not settings.dashboard_password:
+        logging.getLogger(__name__).warning(
+            "DASHBOARD_PASSWORD is not set: the dashboard and API are open to anyone who can reach them"
+        )
     await init_db()
     await recover_interrupted_runs()
     await sync_skills_to_db()
@@ -63,6 +69,8 @@ app = FastAPI(
 )
 
 _cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
+# Added before CORS so CORS wraps it: 401s still carry CORS headers
+app.add_middleware(AuthMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
@@ -73,6 +81,7 @@ app.add_middleware(
 
 # Mount route modules
 app.include_router(health.router, tags=["health"])
+app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
 app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
 app.include_router(agents.router, prefix="/api/agents", tags=["agents"])

@@ -6,13 +6,29 @@
  * touches the database directly.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// Empty = same origin: in Docker, Caddy serves the dashboard and proxies /api,
+// /health and /ws to the backend. `npm run dev` sets it via .env.development.
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
+
+/** Thrown when the session is missing or expired; the app redirects to /login. */
+export class UnauthorizedError extends Error {}
+
+function goToLogin() {
+  if (typeof window === 'undefined' || window.location.pathname.startsWith('/login')) return;
+  const next = encodeURIComponent(window.location.pathname + window.location.search);
+  window.location.href = `/login?next=${next}`;
+}
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     ...options,
   });
+  if (res.status === 401 && !path.startsWith('/api/auth/')) {
+    goToLogin();
+    throw new UnauthorizedError('Not signed in');
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(err.detail || `API error: ${res.status}`);
@@ -355,6 +371,19 @@ export const agentMemory = {
     request<{ deleted: boolean }>(`/api/agents/${agentId}/memory/${encodeURIComponent(key)}`, { method: 'DELETE' }),
 };
 
+// --- Auth ---
+
+export interface AuthState {
+  auth_enabled: boolean;
+  authenticated: boolean;
+}
+
+export const auth = {
+  me: () => request<AuthState>('/api/auth/me'),
+  login: (password: string) => request<AuthState>('/api/auth/login', { method: 'POST', body: JSON.stringify({ password }) }),
+  logout: () => request<AuthState>('/api/auth/logout', { method: 'POST' }),
+};
+
 // --- System & Activity ---
 
 export interface Health {
@@ -386,8 +415,8 @@ export const activity = {
 // --- WebSocket ---
 
 export function connectWebSocket(onMessage: (event: { type: string; data: any }) => void): WebSocket | null {
-  const wsUrl = API_BASE.replace(/^http/, 'ws') + '/ws';
-  const maxRetries = 10;
+  const base = API_BASE || window.location.origin;
+  const wsUrl = base.replace(/^http/, 'ws') + '/ws';
   let retryCount = 0;
   const connect = (): WebSocket | null => {
     try {
@@ -399,12 +428,12 @@ export function connectWebSocket(onMessage: (event: { type: string; data: any })
           onMessage(parsed);
         } catch {}
       };
-      ws.onclose = () => {
-        if (retryCount < maxRetries) {
-          const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
-          retryCount++;
-          setTimeout(connect, delay);
-        }
+      ws.onclose = (e) => {
+        if (e.code === 4401) return; // not signed in; the login redirect takes over
+        // Keep retrying (capped backoff) so live updates survive backend restarts
+        const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
+        retryCount++;
+        setTimeout(connect, delay);
       };
       return ws;
     } catch {

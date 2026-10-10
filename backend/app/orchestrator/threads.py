@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import (
     AgentConfig, AgentRun, AgentStatus, EventLog, Task, TaskComment, TaskStatus,
 )
+from app.api.ws import broadcast
 from app.notifications.dispatcher import send_telegram
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,7 @@ async def assign_task(db: AsyncSession, task: Task, agent: AgentConfig, note: st
         source="user", data={"agent": agent.slug},
     ))
     await db.commit()
+    await broadcast("task.updated", {"id": str(task.id)})
     return _start(agent.id, task.id)
 
 
@@ -72,6 +74,7 @@ async def add_user_reply(
         task.status = TaskStatus.IN_PROGRESS
         task.completed_at = None
     await db.commit()
+    await broadcast("task.updated", {"id": str(task.id)})
     if agent:
         _start(agent.id, task.id)
     else:

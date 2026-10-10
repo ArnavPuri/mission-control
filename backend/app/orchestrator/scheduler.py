@@ -22,6 +22,7 @@ from app.db.models import AgentConfig, AgentStatus
 from app.orchestrator.runner import start_background_run
 from app.orchestrator.threads import pending_assignments
 from app.integrations import github
+from app.db import backup
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +114,7 @@ class Scheduler:
         self.check_interval = check_interval
         self.github_sync_every = github_sync_every  # in scheduler ticks
         self._ticks = 0
+        self._last_backup_day: str | None = None
 
     async def run(self):
         """Main scheduler loop."""
@@ -130,7 +132,20 @@ class Scheduler:
                         await github.sync_dev_tasks(db)
                 except Exception as e:
                     logger.error(f"GitHub sync error: {e}")
+            await self._maybe_backup()
             await asyncio.sleep(self.check_interval)
+
+    async def _maybe_backup(self):
+        if self._last_backup_day is None:
+            self._last_backup_day = backup.last_backup_day()
+        now = datetime.now(timezone.utc)
+        if not backup.backup_due(now, self._last_backup_day):
+            return
+        self._last_backup_day = now.astimezone(ZoneInfo(settings.notification_timezone)).strftime("%Y-%m-%d")
+        try:
+            await backup.run_backup()
+        except Exception as e:
+            logger.error(f"Backup failed: {e}")
 
     async def _check_schedules(self):
         """Start every agent whose interval or cron schedule is due."""

@@ -19,6 +19,7 @@ from app.db.models import (
     BrandProfile, LEAD_TAG,
 )
 from app.config import settings
+from app.api.ws import broadcast
 from app.integrations import github
 from app.orchestrator import review, threads
 from app.orchestrator.runner import start_background_run
@@ -49,6 +50,7 @@ async def cmd_task(args: str, source: str) -> CommandResult:
             source=source, data={"text": args},
         ))
         await db.commit()
+    await broadcast("task.created", {"text": args, "source": source})
 
     return CommandResult(f"Task added: {args}")
 
@@ -62,6 +64,7 @@ async def cmd_note(args: str, source: str) -> CommandResult:
         note = Note(title=args, content="", source=source)
         db.add(note)
         await db.commit()
+    await broadcast("note.created", {"title": args, "source": source})
 
     return CommandResult(f"Note created: {args}")
 

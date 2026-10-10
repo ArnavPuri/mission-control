@@ -1,18 +1,19 @@
-FROM python:3.12-slim
+FROM python:3.12-slim-trixie
 
 WORKDIR /app
+ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 
-# Install system deps for psycopg2 and Claude Agent SDK
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential curl git nodejs npm \
+# git/curl for agents with shell access; postgresql-client (pg_dump 17, which
+# can back up the Postgres 16 server) for nightly backups
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates git postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Claude Code CLI (bundled with Agent SDK, but good to have standalone)
-RUN curl -fsSL https://claude.ai/install.sh | bash || true
-
+# Dependencies first so code changes don't reinstall them
 COPY pyproject.toml .
-RUN pip install --no-cache-dir -e ".[dev]"
+RUN mkdir app && touch app/__init__.py && pip install -e . && rm -rf app
 
 COPY . .
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# The Claude CLI ships inside claude-agent-sdk; no separate install needed
+EXPOSE 8000
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]

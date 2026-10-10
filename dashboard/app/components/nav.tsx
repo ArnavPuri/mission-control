@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { clsx } from 'clsx';
 import {
-  Bot, FileText, Home, ListTodo, Menu, Moon, Plus, Search, Settings, Settings2, Sun, X,
+  Bot, FileText, Home, ListTodo, LogOut, Menu, Moon, Plus, Search, Settings, Settings2, Sun, X,
 } from 'lucide-react';
 import * as api from '../lib/api';
 import { Kbd, useTheme } from './shared';
@@ -23,7 +23,7 @@ function isActive(pathname: string, href: string) {
   return href === '/' ? pathname === '/' : pathname.startsWith(href);
 }
 
-function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
+function SidebarContent({ onNavigate, authEnabled }: { onNavigate?: () => void; authEnabled: boolean }) {
   const pathname = usePathname();
   const params = useSearchParams();
   const { tasks, projects, agents, approvals, content, health, refresh, openProject, openCommandMenu } = useWorkspace();
@@ -171,6 +171,16 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             </span>
           ))}
         </div>
+        {authEnabled && (
+          <button
+            onClick={async () => { await api.auth.logout().catch(() => {}); window.location.href = '/login'; }}
+            aria-label="Sign out"
+            title="Sign out"
+            className="w-7 h-7 rounded-md flex items-center justify-center text-mc-muted hover:text-mc-text hover:bg-mc-hover cursor-pointer"
+          >
+            <LogOut size={14} />
+          </button>
+        )}
         <button
           onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
           aria-label={theme === 'light' ? 'Dark mode' : 'Light mode'}
@@ -183,16 +193,16 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-export function Sidebar() {
+export function Sidebar({ authEnabled }: { authEnabled: boolean }) {
   return (
     <aside className="hidden md:block fixed left-0 top-0 bottom-0 w-60 bg-mc-canvas border-r border-mc-line z-30">
-      <SidebarContent />
+      <SidebarContent authEnabled={authEnabled} />
     </aside>
   );
 }
 
 /** Top bar + slide-over sidebar on small screens. */
-export function MobileNav() {
+export function MobileNav({ authEnabled }: { authEnabled: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -209,7 +219,7 @@ export function MobileNav() {
             <button onClick={() => setOpen(false)} aria-label="Close menu" className="absolute right-2 top-3 w-8 h-8 rounded-md flex items-center justify-center text-mc-muted hover:bg-mc-hover cursor-pointer">
               <X size={16} />
             </button>
-            <SidebarContent onNavigate={() => setOpen(false)} />
+            <SidebarContent onNavigate={() => setOpen(false)} authEnabled={authEnabled} />
           </aside>
         </div>
       )}

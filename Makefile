@@ -1,15 +1,19 @@
 # Mission Control — Development Commands
 # Usage: make <target>
 
-.PHONY: setup dev stop restart status logs test test-backend test-dashboard build clean migrate seed
+.PHONY: setup up dev stop restart status logs test test-backend test-dashboard build clean migrate seed backup
 
 # ─── Setup & Lifecycle ──────────────────────────
 
 setup: ## Interactive setup wizard
 	@./setup.sh
 
-dev: ## Start all services (docker compose)
-	docker compose up -d
+up: ## Build and start all services (docker compose)
+	docker compose up -d --build
+
+dev: ## Run backend + dashboard locally with live reload (no Docker)
+	@echo "Backend on :8000, dashboard on :3000 (Ctrl+C stops both)"
+	@(cd backend && uvicorn app.main:app --reload --port 8000) & (cd dashboard && npm run dev); wait
 
 stop: ## Stop all services
 	docker compose down
@@ -57,6 +61,9 @@ migration: ## Create a new migration (usage: make migration MSG="description")
 
 seed: ## Seed database with sample data
 	cd backend && python -m app.db.seed
+
+backup: ## Back up the database now (Docker; nightly backups run automatically)
+	docker compose exec backend python -m app.db.backup
 
 # ─── Build & Clean ──────────────────────────────
 

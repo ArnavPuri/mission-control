@@ -1,0 +1,15 @@
+# One address for everything: the dashboard, plus /api, /health and /ws
+# proxied to the backend. Set SITE_ADDRESS to your domain (e.g.
+# mc.example.com) and Caddy gets an HTTPS certificate automatically.
+{$SITE_ADDRESS::80} {
+	encode gzip
+
+	@backend path /api/* /health /ws /docs /openapi.json
+	handle @backend {
+		reverse_proxy backend:8000
+	}
+
+	handle {
+		reverse_proxy dashboard:3000
+	}
+}

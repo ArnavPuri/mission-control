@@ -10,7 +10,7 @@ from app.db.models import AgentConfig, AgentStatus, Task, TaskComment, TaskStatu
 from app.integrations import github
 from app.orchestrator import threads
 from app.orchestrator.runner import is_running
-from app.api.ws import broadcast
+from app.api.ws import broadcast, commit_and_broadcast
 
 router = APIRouter()
 
@@ -168,7 +168,7 @@ async def add_comment(task_id: UUID, data: CommentCreate, db: AsyncSession = Dep
 async def create_task(data: TaskCreate, db: AsyncSession = Depends(get_db)):
     task = Task(**data.model_dump())
     db.add(task)
-    await db.flush()
+    await commit_and_broadcast(db, "task.created", {"id": str(task.id)})
     return {"id": str(task.id), "text": task.text}
 
 
@@ -181,7 +181,7 @@ async def update_task(task_id: UUID, data: TaskUpdate, db: AsyncSession = Depend
         setattr(task, key, val)
     if data.status == TaskStatus.DONE and not task.completed_at:
         task.completed_at = datetime.now(timezone.utc)
-    await db.flush()
+    await commit_and_broadcast(db, "task.updated", {"id": str(task.id)})
     return {"id": str(task.id), "updated": True}
 
 
@@ -191,6 +191,7 @@ async def delete_task(task_id: UUID, db: AsyncSession = Depends(get_db)):
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     await db.delete(task)
+    await commit_and_broadcast(db, "task.deleted", {"id": str(task_id)})
     return {"deleted": True}
 
 
@@ -205,5 +206,5 @@ async def reorder_tasks(data: ReorderRequest, db: AsyncSession = Depends(get_db)
         task = await db.get(Task, UUID(task_id))
         if task:
             task.sort_order = i
-    await db.flush()
+    await commit_and_broadcast(db, "task.updated", {"reordered": len(data.task_ids)})
     return {"reordered": len(data.task_ids)}
