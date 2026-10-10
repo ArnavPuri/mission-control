@@ -147,7 +147,7 @@ async def generate_morning_briefing() -> str:
         lines.append("• No content activity")
     lines.append("")
 
-    lines.append("Use /leads, /status, or /approve for details.")
+    lines.append("Use /leads, /drafts, or /approve for details.")
 
     return "\n".join(lines)
 

@@ -23,7 +23,7 @@ from app.db.models import (
     Project, Task, EventLog, TaskStatus, TaskPriority,
     AgentApproval, AgentMemory, Note, MarketingContent, TaskComment, LEAD_TAG,
 )
-from app.orchestrator import threads
+from app.orchestrator import review, threads
 from app.db.session import async_session
 from app.api.brand import get_notification_prefs_dict
 from app.api.ws import broadcast
@@ -372,10 +372,14 @@ class AgentRunner:
                     expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
                 )
                 db.add(approval)
+                await db.flush()
+                text, markup = review.approval_message(approval, agent.name)
                 await create_notification(
                     db, title=f"{agent.name} wants to take {len(actions)} action{'s' if len(actions) != 1 else ''}",
-                    body=f"{summary[:300]}\n\nReview with /approve", category="approval",
+                    body=summary[:300], category="approval",
                     source=f"agent:{agent.slug}", priority="urgent",
+                    # Sent to Telegram as-is, with Approve / Reject buttons
+                    data={"telegram_text": text, "reply_markup": markup},
                 )
                 await broadcast("approval.pending", {
                     "agent_id": str(agent.id), "action_count": len(actions),

@@ -6,7 +6,7 @@ performs the action, and returns a CommandResult.
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from sqlalchemy import select, func
@@ -18,8 +18,8 @@ from app.db.models import (
     TaskStatus, AgentStatus, EventLog, AgentApproval, ApprovalStatus,
     BrandProfile, LEAD_TAG,
 )
-from app.orchestrator import threads
-from app.orchestrator.runner import AgentRunner, start_background_run
+from app.orchestrator import review, threads
+from app.orchestrator.runner import start_background_run
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,10 @@ logger = logging.getLogger(__name__)
 class CommandResult:
     text: str
     parse_mode: str | None = None
+    # Inline keyboard (Bot API reply_markup) for this message
+    reply_markup: dict | None = None
+    # Extra messages sent after this one, e.g. one per approval with its own buttons
+    followups: list["CommandResult"] = field(default_factory=list)
 
 
 async def cmd_task(args: str, source: str) -> CommandResult:
@@ -186,43 +190,30 @@ async def cmd_projects(source: str) -> CommandResult:
 
 
 async def cmd_approve(args: str, source: str) -> CommandResult:
-    """List and approve pending agent actions."""
+    """List pending agent actions, each with Approve / Reject buttons."""
     async with async_session() as db:
-        result = await db.execute(
-            select(AgentApproval).where(AgentApproval.status == ApprovalStatus.PENDING)
-            .order_by(AgentApproval.created_at.desc())
-        )
-        pending = result.scalars().all()
+        pending = await review.pending_approvals(db)
+        messages = [review.approval_message(a, a.agent.name if a.agent else "Unknown") for a in pending]
+        await db.commit()
 
     if not pending:
         return CommandResult("No pending approvals.")
-
-    if args:
-        try:
-            idx = int(args) - 1
-            approval = pending[idx]
-        except (ValueError, IndexError):
-            return CommandResult("Usage: /approve <number>")
-
-        async with async_session() as db:
-            a = await db.get(AgentApproval, approval.id)
-            if a.status != ApprovalStatus.PENDING:
-                return CommandResult(f"That approval was already {a.status.value}.")
-            a.status = ApprovalStatus.APPROVED
-            a.reviewed_at = datetime.now(timezone.utc)
-            agent = await db.get(AgentConfig, a.agent_id)
-            if agent:
-                await AgentRunner().process_actions(a.actions, agent, db)
-            await db.commit()
-        return CommandResult(f"Approved: {approval.summary[:200]}")
-
-    lines = []
-    for i, a in enumerate(pending, 1):
-        count = len(a.actions) if isinstance(a.actions, list) else 0
-        agent_name = a.agent.name if a.agent else "Unknown"
-        lines.append(f"{i}. {agent_name} - {count} actions: {a.summary[:100]}")
     return CommandResult(
-        "Pending Approvals\n\n" + "\n\n".join(lines) + "\n\nUse /approve <number> to approve."
+        f"{len(pending)} pending approval{'s' if len(pending) != 1 else ''}:",
+        followups=[CommandResult(text, "Markdown", markup) for text, markup in messages],
+    )
+
+
+async def cmd_drafts(source: str) -> CommandResult:
+    """Show the latest content drafts, each with Approve / Posted / Discard buttons."""
+    async with async_session() as db:
+        drafts = await review.pending_drafts(db)
+    if not drafts:
+        return CommandResult("No content drafts waiting.")
+    messages = [review.draft_message(d) for d in drafts]
+    return CommandResult(
+        f"{len(drafts)} latest draft{'s' if len(drafts) != 1 else ''}:",
+        followups=[CommandResult(text, "Markdown", markup) for text, markup in messages],
     )
 
 
@@ -333,7 +324,8 @@ async def cmd_help(source: str) -> CommandResult:
         f"{bot_name} Commands\n\n"
         "/task <text> - Add a task\n"
         "/note <title> - Create a note\n"
-        "/approve [n] - List or approve pending actions\n"
+        "/approve - Review pending agent actions\n"
+        "/drafts - Review content drafts\n"
         "/status - Dashboard stats\n"
         "/ask <agent> <request> - Hand a task to an agent\n"
         "/run <agent> - Run an agent's scheduled job now\n"

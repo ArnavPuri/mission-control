@@ -60,11 +60,14 @@ async def dispatch_urgent():
         notifications = result.scalars().all()
 
         for notif in notifications:
-            text = f"*{notif.title}*\n{notif.body}" if notif.body else f"*{notif.title}*"
+            data = notif.data or {}
+            text = data.get("telegram_text") or (
+                f"*{notif.title}*\n{notif.body}" if notif.body else f"*{notif.title}*"
+            )
             if notif.action_url:
                 text += f"\n{notif.action_url}"
 
-            if await send_telegram(text):
+            if await send_telegram(text, reply_markup=data.get("reply_markup")):
                 notif.telegram_sent = True
 
         await db.commit()

@@ -5,21 +5,21 @@ Supports slash commands, natural language chat, and voice messages.
 """
 
 import logging
-from telegram import Update, BotCommand
+from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.error import BadRequest
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters,
+    ApplicationBuilder, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters,
 )
 
 from app.config import settings
 from app.integrations.commands import (
     cmd_task, cmd_note, cmd_status, cmd_run, cmd_ask,
     cmd_projects, cmd_approve, cmd_help,
-    cmd_brand, cmd_leads, cmd_agents_list, cmd_morning,
+    cmd_brand, cmd_leads, cmd_agents_list, cmd_morning, cmd_drafts,
 )
 from app.db.session import async_session
 from app.integrations.chat import handle_chat
-from app.orchestrator import threads
+from app.orchestrator import review, threads
 
 logger = logging.getLogger(__name__)
 
@@ -90,9 +90,40 @@ def _make_handler(cmd_fn, needs_args=True):
             result = await cmd_fn(SOURCE)
 
         text, parse_mode = _format_reply(result.text)
-        await reply(update.message, text, parse_mode=result.parse_mode or parse_mode)
+        await reply(update.message, text, parse_mode=result.parse_mode or parse_mode,
+                    reply_markup=_markup(result.reply_markup))
+        for followup in result.followups:
+            await reply(update.message, followup.text, parse_mode=followup.parse_mode,
+                        reply_markup=_markup(followup.reply_markup))
 
     return handler
+
+
+def _markup(data: dict | None) -> InlineKeyboardMarkup | None:
+    if not data:
+        return None
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(b["text"], callback_data=b["callback_data"]) for b in row]
+        for row in data["inline_keyboard"]
+    ])
+
+
+async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Inline button presses: approve/reject actions, approve/post/discard drafts."""
+    query = update.callback_query
+    if not is_allowed(query.from_user.id):
+        await query.answer("Not authorized", show_alert=True)
+        return
+    async with async_session() as db:
+        outcome = await review.handle_callback(db, query.data or "")
+        await db.commit()
+    await query.answer(outcome[:200])
+    # Keep the message, drop the buttons, and show what happened
+    original = query.message.text if query.message else ""
+    try:
+        await query.edit_message_text(f"{original}\n\n→ {outcome}")
+    except BadRequest:
+        await query.edit_message_reply_markup(None)
 
 
 async def handle_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -187,6 +218,8 @@ async def start_telegram_bot():
     app.add_handler(CommandHandler("task", _make_handler(cmd_task)))
     app.add_handler(CommandHandler("note", _make_handler(cmd_note)))
     app.add_handler(CommandHandler("approve", _make_handler(cmd_approve)))
+    app.add_handler(CommandHandler("drafts", _make_handler(cmd_drafts, needs_args=False)))
+    app.add_handler(CallbackQueryHandler(handle_button))
     app.add_handler(CommandHandler("status", _make_handler(cmd_status, needs_args=False)))
     app.add_handler(CommandHandler("ask", _make_handler(cmd_ask)))
     app.add_handler(CommandHandler("run", _make_handler(cmd_run)))
@@ -205,6 +238,7 @@ async def start_telegram_bot():
         BotCommand("task", "Add a task"),
         BotCommand("note", "Create a note"),
         BotCommand("approve", "Review pending agent actions"),
+        BotCommand("drafts", "Review content drafts"),
         BotCommand("status", "Dashboard stats"),
         BotCommand("ask", "Hand a task to an agent"),
         BotCommand("run", "Run an agent's scheduled job now"),

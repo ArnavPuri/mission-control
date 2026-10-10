@@ -1,12 +1,10 @@
 from uuid import UUID
-from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.db.models import AgentApproval, ApprovalStatus, AgentConfig
-from app.orchestrator.runner import AgentRunner
+from app.db.models import AgentApproval, ApprovalStatus
+from app.orchestrator import review
 from app.api.ws import broadcast
 
 router = APIRouter()
@@ -15,12 +13,7 @@ router = APIRouter()
 @router.get("")
 async def list_pending_approvals(db: AsyncSession = Depends(get_db)):
     """List all pending agent approvals."""
-    result = await db.execute(
-        select(AgentApproval)
-        .where(AgentApproval.status == ApprovalStatus.PENDING)
-        .order_by(AgentApproval.created_at.desc())
-    )
-    approvals = result.scalars().all()
+    approvals = await review.pending_approvals(db)
     return [
         {
             "id": str(a.id),
@@ -46,21 +39,13 @@ async def approve_actions(approval_id: UUID, db: AsyncSession = Depends(get_db))
     if approval.status != ApprovalStatus.PENDING:
         raise HTTPException(status_code=409, detail=f"Approval already {approval.status.value}")
 
-    approval.status = ApprovalStatus.APPROVED
-    approval.reviewed_at = datetime.now(timezone.utc)
-
-    # Execute the approved actions
-    agent = await db.get(AgentConfig, approval.agent_id)
-    if agent:
-        await AgentRunner().process_actions(approval.actions, agent, db)
-
-    await db.flush()
+    outcome = await review.resolve_approval(db, approval_id, approve=True)
     await broadcast("approval.approved", {
         "approval_id": str(approval.id),
         "agent_id": str(approval.agent_id),
         "action_count": len(approval.actions) if isinstance(approval.actions, list) else 0,
     })
-    return {"id": str(approval.id), "status": "approved", "actions_executed": True}
+    return {"id": str(approval.id), "status": "approved", "actions_executed": True, "outcome": outcome}
 
 
 @router.post("/{approval_id}/reject")
@@ -72,9 +57,7 @@ async def reject_actions(approval_id: UUID, db: AsyncSession = Depends(get_db)):
     if approval.status != ApprovalStatus.PENDING:
         raise HTTPException(status_code=409, detail=f"Approval already {approval.status.value}")
 
-    approval.status = ApprovalStatus.REJECTED
-    approval.reviewed_at = datetime.now(timezone.utc)
-    await db.flush()
+    await review.resolve_approval(db, approval_id, approve=False)
 
     await broadcast("approval.rejected", {
         "approval_id": str(approval.id),

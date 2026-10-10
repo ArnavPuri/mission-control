@@ -8,7 +8,7 @@ import {
   Search, Bell, Plus, Play, Check, X, ChevronRight,
   FolderOpen, ListTodo, Clock, Activity,
   Loader2, Sun, Moon, Pencil, FileText, Pin,
-  Bot, StickyNote, Megaphone,
+  Bot, StickyNote, Megaphone, Send,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { TaskDialog } from './components/task-dialog';
@@ -437,7 +437,12 @@ function NotesSection({ notes, onRefresh }: { notes: api.Note[]; onRefresh: () =
 
 // ─── Content Section ─────────────────────────────────────
 
-function ContentSection({ content }: { content: api.MarketingContent[] }) {
+function ContentSection({ content, onRefresh }: { content: api.MarketingContent[]; onRefresh: () => void }) {
+  const setStatus = async (id: string, status: api.MarketingContent['status']) => {
+    await api.marketingContent.update(id, { status });
+    onRefresh();
+  };
+
   const statusVariant: Record<string, 'default' | 'warning' | 'success' | 'purple'> = {
     draft: 'warning', approved: 'blue' as any, posted: 'success', archived: 'default',
   };
@@ -463,9 +468,77 @@ function ContentSection({ content }: { content: api.MarketingContent[] }) {
             </span>
             <Badge variant="purple">{item.channel}</Badge>
             <Badge variant={statusVariant[item.status] || 'default'}>{item.status}</Badge>
+            {(item.status === 'draft' || item.status === 'approved') && (
+              <span className="flex items-center gap-1">
+                {item.status === 'draft' && (
+                  <button onClick={() => setStatus(item.id, 'approved')} title="Approve" aria-label="Approve draft"
+                    className="p-1 rounded text-mc-dim hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950 cursor-pointer">
+                    <Check size={13} />
+                  </button>
+                )}
+                <button onClick={() => setStatus(item.id, 'posted')} title="Mark as posted" aria-label="Mark as posted"
+                  className="p-1 rounded text-mc-dim hover:text-mc-accent hover:bg-blue-50 dark:hover:bg-blue-950 cursor-pointer">
+                  <Send size={13} />
+                </button>
+                <button onClick={() => setStatus(item.id, 'archived')} title="Discard" aria-label="Discard draft"
+                  className="p-1 rounded text-mc-dim hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 cursor-pointer">
+                  <X size={13} />
+                </button>
+              </span>
+            )}
             <span className="text-[11px] text-mc-dim dark:text-gray-500 flex-shrink-0">
               {timeAgo(item.created_at)}
             </span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+// ─── Review Section ──────────────────────────────────────
+
+function ReviewSection({ approvals, onRefresh }: { approvals: api.Approval[]; onRefresh: () => void }) {
+  const [busyId, setBusyId] = useState<string | null>(null);
+  if (approvals.length === 0) return null;
+
+  const decide = async (id: string, approve: boolean) => {
+    setBusyId(id);
+    try {
+      await (approve ? api.approvals.approve(id) : api.approvals.reject(id));
+      onRefresh();
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <Card className="p-4 lg:col-span-2 border-amber-300 dark:border-amber-800">
+      <SectionHeader icon={Clock} title="Needs your review" count={approvals.length} />
+      <div className="space-y-2">
+        {approvals.map((a) => (
+          <div key={a.id} className="flex items-start gap-3 px-2 py-2 rounded-lg bg-amber-50/60 dark:bg-amber-950/20">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-mc-text dark:text-gray-200">
+                {a.agent_name} wants to take {a.action_count} action{a.action_count === 1 ? '' : 's'}
+              </p>
+              {a.summary && <p className="text-xs text-mc-muted dark:text-gray-400 mt-0.5">{a.summary}</p>}
+              <ul className="mt-1 text-xs text-mc-muted dark:text-gray-400 list-disc pl-4">
+                {a.actions.slice(0, 5).map((act, i) => (
+                  <li key={i} className="truncate">{act.type}: {act.text || act.title || act.key || ''}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="flex gap-1.5 flex-shrink-0">
+              <button disabled={busyId === a.id} onClick={() => decide(a.id, true)}
+                className="px-2.5 py-1 text-xs font-medium rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 cursor-pointer">
+                Approve
+              </button>
+              <button disabled={busyId === a.id} onClick={() => decide(a.id, false)}
+                className="px-2.5 py-1 text-xs font-medium rounded-lg border border-mc-border dark:border-gray-700 text-mc-muted hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 cursor-pointer">
+                Reject
+              </button>
+            </div>
           </div>
         ))}
       </div>
@@ -631,6 +704,7 @@ export default function Dashboard() {
   const [agents, setAgents] = useState<api.Agent[]>([]);
   const [notesList, setNotesList] = useState<api.Note[]>([]);
   const [content, setContent] = useState<api.MarketingContent[]>([]);
+  const [pendingApprovals, setPendingApprovals] = useState<api.Approval[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -640,13 +714,14 @@ export default function Dashboard() {
 
   const fetchAll = useCallback(async () => {
     try {
-      const [t, p, a, n, c, nc] = await Promise.all([
+      const [t, p, a, n, c, nc, ap] = await Promise.all([
         api.tasks.list(),
         api.projects.list(),
         api.agents.list(),
         api.notes.list(),
         api.marketingContent.list(),
         api.notifications.count(),
+        api.approvals.list(),
       ]);
       setTasks(t);
       setProjects(p);
@@ -654,6 +729,7 @@ export default function Dashboard() {
       setNotesList(n);
       setContent(c);
       setUnreadCount(nc.unread);
+      setPendingApprovals(ap);
     } catch {
       // silent — API may not be up
     } finally {
@@ -772,12 +848,13 @@ export default function Dashboard() {
       {/* ─── Main Grid ─── */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 pb-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <ReviewSection approvals={pendingApprovals} onRefresh={fetchAll} />
           <TasksSection tasks={tasks} onRefresh={fetchAll} onOpen={setOpenTaskId} />
           <AgentsSection agents={agents} onRefresh={fetchAll} />
           <ProjectsSection projects={projects} />
           <NotesSection notes={notesList} onRefresh={fetchAll} />
           <div className="lg:col-span-2">
-            <ContentSection content={content} />
+            <ContentSection content={content} onRefresh={fetchAll} />
           </div>
         </div>
       </main>
