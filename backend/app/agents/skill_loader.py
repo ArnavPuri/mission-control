@@ -13,7 +13,7 @@ import yaml
 from sqlalchemy import select
 
 from app.config import settings
-from app.db.models import AgentConfig
+from app.db.models import AgentConfig, AgentStatus
 from app.db.session import async_session
 
 logger = logging.getLogger(__name__)
@@ -75,11 +75,14 @@ async def sync_skills_to_db(skills_dir: str | None = None):
                 "schedule_value": data.get("schedule", {}).get("every") if isinstance(data.get("schedule"), dict) else None,
                 "data_reads": data.get("data", {}).get("reads", []) if isinstance(data.get("data"), dict) else [],
                 "data_writes": data.get("data", {}).get("writes", []) if isinstance(data.get("data"), dict) else [],
+                # Everything not mapped to a column lands in config, including
+                # requires_approval and max_actions_per_run which the runner reads
                 "config": {
+                    **(data.get("config") if isinstance(data.get("config"), dict) else {}),
                     **{k: v for k, v in data.items() if k not in (
                         "name", "description", "type", "model", "max_budget_usd",
                         "prompt_template", "tools", "schedule", "data", "_source_file",
-                        "version", "requires_approval", "triggers",
+                        "version", "config",
                     )},
                     "persona": data.get("persona", ""),
                     "tone": data.get("tone", ""),
@@ -95,6 +98,18 @@ async def sync_skills_to_db(skills_dir: str | None = None):
                 agent = AgentConfig(**agent_data)
                 db.add(agent)
                 logger.info(f"Created agent: {name}")
+
+        # Agents whose skill file was deleted must stop running on their schedule
+        result = await db.execute(
+            select(AgentConfig).where(
+                AgentConfig.skill_file.isnot(None),
+                AgentConfig.slug.notin_(loaded_slugs),
+                AgentConfig.status != AgentStatus.DISABLED,
+            )
+        )
+        for orphan in result.scalars().all():
+            orphan.status = AgentStatus.DISABLED
+            logger.info(f"Disabled agent {orphan.name}: skill file {orphan.skill_file} no longer exists")
 
         await db.commit()
 

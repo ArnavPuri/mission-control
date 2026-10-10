@@ -316,6 +316,7 @@ function AgentsSection({ agents, onRefresh }: { agents: api.Agent[]; onRefresh: 
   const handleRun = async (id: string) => {
     setRunningId(id);
     try {
+      // Starts the run in the background; the websocket refreshes the list when it ends
       await api.agents.triggerRun(id);
       onRefresh();
     } catch {
@@ -654,8 +655,9 @@ export default function Dashboard() {
 
   // WebSocket for live updates
   useEffect(() => {
+    // Event names come from broadcast() calls in the backend ("task.created", "agent.completed", ...)
     const ws = api.connectWebSocket((event) => {
-      if (['task_created', 'task_updated', 'task_deleted', 'agent_run_completed', 'notification'].includes(event.type)) {
+      if (/^(task|note|content|agent|approval|notification)\./.test(event.type)) {
         fetchAll();
       }
     });

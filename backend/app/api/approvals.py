@@ -52,8 +52,7 @@ async def approve_actions(approval_id: UUID, db: AsyncSession = Depends(get_db))
     # Execute the approved actions
     agent = await db.get(AgentConfig, approval.agent_id)
     if agent:
-        runner = AgentRunner()
-        await runner._process_actions(approval.actions, agent, db)
+        await AgentRunner().process_actions(approval.actions, agent, db)
 
     await db.flush()
     await broadcast("approval.approved", {

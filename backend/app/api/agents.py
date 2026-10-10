@@ -1,4 +1,3 @@
-import os
 import re
 import shutil
 from uuid import UUID
@@ -9,7 +8,7 @@ from pydantic import BaseModel
 
 from app.db.session import get_db
 from app.db.models import AgentConfig, AgentRun, AgentStatus, EventLog
-from app.orchestrator.runner import AgentRunner
+from app.orchestrator.runner import AgentRunner, cancel_run, is_running, start_background_run, sdk_env
 from app.api.ws import broadcast
 
 router = APIRouter()
@@ -49,14 +48,12 @@ Rules:
 - Keep the prompt focused, clear, and under 500 words
 - Do NOT include markdown fences or explanations — output ONLY the prompt template text"""
 
-    env = dict(os.environ)
-    env["CLAUDE_CODE_OAUTH_TOKEN"] = settings.claude_code_oauth_token
-
     options_kwargs = {
         "system_prompt": system_prompt,
         "model": settings.default_model,
         "max_turns": 1,
-        "env": env,
+        "tools": [],
+        "env": sdk_env(),
     }
     cli_path = shutil.which("claude")
     if cli_path:
@@ -284,7 +281,9 @@ async def trigger_agent(agent_id: UUID, dry_run: bool = False, db: AsyncSession 
     agent = await db.get(AgentConfig, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    if agent.status == AgentStatus.RUNNING:
+    if agent.status == AgentStatus.DISABLED:
+        raise HTTPException(status_code=409, detail="Agent is disabled")
+    if is_running(agent.id):
         raise HTTPException(status_code=409, detail="Agent is already running")
 
     runner = AgentRunner()
@@ -308,20 +307,23 @@ async def trigger_agent(agent_id: UUID, dry_run: bool = False, db: AsyncSession 
             "max_budget_usd": agent.max_budget_usd,
         }
 
-    run = await runner.start_run(agent, trigger="manual", db=db)
-    return {"run_id": str(run.id), "status": "started"}
+    start_background_run(agent.id, trigger="manual")
+    return {"status": "started"}
 
 
 # ─── Stop ─────────────────────────────────────────────────
 
 @router.post("/{agent_id}/stop")
 async def stop_agent(agent_id: UUID, db: AsyncSession = Depends(get_db)):
-    """Stop a running agent."""
+    """Stop a running agent: cancels the run in progress."""
     agent = await db.get(AgentConfig, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    agent.status = AgentStatus.IDLE
-    await db.flush()
+    if not await cancel_run(agent.id):
+        # Nothing in flight (e.g. a stale status); just reset it
+        if agent.status == AgentStatus.RUNNING:
+            agent.status = AgentStatus.IDLE
+            await db.flush()
     return {"status": "stopped"}
 
 

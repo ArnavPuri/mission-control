@@ -4,21 +4,22 @@ Agent Scheduler
 Checks agent schedules and triggers runs automatically.
 Supports:
   - interval: "4h", "30m", "1d"
-  - cron: "0 9 * * *" (e.g., daily at 9am)
+  - cron: "0 9 * * *" (e.g., daily at 9am in NOTIFICATION_TIMEZONE)
   - manual: only triggered via API/Telegram
 """
 
 import asyncio
 import logging
-import random
 import re
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select, or_
 
+from app.config import settings
 from app.db.session import async_session
 from app.db.models import AgentConfig, AgentStatus
-from app.orchestrator.runner import AgentRunner
+from app.orchestrator.runner import start_background_run
 
 logger = logging.getLogger(__name__)
 
@@ -106,10 +107,8 @@ def cron_is_due(cron_expr: str, now: datetime, last_run: datetime | None) -> boo
 class Scheduler:
     """Periodically checks for agents that need to run."""
 
-    def __init__(self, check_interval: int = 60, max_jitter: int = 30):
+    def __init__(self, check_interval: int = 60):
         self.check_interval = check_interval
-        self.max_jitter = max_jitter  # seconds of random jitter to prevent thundering herd
-        self.runner = AgentRunner()
 
     async def run(self):
         """Main scheduler loop."""
@@ -123,11 +122,12 @@ class Scheduler:
             await asyncio.sleep(self.check_interval)
 
     async def _check_schedules(self):
-        """Check all agents for due schedules (both interval and cron)."""
+        """Start every agent whose interval or cron schedule is due."""
         async with async_session() as db:
             result = await db.execute(
                 select(AgentConfig).where(
-                    AgentConfig.status == AgentStatus.IDLE,
+                    # Agents whose last run failed stay on their schedule
+                    AgentConfig.status.in_([AgentStatus.IDLE, AgentStatus.ERROR]),
                     AgentConfig.schedule_value.isnot(None),
                     or_(
                         AgentConfig.schedule_type == "interval",
@@ -136,43 +136,27 @@ class Scheduler:
                 )
             )
             agents = result.scalars().all()
-            now = datetime.now(timezone.utc)
 
-            due_agents = []
-            for agent in agents:
-                is_due = False
+        now = datetime.now(timezone.utc)
+        for agent in agents:
+            if is_due(agent, now) and start_background_run(agent.id, trigger="schedule"):
+                logger.info(f"Scheduled run: {agent.name} ({agent.schedule_type}: {agent.schedule_value})")
 
-                if agent.schedule_type == "interval":
-                    interval = parse_interval(agent.schedule_value)
-                    if not interval:
-                        continue
-                    if agent.last_run_at:
-                        if now >= agent.last_run_at + interval:
-                            is_due = True
-                    else:
-                        is_due = True
 
-                elif agent.schedule_type == "cron":
-                    is_due = cron_is_due(agent.schedule_value, now, agent.last_run_at)
+def is_due(agent: AgentConfig, now: datetime) -> bool:
+    if agent.schedule_type == "interval":
+        interval = parse_interval(agent.schedule_value or "")
+        if not interval:
+            return False
+        return agent.last_run_at is None or now >= _aware(agent.last_run_at) + interval
+    if agent.schedule_type == "cron":
+        # Cron expressions are in the user's timezone, like the morning briefing
+        tz = ZoneInfo(settings.notification_timezone)
+        last_run = _aware(agent.last_run_at).astimezone(tz) if agent.last_run_at else None
+        return cron_is_due(agent.schedule_value, now.astimezone(tz), last_run)
+    return False
 
-                if is_due:
-                    due_agents.append(agent)
 
-            # Launch all due agents concurrently with jitter
-            async def _run_with_jitter(agent):
-                jitter = random.uniform(0, self.max_jitter)
-                if jitter > 1:
-                    await asyncio.sleep(jitter)
-                logger.info(
-                    f"Scheduling agent: {agent.name} "
-                    f"({agent.schedule_type}: {agent.schedule_value})"
-                )
-                try:
-                    async with async_session() as agent_db:
-                        await self.runner.start_run(agent, trigger="schedule", db=agent_db)
-                        await agent_db.commit()
-                except Exception as e:
-                    logger.error(f"Failed to run agent {agent.name}: {e}")
-
-            if due_agents:
-                await asyncio.gather(*[_run_with_jitter(a) for a in due_agents])
+def _aware(dt: datetime) -> datetime:
+    # SQLite returns naive datetimes; everything is stored in UTC
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)

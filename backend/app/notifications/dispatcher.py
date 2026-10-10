@@ -16,29 +16,36 @@ logger = logging.getLogger(__name__)
 TELEGRAM_API = "https://api.telegram.org"
 
 
-async def _send_telegram(text: str) -> bool:
-    """Send a message via Telegram Bot API using httpx. Returns True on success."""
+async def send_telegram(text: str, reply_markup: dict | None = None) -> int | None:
+    """Send a message via the Telegram Bot API. Returns the message id, or None on failure.
+
+    Agent output often contains characters that break Telegram's Markdown
+    parser (underscores in URLs, unbalanced asterisks). If Telegram rejects
+    the formatting, the message is resent as plain text instead of failing.
+    """
     token = settings.telegram_bot_token
     chat_id = settings.telegram_target_chat_id
     if not token or not chat_id:
         logger.warning("Telegram not configured for notifications (missing token or chat_id)")
-        return False
+        return None
 
     url = f"{TELEGRAM_API}/bot{token}/sendMessage"
+    payload = {"chat_id": chat_id, "text": text[:4096], "parse_mode": "Markdown"}
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(url, json={
-                "chat_id": chat_id,
-                "text": text,
-                "parse_mode": "Markdown",
-            })
+            resp = await client.post(url, json=payload)
+            if resp.status_code == 400 and "parse entities" in resp.text:
+                payload.pop("parse_mode")
+                resp = await client.post(url, json=payload)
             if resp.status_code != 200:
                 logger.error(f"Telegram send failed ({resp.status_code}): {resp.text}")
-                return False
-            return True
+                return None
+            return resp.json().get("result", {}).get("message_id")
     except Exception as e:
         logger.error(f"Telegram send error: {e}")
-        return False
+        return None
 
 
 async def dispatch_urgent():
@@ -57,8 +64,7 @@ async def dispatch_urgent():
             if notif.action_url:
                 text += f"\n{notif.action_url}"
 
-            sent = await _send_telegram(text)
-            if sent:
+            if await send_telegram(text):
                 notif.telegram_sent = True
 
         await db.commit()

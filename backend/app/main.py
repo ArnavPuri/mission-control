@@ -19,6 +19,7 @@ from app.api import (
     notifications, agent_memory, notes, marketing_content, brand,
 )
 from app.orchestrator.scheduler import Scheduler
+from app.orchestrator.runner import recover_interrupted_runs
 from app.integrations.telegram import start_telegram_bot
 from app.agents.skill_loader import sync_skills_to_db
 from app.notifications.dispatcher import urgent_dispatch_loop, digest_loop
@@ -28,6 +29,7 @@ from app.notifications.dispatcher import urgent_dispatch_loop, digest_loop
 async def lifespan(app: FastAPI):
     # Startup
     await init_db()
+    await recover_interrupted_runs()
     await sync_skills_to_db()
 
     # Start scheduler

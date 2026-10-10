@@ -6,7 +6,6 @@ Claude via the Agent SDK (OAuth), and executes actions.
 """
 
 import json
-import os
 import shutil
 import time
 import logging
@@ -17,11 +16,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db.models import (
-    Task, Project, AgentConfig, Note,
+    Task, Project, Note,
     AgentStatus, TaskStatus, EventLog, MarketingContent,
 )
 from app.db.context import build_db_context
-from app.orchestrator.runner import AgentRunner
+from app.orchestrator.runner import sdk_env, start_background_run
+from app.integrations.commands import find_agent
 from app.api.ws import broadcast
 
 logger = logging.getLogger(__name__)
@@ -313,14 +313,13 @@ async def call_llm(
 
     prompt = "\n\n".join(prompt_parts)
 
-    env = dict(os.environ)
-    env["CLAUDE_CODE_OAUTH_TOKEN"] = settings.claude_code_oauth_token
-
     options_kwargs = {
         "system_prompt": system,
         "model": settings.chat_model,
         "max_turns": 1,
-        "env": env,
+        # Chat answers from the context in the prompt; actions go through JSON blocks
+        "tools": [],
+        "env": sdk_env(),
     }
     cli_path = shutil.which("claude")
     if cli_path:
@@ -351,9 +350,9 @@ async def execute_tool_call(
         project_name = input_data.get("project_name")
         if project_name:
             result = await db.execute(
-                select(Project).where(Project.name.ilike(f"%{project_name}%"))
+                select(Project).where(Project.name.ilike(f"%{project_name}%")).order_by(Project.name)
             )
-            project = result.scalar_one_or_none()
+            project = result.scalars().first()
             if project:
                 project_id = project.id
 
@@ -425,22 +424,14 @@ async def execute_tool_call(
 
     elif name == "trigger_agent":
         slug = input_data["agent_slug"]
-        result = await db.execute(
-            select(AgentConfig).where(AgentConfig.slug == slug)
-        )
-        agent = result.scalar_one_or_none()
+        agent, matches = await find_agent(db, slug)
         if not agent:
-            return f"Agent not found: {slug}"
-        if agent.status == AgentStatus.RUNNING:
+            return f"Agent not found: {slug}" if not matches else f"Several agents match '{slug}'"
+        if agent.status == AgentStatus.DISABLED:
+            return f"Agent {agent.name} is disabled"
+        if not start_background_run(agent.id, trigger="telegram:chat", notify=True):
             return f"Agent {agent.name} is already running"
-
-        runner = AgentRunner()
-        try:
-            run = await runner.start_run(agent, trigger="telegram:chat", db=db)
-            summary = run.output_data.get("summary", "No summary") if run.output_data else "No output"
-            return f"Agent {agent.name} completed: {summary[:300]}"
-        except Exception as e:
-            return f"Agent {agent.name} failed: {str(e)[:200]}"
+        return f"Started {agent.name}. I'll message you when it's done."
 
     elif name == "create_content_draft":
         content = MarketingContent(

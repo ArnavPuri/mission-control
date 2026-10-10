@@ -6,6 +6,7 @@ Supports slash commands, natural language chat, and voice messages.
 
 import logging
 from telegram import Update, BotCommand
+from telegram.error import BadRequest
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters,
 )
@@ -48,13 +49,37 @@ def _format_reply(text: str) -> tuple[str, str | None]:
 
 
 def is_allowed(user_id: int) -> bool:
-    allowed = settings.telegram_allowed_user_ids
-    return not allowed or user_id in allowed
+    """Only users listed in TELEGRAM_ALLOWED_USERS may use the bot. With the list
+    empty nobody can — the bot can start agents, so it must never be open."""
+    return user_id in settings.telegram_allowed_user_ids
+
+
+async def check_allowed(update: Update) -> bool:
+    user = update.effective_user
+    if user and is_allowed(user.id):
+        return True
+    if user and update.effective_message:
+        logger.warning(f"Rejected Telegram user {user.id} (@{user.username})")
+        await update.effective_message.reply_text(
+            f"Not authorized. Your Telegram user ID is {user.id} — add it to "
+            "TELEGRAM_ALLOWED_USERS in .env and restart Mission Control."
+        )
+    return False
+
+
+async def reply(message, text: str, parse_mode: str | None = None, **kwargs):
+    """Reply, falling back to plain text if Telegram can't parse the Markdown."""
+    try:
+        return await message.reply_text(text, parse_mode=parse_mode, **kwargs)
+    except BadRequest as e:
+        if parse_mode and "parse entities" in str(e).lower():
+            return await message.reply_text(text, **kwargs)
+        raise
 
 
 def _make_handler(cmd_fn, needs_args=True):
     async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if not is_allowed(update.effective_user.id):
+        if not await check_allowed(update):
             return
         args = " ".join(context.args) if context.args else ""
 
@@ -64,14 +89,14 @@ def _make_handler(cmd_fn, needs_args=True):
             result = await cmd_fn(SOURCE)
 
         text, parse_mode = _format_reply(result.text)
-        await update.message.reply_text(text, parse_mode=parse_mode)
+        await reply(update.message, text, parse_mode=result.parse_mode or parse_mode)
 
     return handler
 
 
 async def handle_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle plain text messages via the LLM chat assistant."""
-    if not is_allowed(update.effective_user.id):
+    if not await check_allowed(update):
         return
     text = update.message.text.strip()
     if not text:
@@ -94,7 +119,7 @@ async def handle_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle voice messages by transcribing and passing to chat."""
-    if not is_allowed(update.effective_user.id):
+    if not await check_allowed(update):
         return
 
     await update.message.chat.send_action("typing")
@@ -141,6 +166,8 @@ async def start_telegram_bot():
     if not settings.telegram_bot_token:
         logger.info("Telegram bot not configured, skipping")
         return
+    if not settings.telegram_allowed_user_ids:
+        logger.warning("TELEGRAM_ALLOWED_USERS is empty — the bot will reject every message until it is set")
 
     app = ApplicationBuilder().token(settings.telegram_bot_token).build()
 

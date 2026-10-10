@@ -13,7 +13,7 @@ from app.db.models import (
     Task, TaskStatus, TaskPriority,
     Project, ProjectStatus, LEAD_TAG,
 )
-from app.notifications.dispatcher import _send_telegram
+from app.notifications.dispatcher import send_telegram
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +156,7 @@ async def send_morning_briefing() -> bool:
     """Generate and send the morning briefing to Telegram. Returns True if sent."""
     try:
         text = await generate_morning_briefing()
-        sent = await _send_telegram(text)
+        sent = await send_telegram(text) is not None
         if sent:
             logger.info("Morning briefing sent")
         else:

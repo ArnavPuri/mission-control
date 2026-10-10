@@ -17,7 +17,7 @@ async def broadcast(event_type: str, data: dict):
     """Broadcast an event to all connected dashboard clients."""
     message = json.dumps({"type": event_type, "data": data})
     disconnected = set()
-    for ws in _connections:
+    for ws in list(_connections):  # copy: clients may connect while we await
         try:
             await ws.send_text(message)
         except Exception:
@@ -31,8 +31,7 @@ async def websocket_endpoint(websocket: WebSocket):
     _connections.add(websocket)
     try:
         while True:
-            # Keep connection alive, handle any incoming messages
-            data = await websocket.receive_text()
-            # Could handle dashboard commands here (e.g., subscribe to specific agents)
+            # Keep the connection open; the dashboard doesn't send anything
+            await websocket.receive_text()
     except WebSocketDisconnect:
         _connections.discard(websocket)

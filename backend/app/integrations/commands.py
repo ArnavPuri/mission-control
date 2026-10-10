@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import async_session
 from app.db.models import (
@@ -17,7 +18,7 @@ from app.db.models import (
     TaskStatus, AgentStatus, EventLog, AgentApproval, ApprovalStatus,
     BrandProfile, LEAD_TAG,
 )
-from app.orchestrator.runner import AgentRunner
+from app.orchestrator.runner import AgentRunner, start_background_run
 
 logger = logging.getLogger(__name__)
 
@@ -91,30 +92,38 @@ async def cmd_status(source: str) -> CommandResult:
     return CommandResult("\n".join(lines))
 
 
+async def find_agent(db: AsyncSession, query: str) -> tuple[AgentConfig | None, list[AgentConfig]]:
+    """Match an agent by exact slug, then by name. Returns (agent, candidates) —
+    agent is None when nothing or more than one agent matches."""
+    query = query.strip()
+    exact = (await db.execute(select(AgentConfig).where(AgentConfig.slug == query))).scalar_one_or_none()
+    if exact:
+        return exact, [exact]
+    matches = (await db.execute(
+        select(AgentConfig).where(
+            (AgentConfig.slug.ilike(f"%{query}%")) | (AgentConfig.name.ilike(f"%{query}%"))
+        ).order_by(AgentConfig.name)
+    )).scalars().all()
+    return (matches[0] if len(matches) == 1 else None), list(matches)
+
+
 async def cmd_run(args: str, source: str) -> CommandResult:
-    """Trigger an agent manually."""
+    """Start an agent in the background; its result is sent when it finishes."""
     if not args:
         return CommandResult("Usage: /run <agent-name>")
 
     async with async_session() as db:
-        result = await db.execute(
-            select(AgentConfig).where(
-                (AgentConfig.slug == args) | (AgentConfig.name.ilike(f"%{args}%"))
-            )
-        )
-        agent = result.scalar_one_or_none()
-        if not agent:
+        agent, matches = await find_agent(db, args)
+    if not agent:
+        if not matches:
             return CommandResult(f"Agent not found: {args}")
-        if agent.status == AgentStatus.RUNNING:
-            return CommandResult(f"Agent {agent.name} is already running")
-
-        runner = AgentRunner()
-        run = await runner.start_run(agent, trigger=source, db=db)
-        await db.commit()
-
-    status_word = "Done" if run.status.value == "completed" else "Failed"
-    summary = run.output_data.get("summary", "No summary") if run.output_data else "No output"
-    return CommandResult(f"{status_word} - {agent.name}: {summary[:500]}")
+        names = "\n".join(f"- {a.slug}" for a in matches)
+        return CommandResult(f"Several agents match '{args}':\n{names}\n\nUse /run <slug>.")
+    if agent.status == AgentStatus.DISABLED:
+        return CommandResult(f"Agent {agent.name} is disabled")
+    if not start_background_run(agent.id, trigger=source, notify=True):
+        return CommandResult(f"Agent {agent.name} is already running")
+    return CommandResult(f"Started {agent.name}. I'll message you when it's done.")
 
 
 async def cmd_projects(source: str) -> CommandResult:
@@ -155,12 +164,13 @@ async def cmd_approve(args: str, source: str) -> CommandResult:
 
         async with async_session() as db:
             a = await db.get(AgentApproval, approval.id)
+            if a.status != ApprovalStatus.PENDING:
+                return CommandResult(f"That approval was already {a.status.value}.")
             a.status = ApprovalStatus.APPROVED
             a.reviewed_at = datetime.now(timezone.utc)
             agent = await db.get(AgentConfig, a.agent_id)
             if agent:
-                runner = AgentRunner()
-                await runner._process_actions(a.actions, agent, db)
+                await AgentRunner().process_actions(a.actions, agent, db)
             await db.commit()
         return CommandResult(f"Approved: {approval.summary[:200]}")
 

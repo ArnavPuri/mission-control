@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
 
     # --- Paths ---
-    agent_workdir: str = "/app/workdir"
+    agent_workdir: str = "workdir"  # relative to the backend dir; /app/workdir in Docker
     skills_dir: str = "skills"
 
     class Config:
