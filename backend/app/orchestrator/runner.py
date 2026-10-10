@@ -33,6 +33,14 @@ from app.orchestrator.schemas import validate_agent_output
 logger = logging.getLogger(__name__)
 
 
+AUTO_CONTEXT = {
+    "project": "PROJECT YOU WORK ON",
+    "brand": "BRAND PROFILE (voice and topics for anything you write)",
+    "memory": "YOUR MEMORY",
+    "past_runs": "YOUR RECENT RUNS",
+}
+
+
 class AgentRunner:
     """Executes agent runs against the Claude Agent SDK."""
 
@@ -198,6 +206,15 @@ class AgentRunner:
                 prompt = prompt.replace(placeholder, json.dumps(value, indent=2))
             else:
                 prompt = prompt.replace(placeholder, str(value))
+        # Memory, recent runs and brand reach every agent (the system prompt promises
+        # them), even when its template doesn't name them
+        extras = [
+            f"{title}:\n{json.dumps(context[key], indent=2, default=str)}"
+            for key, title in AUTO_CONTEXT.items()
+            if key in context and "{{" + key + "}}" not in template
+        ]
+        if extras:
+            prompt += "\n\n" + "\n\n".join(extras)
         return prompt
 
     async def execute_with_agent_sdk(self, prompt: str, agent: AgentConfig) -> dict:

@@ -44,7 +44,11 @@ async def sync_skills_to_db(skills_dir: str | None = None):
         logger.warning(f"Skills directory not found: {directory}")
         return
 
-    skill_files = list(directory.glob("*.yaml")) + list(directory.glob("*.yml"))
+    # Files starting with "_" (like _template.yaml) are examples, not agents
+    skill_files = [
+        p for p in list(directory.glob("*.yaml")) + list(directory.glob("*.yml"))
+        if not p.name.startswith("_")
+    ]
     logger.info(f"Found {len(skill_files)} skill files in {directory}")
 
     loaded_slugs = set()

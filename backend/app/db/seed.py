@@ -5,6 +5,8 @@ Creates example projects, tasks, and notes so new users have something to explor
 """
 
 
+import asyncio
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
@@ -56,3 +58,7 @@ async def _do_seed(db: AsyncSession):
     db.add(note)
 
     await db.commit()
+
+
+if __name__ == "__main__":
+    asyncio.run(seed_data_if_empty())

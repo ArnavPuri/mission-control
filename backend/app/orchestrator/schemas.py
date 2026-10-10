@@ -55,6 +55,9 @@ class AgentAction(BaseModel):
             data["url"] = data.pop("source_url")
         if "signal_id" in data and not data.get("task_id"):
             data["task_id"] = data.pop("signal_id")
+        # Task context lists tasks by "id", so agents often reuse that key
+        if data.get("type") == "update_task" and "id" in data and not data.get("task_id"):
+            data["task_id"] = data.pop("id")
         return data
 
     @field_validator("type")

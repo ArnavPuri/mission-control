@@ -251,3 +251,29 @@ def test_cron_uses_configured_timezone(monkeypatch):
     # 09:00 in Kolkata is 03:30 UTC
     assert is_due(agent, datetime(2026, 10, 12, 3, 30, tzinfo=timezone.utc))
     assert not is_due(agent, datetime(2026, 10, 12, 9, 0, tzinfo=timezone.utc))
+
+
+def test_update_task_accepts_id_alias():
+    from app.orchestrator.schemas import validate_agent_output
+    output, warnings = validate_agent_output({"summary": "s", "actions": [
+        {"type": "update_task", "id": "abc", "status": "done"},
+    ]})
+    assert warnings == [] and output.actions[0].task_id == "abc"
+
+
+@pytest.mark.asyncio
+async def test_skill_loader_skips_templates(tmp_path, db_session):
+    (tmp_path / "_template.yaml").write_text("name: my-agent\nprompt_template: x\n")
+    (tmp_path / "real.yaml").write_text("name: Real\nprompt_template: x\n")
+    await sync_skills_to_db(str(tmp_path))
+    async with db_session() as db:
+        slugs = [a.slug for a in (await db.execute(select(AgentConfig))).scalars().all()]
+    assert slugs == ["real"]
+
+
+def test_memory_and_recent_runs_reach_templates_that_dont_name_them():
+    runner = AgentRunner()
+    context = {"tasks": [], "memory": {"tone": "casual"}, "past_runs": [{"summary": "found 3 leads"}]}
+    prompt = runner.render_prompt("Tasks: {{tasks}}\nPast: {{past_runs}}", context)
+    assert prompt.count("found 3 leads") == 1  # named once in the template, not repeated
+    assert "YOUR MEMORY" in prompt and "casual" in prompt

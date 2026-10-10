@@ -118,7 +118,7 @@ function RunRow({ run, isExpanded, onToggle }: { run: RunDetail; isExpanded: boo
 
 export default function AgentsPage() {
   const [agents, setAgents] = useState<api.Agent[]>([]);
-  const analytics: any = null; // analytics removed
+  const [analytics, setAnalytics] = useState<api.AgentAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
@@ -128,8 +128,9 @@ export default function AgentsPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const a = await api.agents.list();
+      const [a, an] = await Promise.all([api.agents.list(), api.agents.analytics().catch(() => null)]);
       setAgents(a);
+      setAnalytics(an);
       // Clear running IDs for agents that are no longer running
       setRunningIds((prev) => {
         const stillRunning = new Set<string>();

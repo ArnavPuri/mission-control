@@ -76,11 +76,11 @@ clean: ## Remove containers, volumes, and build artifacts
 
 # ─── Utilities ──────────────────────────────────
 
-sync-skills: ## Reload agent skills from YAML files
-	curl -s -X POST http://localhost:$${API_PORT:-8000}/api/agents/sync-skills | python -m json.tool
+sync-skills: ## Reload agent skills from YAML files (they sync on startup)
+	docker compose restart backend
 
 health: ## Check backend health
-	@curl -sf http://localhost:$${API_PORT:-8000}/api/health | python -m json.tool || echo "Backend is not running"
+	@curl -sf http://localhost:$${API_PORT:-8000}/health | python -m json.tool || echo "Backend is not running"
 
 shell-db: ## Open psql shell
 	docker compose exec db psql -U $${POSTGRES_USER:-missionctl} -d $${POSTGRES_DB:-missioncontrol}

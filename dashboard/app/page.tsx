@@ -169,6 +169,11 @@ function TasksSection({ tasks, onRefresh, onOpen }: {
   const openTasks = tasks
     .filter((t) => t.status !== 'done')
     .sort((a, b) => (PRIORITY_ORDER[a.priority] ?? 9) - (PRIORITY_ORDER[b.priority] ?? 9));
+  // Finished in the last 3 days, so agent answers stay one click away
+  const recentCutoff = Date.now() - 3 * 24 * 3600 * 1000;
+  const doneRecently = tasks
+    .filter((t) => t.status === 'done' && t.completed_at && new Date(t.completed_at).getTime() > recentCutoff)
+    .sort((a, b) => new Date(b.completed_at!).getTime() - new Date(a.completed_at!).getTime());
 
   const handleAdd = async (text: string) => {
     await api.tasks.create({ text, status: 'todo', priority: 'medium' });
@@ -272,6 +277,30 @@ function TasksSection({ tasks, onRefresh, onOpen }: {
           </div>
         ))}
       </div>
+      {doneRecently.length > 0 && (
+        <details className="mt-3 border-t border-mc-border dark:border-gray-800 pt-2">
+          <summary className="text-xs text-mc-muted dark:text-gray-400 cursor-pointer select-none">
+            Done recently ({doneRecently.length})
+          </summary>
+          <div className="space-y-1 mt-1">
+            {doneRecently.map((task) => (
+              <button
+                key={task.id}
+                onClick={() => onOpen(task.id)}
+                className="w-full flex items-center gap-2 px-2 py-1 rounded-lg text-left hover:bg-gray-50 dark:hover:bg-gray-800/60 cursor-pointer"
+              >
+                <Check size={12} className="text-emerald-500 flex-shrink-0" />
+                <span className="flex-1 text-sm text-mc-muted dark:text-gray-400 truncate">{task.text}</span>
+                {task.assigned_agent_name && (
+                  <span className="text-[11px] text-mc-dim inline-flex items-center gap-1">
+                    <Bot size={11} />{task.assigned_agent_name.replace(/\s*\(.*\)$/, '')}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </details>
+      )}
     </Card>
   );
 }

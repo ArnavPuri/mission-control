@@ -1,5 +1,6 @@
 import re
 import shutil
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -7,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from app.db.session import get_db
-from app.db.models import AgentConfig, AgentRun, AgentStatus, EventLog
+from app.db.models import AgentConfig, AgentRun, AgentRunStatus, AgentStatus, EventLog
 from app.orchestrator.runner import AgentRunner, cancel_run, is_running, start_background_run, sdk_env
 from app.api.ws import broadcast
 
@@ -212,6 +213,45 @@ async def create_agent(data: AgentCreate, db: AsyncSession = Depends(get_db)):
     ))
     await broadcast("agent.created", {"id": str(agent.id), "name": agent.name})
     return _serialize_full(agent)
+
+
+# ─── Analytics ────────────────────────────────────────────
+
+@router.get("/analytics")
+async def agent_analytics(days: int = 30, db: AsyncSession = Depends(get_db)):
+    """Runs, success rate and cost per agent over the last `days` days."""
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    runs = (await db.execute(
+        select(AgentRun).where(AgentRun.started_at >= since)
+    )).scalars().all()
+
+    per_agent: dict = {}
+    for r in runs:
+        a = per_agent.setdefault(str(r.agent_id), {
+            "agent_id": str(r.agent_id), "total_runs": 0, "completed": 0,
+            "total_cost_usd": 0.0, "daily_costs": {},
+        })
+        a["total_runs"] += 1
+        a["completed"] += r.status == AgentRunStatus.COMPLETED
+        a["total_cost_usd"] += r.cost_usd or 0.0
+        day = r.started_at.strftime("%Y-%m-%d")
+        a["daily_costs"][day] = a["daily_costs"].get(day, 0.0) + (r.cost_usd or 0.0)
+
+    for a in per_agent.values():
+        a["success_rate"] = 100.0 * a["completed"] / a["total_runs"]
+        a["daily_costs"] = dict(sorted(a["daily_costs"].items()))
+
+    total_runs = len(runs)
+    completed = sum(a["completed"] for a in per_agent.values())
+    return {
+        "days": days,
+        "totals": {
+            "total_runs": total_runs,
+            "overall_success_rate": 100.0 * completed / total_runs if total_runs else 100.0,
+            "total_cost_usd": sum(a["total_cost_usd"] for a in per_agent.values()),
+        },
+        "agents": list(per_agent.values()),
+    }
 
 
 # ─── Detail ───────────────────────────────────────────────

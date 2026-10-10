@@ -154,6 +154,18 @@ export interface RunDetailResponse {
   completed_at: string | null;
 }
 
+export interface AgentAnalytics {
+  days: number;
+  totals: { total_runs: number; overall_success_rate: number; total_cost_usd: number };
+  agents: {
+    agent_id: string;
+    total_runs: number;
+    success_rate: number;
+    total_cost_usd: number;
+    daily_costs: Record<string, number>;
+  }[];
+}
+
 export const agents = {
   list: () => request<Agent[]>('/api/agents'),
   get: (id: string) => request<AgentDetail>(`/api/agents/${id}`),
@@ -164,6 +176,7 @@ export const agents = {
   stop: (id: string) => request<{ status: string }>(`/api/agents/${id}/stop`, { method: 'POST' }),
   dryRun: (id: string) => request<Record<string, unknown>>(`/api/agents/${id}/run?dry_run=true`, { method: 'POST' }),
   runs: (id: string, limit = 20) => request<AgentRun[]>(`/api/agents/${id}/runs?limit=${limit}`),
+  analytics: (days = 30) => request<AgentAnalytics>(`/api/agents/analytics?days=${days}`),
   runDetail: (agentId: string, runId: string) => request<RunDetailResponse>(`/api/agents/${agentId}/runs/${runId}`),
   expandPrompt: (data: { description: string; agent_type?: string; data_reads?: string[]; data_writes?: string[] }) =>
     request<{ prompt: string }>('/api/agents/expand-prompt', { method: 'POST', body: JSON.stringify(data) }),

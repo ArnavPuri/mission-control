@@ -2,7 +2,8 @@
 # Agent Skill Template
 # ============================================================
 # Copy this file and customize it to create a new agent.
-# The filename becomes the agent slug (e.g., my-agent.yaml -> my-agent)
+# The agent's slug comes from its name ("Pulse (Reddit Scout)" -> pulse-reddit-scout).
+# Files starting with "_" (like this one) are ignored.
 #
 # Place in the skills/ directory and restart the backend,
 # or call the skill sync API endpoint to reload.
