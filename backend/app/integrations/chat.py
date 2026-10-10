@@ -21,7 +21,7 @@ from app.db.models import (
 )
 from app.db.context import build_db_context
 from app.orchestrator.runner import sdk_env, start_background_run
-from app.integrations.commands import find_agent
+from app.integrations.commands import delegate, find_agent
 from app.api.ws import broadcast
 
 logger = logging.getLogger(__name__)
@@ -93,6 +93,19 @@ CHAT_TOOLS = [
                 "agent_slug": {"type": "string", "description": "Slug of the agent to trigger"},
             },
             "required": ["agent_slug"],
+        },
+    },
+    {
+        "name": "delegate_task",
+        "description": "Hand a piece of work to an agent. Creates a task assigned to the agent; it works on it in the background and replies in Telegram.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "agent_slug": {"type": "string", "description": "Slug of the agent to hand it to"},
+                "request": {"type": "string", "description": "What the agent should do, with all the detail the user gave"},
+                "project_name": {"type": "string", "description": "Project it belongs to (optional)"},
+            },
+            "required": ["agent_slug", "request"],
         },
     },
     {
@@ -270,7 +283,9 @@ You help manage projects, tasks, notes, agents, and content creation for social 
 - When listing items, use compact formatting
 - Match tasks by text content, not by ID
 - You can create content drafts for X, LinkedIn, Instagram, YouTube, blog
-- You can spawn agents for research, coding, marketing tasks
+- To hand work to an agent ("have the researcher look into X", "ask Echo to draft a post about Y"),
+  use delegate_task. Pick the agent whose description fits; the agent answers in Telegram itself.
+- trigger_agent only runs an agent's regular scheduled job; it can't be given instructions
 
 ## Actions
 When you need to take an action (create task, update task, create note, trigger agent, create content),
@@ -285,6 +300,7 @@ Available action types:
 - update_task: task_text (required, fuzzy match), status (todo/in_progress/blocked/done), priority
 - create_note: title (required), content, tags
 - trigger_agent: agent_slug (required)
+- delegate_task: agent_slug (required), request (required), project_name
 - create_content_draft: title (required), body (required), channel (x/linkedin/instagram/youtube/blog)
 
 If no action is needed, just reply normally as plain text."""
@@ -432,6 +448,21 @@ async def execute_tool_call(
         if not start_background_run(agent.id, trigger="telegram:chat", notify=True):
             return f"Agent {agent.name} is already running"
         return f"Started {agent.name}. I'll message you when it's done."
+
+    elif name == "delegate_task":
+        agent, matches = await find_agent(db, input_data.get("agent_slug", ""))
+        if not agent:
+            return f"Agent not found: {input_data.get('agent_slug')}"
+        if agent.status == AgentStatus.DISABLED:
+            return f"Agent {agent.name} is disabled"
+        project = None
+        if input_data.get("project_name"):
+            project = (await db.execute(
+                select(Project).where(Project.name.ilike(f"%{input_data['project_name']}%")).order_by(Project.name)
+            )).scalars().first()
+        task, started = await delegate(db, agent, input_data["request"], "telegram:chat", project)
+        state = "is on it" if started else "is busy; it's queued"
+        return f"{agent.name} {state}: {task.text}"
 
     elif name == "create_content_draft":
         content = MarketingContent(

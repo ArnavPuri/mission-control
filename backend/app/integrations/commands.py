@@ -18,6 +18,7 @@ from app.db.models import (
     TaskStatus, AgentStatus, EventLog, AgentApproval, ApprovalStatus,
     BrandProfile, LEAD_TAG,
 )
+from app.orchestrator import threads
 from app.orchestrator.runner import AgentRunner, start_background_run
 
 logger = logging.getLogger(__name__)
@@ -124,6 +125,47 @@ async def cmd_run(args: str, source: str) -> CommandResult:
     if not start_background_run(agent.id, trigger=source, notify=True):
         return CommandResult(f"Agent {agent.name} is already running")
     return CommandResult(f"Started {agent.name}. I'll message you when it's done.")
+
+
+async def delegate(db: AsyncSession, agent: AgentConfig, request: str, source: str,
+                   project: Project | None = None) -> tuple[Task, bool]:
+    """Create a task from a request and assign it to an agent."""
+    request = request.strip()
+    title = request.split("\n", 1)[0]
+    if len(title) > 120:
+        title = title[:117] + "..."
+    task = Task(
+        text=title,
+        description=request if request != title else None,
+        source=source,
+        project_id=project.id if project else None,
+    )
+    db.add(task)
+    await db.flush()
+    started = await threads.assign_task(db, task, agent, note=request)
+    return task, started
+
+
+async def cmd_ask(args: str, source: str) -> CommandResult:
+    """Hand a task to an agent: /ask <agent> <what to do>."""
+    parts = args.split(None, 1)
+    if len(parts) < 2:
+        return CommandResult("Usage: /ask <agent> <what you want done>\nExample: /ask navigator compare Plausible and Fathom pricing")
+
+    async with async_session() as db:
+        agent, matches = await find_agent(db, parts[0])
+        if not agent:
+            if not matches:
+                return CommandResult(f"Agent not found: {parts[0]}. See /agents.")
+            names = ", ".join(a.slug for a in matches)
+            return CommandResult(f"Several agents match '{parts[0]}': {names}")
+        if agent.status == AgentStatus.DISABLED:
+            return CommandResult(f"Agent {agent.name} is disabled")
+        task, started = await delegate(db, agent, parts[1], source)
+
+    if started:
+        return CommandResult(f"{agent.name} is on it: \"{task.text}\". You'll get the answer here.")
+    return CommandResult(f"Queued for {agent.name} (busy right now): \"{task.text}\". You'll get the answer here.")
 
 
 async def cmd_projects(source: str) -> CommandResult:
@@ -293,12 +335,14 @@ async def cmd_help(source: str) -> CommandResult:
         "/note <title> - Create a note\n"
         "/approve [n] - List or approve pending actions\n"
         "/status - Dashboard stats\n"
-        "/run <agent> - Trigger an agent\n"
+        "/ask <agent> <request> - Hand a task to an agent\n"
+        "/run <agent> - Run an agent's scheduled job now\n"
         "/projects - List projects\n"
         "/leads — View open marketing leads\n"
         "/agents — View agent status\n"
         "/brand — View your brand profile\n"
         "/morning — Get your morning briefing\n"
         "/help - This message\n\n"
-        "Or just send a message — I understand natural language."
+        "Or just send a message — I understand natural language.\n"
+        "Reply to an agent's message to continue that task's thread."
     )

@@ -45,6 +45,7 @@ async def build_db_context(db: AsyncSession) -> dict:
             "priority": t.priority.value,
             "id_prefix": str(t.id)[:8],
             "source": t.source or "manual",
+            "assigned_to": t.assigned_agent.slug if t.assigned_agent else None,
         }
         for t in result.scalars().all()
     ]

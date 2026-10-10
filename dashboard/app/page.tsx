@@ -11,6 +11,7 @@ import {
   Bot, StickyNote, Megaphone,
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import { TaskDialog } from './components/task-dialog';
 
 // ─── Theme ───────────────────────────────────────────────
 
@@ -157,7 +158,9 @@ const PRIORITY_VARIANT: Record<string, 'error' | 'warning' | 'blue' | 'default'>
 
 // ─── Tasks Section ───────────────────────────────────────
 
-function TasksSection({ tasks, onRefresh }: { tasks: api.Task[]; onRefresh: () => void }) {
+function TasksSection({ tasks, onRefresh, onOpen }: {
+  tasks: api.Task[]; onRefresh: () => void; onOpen: (id: string) => void;
+}) {
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
@@ -219,11 +222,18 @@ function TasksSection({ tasks, onRefresh }: { tasks: api.Task[]; onRefresh: () =
                 className="flex-1 text-sm bg-transparent border-b border-mc-accent outline-none text-mc-text dark:text-gray-200"
               />
             ) : (
-              <span
-                className="flex-1 text-sm text-mc-text dark:text-gray-300 truncate cursor-pointer"
-                onDoubleClick={() => { setEditingId(task.id); setEditText(task.text); }}
+              <button
+                className="flex-1 min-w-0 text-left text-sm text-mc-text dark:text-gray-300 truncate cursor-pointer hover:text-mc-accent"
+                onClick={() => onOpen(task.id)}
+                title="Open thread"
               >
                 {task.text}
+              </button>
+            )}
+            {task.status === 'blocked' && <Badge variant="warning">needs you</Badge>}
+            {task.assigned_agent_name && (
+              <span className="flex-shrink-0 inline-flex items-center gap-1 text-[11px] text-mc-muted dark:text-gray-400">
+                <Bot size={11} />{task.assigned_agent_name.replace(/\s*\(.*\)$/, '')}
               </span>
             )}
             <DropdownMenu.Root>
@@ -625,6 +635,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const [eventTick, setEventTick] = useState(0);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -659,6 +671,7 @@ export default function Dashboard() {
     const ws = api.connectWebSocket((event) => {
       if (/^(task|note|content|agent|approval|notification)\./.test(event.type)) {
         fetchAll();
+        setEventTick((t) => t + 1);
       }
     });
     return () => { ws?.close(); };
@@ -759,7 +772,7 @@ export default function Dashboard() {
       {/* ─── Main Grid ─── */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 pb-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <TasksSection tasks={tasks} onRefresh={fetchAll} />
+          <TasksSection tasks={tasks} onRefresh={fetchAll} onOpen={setOpenTaskId} />
           <AgentsSection agents={agents} onRefresh={fetchAll} />
           <ProjectsSection projects={projects} />
           <NotesSection notes={notesList} onRefresh={fetchAll} />
@@ -772,6 +785,13 @@ export default function Dashboard() {
       {/* ─── Dialogs ─── */}
       <NotificationPanel open={showNotifications} onClose={() => { setShowNotifications(false); api.notifications.count().then(nc => setUnreadCount(nc.unread)).catch(() => {}); }} />
       <SearchDialog open={showSearch} onClose={() => setShowSearch(false)} />
+      <TaskDialog
+        taskId={openTaskId}
+        agents={agents}
+        refreshTick={eventTick}
+        onClose={() => setOpenTaskId(null)}
+        onChanged={fetchAll}
+      />
     </div>
   );
 }

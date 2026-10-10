@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from enum import Enum as PyEnum
 
 from sqlalchemy import (
-    Column, String, Text, Boolean, Float, Integer, Uuid,
+    BigInteger, Column, String, Text, Boolean, Float, Integer, Uuid,
     DateTime, ForeignKey, Enum, JSON, Index,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
@@ -127,13 +127,35 @@ class Task(Base):
     created_at = Column(DateTime(timezone=True), default=_now)
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 
-    project = relationship("Project", back_populates="tasks")
-    assigned_agent = relationship("AgentConfig", foreign_keys=[assigned_agent_id])
+    project = relationship("Project", back_populates="tasks", lazy="selectin")
+    assigned_agent = relationship("AgentConfig", foreign_keys=[assigned_agent_id], lazy="selectin")
 
     __table_args__ = (
         Index("idx_tasks_status", "status"),
         Index("idx_tasks_priority", "priority"),
         Index("idx_tasks_project", "project_id"),
+    )
+
+
+class TaskComment(Base):
+    """The thread on a task: messages between you and the agent working on it.
+
+    author is "user", "agent:<slug>" or "system". When a comment was sent to
+    Telegram, telegram_message_id lets a Telegram reply continue the thread.
+    """
+    __tablename__ = "task_comments"
+
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    task_id = Column(Uuid, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False)
+    author = Column(String(100), nullable=False)
+    body = Column(Text, nullable=False)
+    run_id = Column(Uuid, ForeignKey("agent_runs.id", ondelete="SET NULL"), nullable=True)
+    telegram_message_id = Column(BigInteger, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_now)
+
+    __table_args__ = (
+        Index("idx_task_comments_task", "task_id", "created_at"),
+        Index("idx_task_comments_telegram", "telegram_message_id"),
     )
 
 

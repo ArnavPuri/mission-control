@@ -48,7 +48,7 @@ async def detailed_health_check(db: AsyncSession = Depends(get_db)):
     # 1. Database
     db_start = time.monotonic()
     try:
-        result = await db.execute(text("SELECT 1"))
+        await db.execute(text("SELECT 1"))
         db_latency = (time.monotonic() - db_start) * 1000
         # Check table count (compatible with both PostgreSQL and SQLite)
         is_sqlite = settings.is_sqlite

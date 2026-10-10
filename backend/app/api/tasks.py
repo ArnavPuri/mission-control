@@ -6,7 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from app.db.session import get_db
-from app.db.models import Task, TaskStatus, TaskPriority
+from app.db.models import AgentConfig, AgentStatus, Task, TaskComment, TaskStatus, TaskPriority
+from app.orchestrator import threads
+from app.orchestrator.runner import is_running
+from app.api.ws import broadcast
 
 router = APIRouter()
 
@@ -50,22 +53,93 @@ async def list_tasks(
     if tag:
         # tags is a JSON list; filter here so it works on PostgreSQL and SQLite
         tasks = [t for t in tasks if tag in (t.tags or [])]
-    return [
-        {
-            "id": str(t.id),
-            "text": t.text,
-            "description": t.description,
-            "url": t.url,
-            "status": t.status.value,
-            "priority": t.priority.value,
-            "project_id": str(t.project_id) if t.project_id else None,
-            "source": t.source,
-            "tags": t.tags or [],
-            "due_date": t.due_date.isoformat() if t.due_date else None,
-            "created_at": t.created_at.isoformat(),
-        }
-        for t in tasks
-    ]
+    return [_serialize(t) for t in tasks]
+
+
+def _serialize(t: Task) -> dict:
+    return {
+        "id": str(t.id),
+        "text": t.text,
+        "description": t.description,
+        "url": t.url,
+        "status": t.status.value,
+        "priority": t.priority.value,
+        "project_id": str(t.project_id) if t.project_id else None,
+        "assigned_agent_id": str(t.assigned_agent_id) if t.assigned_agent_id else None,
+        "assigned_agent_name": t.assigned_agent.name if t.assigned_agent else None,
+        "source": t.source,
+        "tags": t.tags or [],
+        "due_date": t.due_date.isoformat() if t.due_date else None,
+        "completed_at": t.completed_at.isoformat() if t.completed_at else None,
+        "created_at": t.created_at.isoformat(),
+    }
+
+
+def _serialize_comment(c: TaskComment) -> dict:
+    return {
+        "id": str(c.id),
+        "author": c.author,
+        "body": c.body,
+        "run_id": str(c.run_id) if c.run_id else None,
+        "created_at": c.created_at.isoformat(),
+    }
+
+
+@router.get("/{task_id}")
+async def get_task(task_id: UUID, db: AsyncSession = Depends(get_db)):
+    """A task with its full thread."""
+    task = await db.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    thread = await threads.load_thread(db, task_id, limit=200)
+    return {
+        **_serialize(task),
+        "agent_running": bool(task.assigned_agent_id) and is_running(task.assigned_agent_id),
+        "comments": [_serialize_comment(c) for c in thread],
+    }
+
+
+class AssignRequest(BaseModel):
+    agent_id: UUID | None = None  # None unassigns
+    note: str | None = None
+
+
+@router.post("/{task_id}/assign")
+async def assign_task(task_id: UUID, data: AssignRequest, db: AsyncSession = Depends(get_db)):
+    """Assign a task to an agent, which starts working on it (or unassign it)."""
+    task = await db.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if data.agent_id is None:
+        task.assigned_agent_id = None
+        db.add(TaskComment(task_id=task.id, author=threads.SYSTEM, body="Unassigned"))
+        await db.flush()
+        return {"assigned": None}
+    agent = await db.get(AgentConfig, data.agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.status == AgentStatus.DISABLED:
+        raise HTTPException(status_code=409, detail="Agent is disabled")
+    started = await threads.assign_task(db, task, agent, data.note)
+    await broadcast("task.updated", {"id": str(task.id)})
+    return {"assigned": agent.slug, "started": started}
+
+
+class CommentCreate(BaseModel):
+    body: str
+
+
+@router.post("/{task_id}/comments")
+async def add_comment(task_id: UUID, data: CommentCreate, db: AsyncSession = Depends(get_db)):
+    """Reply in a task's thread. If an agent owns the task, it picks the reply up."""
+    task = await db.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if not data.body.strip():
+        raise HTTPException(status_code=400, detail="Comment is empty")
+    agent = await threads.add_user_reply(db, task, data.body.strip())
+    await broadcast("task.updated", {"id": str(task.id)})
+    return {"added": True, "agent": agent.slug if agent else None}
 
 
 @router.post("")

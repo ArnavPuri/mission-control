@@ -21,6 +21,12 @@ logger = logging.getLogger(__name__)
 
 MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 BASELINE_REVISION = "0001_baseline"
+# Tables created by the baseline; later tables come from their own migrations
+BASELINE_TABLES = {
+    "projects", "agent_configs", "tasks", "notes", "agent_runs", "event_log",
+    "agent_approvals", "agent_memories", "brand_profile", "notifications",
+    "marketing_content", "chat_sessions",
+}
 
 # Tables from features that have been removed
 DEAD_TABLES = [
@@ -69,7 +75,8 @@ def run_migrations(connection: Connection) -> None:
             connection.execute(text("DELETE FROM alembic_version"))
         if connection.dialect.name == "postgresql":
             _convert_legacy_postgres(connection)
-        Base.metadata.create_all(connection, checkfirst=True)
+        baseline = [t for t in Base.metadata.sorted_tables if t.name in BASELINE_TABLES]
+        Base.metadata.create_all(connection, tables=baseline, checkfirst=True)
         command.stamp(cfg, BASELINE_REVISION)
 
     command.upgrade(cfg, "head")

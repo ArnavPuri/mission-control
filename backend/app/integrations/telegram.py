@@ -13,12 +13,13 @@ from telegram.ext import (
 
 from app.config import settings
 from app.integrations.commands import (
-    cmd_task, cmd_note, cmd_status, cmd_run,
+    cmd_task, cmd_note, cmd_status, cmd_run, cmd_ask,
     cmd_projects, cmd_approve, cmd_help,
     cmd_brand, cmd_leads, cmd_agents_list, cmd_morning,
 )
 from app.db.session import async_session
 from app.integrations.chat import handle_chat
+from app.orchestrator import threads
 
 logger = logging.getLogger(__name__)
 
@@ -102,13 +103,24 @@ async def handle_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not text:
         return
 
+    # A reply to an agent's message continues that task's thread
+    replied_to = update.message.reply_to_message
+    if replied_to:
+        async with async_session() as db:
+            task = await threads.find_task_by_telegram_message(db, replied_to.message_id)
+            if task:
+                agent = await threads.add_user_reply(db, task, text, telegram_message_id=update.message.message_id)
+                note = f"↩️ Sent to {agent.name}" if agent else "📝 Added to the task thread"
+                await reply(update.message, note)
+                return
+
     await update.message.chat.send_action("typing")
 
     try:
         async with async_session() as db:
             replies = await handle_chat(update.effective_user.id, text, db)
-        for reply in replies:
-            await update.message.reply_text(reply)
+        for chunk in replies:
+            await update.message.reply_text(chunk)
     except Exception as e:
         logger.error(f"Chat handler error: {e}", exc_info=True)
         await update.message.reply_text(
@@ -153,8 +165,8 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
         async with async_session() as db:
             replies = await handle_chat(update.effective_user.id, text, db)
-        for reply in replies:
-            await update.message.reply_text(reply)
+        for chunk in replies:
+            await update.message.reply_text(chunk)
 
     except Exception as e:
         logger.error(f"Voice handler error: {e}", exc_info=True)
@@ -176,6 +188,7 @@ async def start_telegram_bot():
     app.add_handler(CommandHandler("note", _make_handler(cmd_note)))
     app.add_handler(CommandHandler("approve", _make_handler(cmd_approve)))
     app.add_handler(CommandHandler("status", _make_handler(cmd_status, needs_args=False)))
+    app.add_handler(CommandHandler("ask", _make_handler(cmd_ask)))
     app.add_handler(CommandHandler("run", _make_handler(cmd_run)))
     app.add_handler(CommandHandler("projects", _make_handler(cmd_projects, needs_args=False)))
     app.add_handler(CommandHandler("brand", _make_handler(cmd_brand, needs_args=False)))
@@ -193,7 +206,8 @@ async def start_telegram_bot():
         BotCommand("note", "Create a note"),
         BotCommand("approve", "Review pending agent actions"),
         BotCommand("status", "Dashboard stats"),
-        BotCommand("run", "Trigger an agent"),
+        BotCommand("ask", "Hand a task to an agent"),
+        BotCommand("run", "Run an agent's scheduled job now"),
         BotCommand("projects", "List projects"),
         BotCommand("brand", "View brand profile"),
         BotCommand("leads", "View open marketing leads"),

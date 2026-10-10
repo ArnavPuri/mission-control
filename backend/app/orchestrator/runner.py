@@ -21,8 +21,9 @@ from app.config import settings
 from app.db.models import (
     AgentConfig, AgentRun, AgentStatus, AgentRunStatus,
     Project, Task, EventLog, TaskStatus, TaskPriority,
-    AgentApproval, AgentMemory, Note, MarketingContent, LEAD_TAG,
+    AgentApproval, AgentMemory, Note, MarketingContent, TaskComment, LEAD_TAG,
 )
+from app.orchestrator import threads
 from app.db.session import async_session
 from app.api.brand import get_notification_prefs_dict
 from app.api.ws import broadcast
@@ -300,11 +301,14 @@ class AgentRunner:
 
     async def start_run(
         self, agent: AgentConfig, trigger: str, db: AsyncSession, notify: bool = False,
+        task_id: UUID | None = None,
     ) -> AgentRun:
         """Run an agent to completion in the given session and commit the result.
 
         notify=True sends the outcome to Telegram right away (used for runs a
         person asked for); otherwise completions go into the morning briefing.
+        With task_id the agent works on that assigned task instead of its
+        scheduled job, and answers in the task's thread.
         """
         # Plain copies: after a rollback the ORM object can't be read without awaiting
         agent_id, agent_name, agent_slug = agent.id, agent.name, agent.slug
@@ -321,8 +325,19 @@ class AgentRunner:
 
         try:
             context = await self.build_context(agent, db)
-            prompt = self.render_prompt(agent.prompt_template, context)
-            run.input_data = {"prompt_length": len(prompt), "context_keys": list(context.keys())}
+            task = None
+            if task_id:
+                task = await db.get(Task, task_id)
+                if not task:
+                    raise RuntimeError(f"Task {task_id} not found")
+                thread = await threads.load_thread(db, task_id)
+                prompt = threads.assignment_prompt(agent, task, thread, context)
+            else:
+                prompt = self.render_prompt(agent.prompt_template, context)
+            run.input_data = {
+                "prompt_length": len(prompt), "context_keys": list(context.keys()),
+                "task_id": str(task_id) if task_id else None,
+            }
 
             result = await self._execute_llm(prompt, agent)
 
@@ -371,7 +386,11 @@ class AgentRunner:
             await broadcast("agent.completed", {"agent_id": str(agent.id), "summary": summary})
 
             prefs = await get_notification_prefs_dict(db)
-            if notify or prefs.get("agent_completions", True):
+            if task:
+                # The reply in the thread (also sent to Telegram) is the notification
+                await threads.post_agent_reply(db, task, agent, result, run)
+                await broadcast("task.updated", {"id": str(task.id)})
+            elif notify or prefs.get("agent_completions", True):
                 await create_notification(
                     db, title=f"{agent.name} finished",
                     body=summary[:500], category="success", source=f"agent:{agent.slug}",
@@ -381,6 +400,10 @@ class AgentRunner:
         except asyncio.CancelledError:
             await db.rollback()
             await self._finish_failed(db, run_id, agent_id, AgentRunStatus.CANCELLED, "Stopped by user")
+            if task_id:
+                # A non-user last comment keeps the scheduler from restarting it
+                db.add(TaskComment(task_id=task_id, author=threads.SYSTEM, body=f"{agent_name} was stopped."))
+                await db.commit()
             raise
 
         except Exception as e:
@@ -389,7 +412,9 @@ class AgentRunner:
             await self._finish_failed(db, run_id, agent_id, AgentRunStatus.FAILED, str(e))
             await broadcast("agent.failed", {"agent_id": str(agent_id), "error": str(e)})
             prefs = await get_notification_prefs_dict(db)
-            if notify or prefs.get("agent_failures", True):
+            if task_id:
+                await threads.post_run_failure(db, task_id, agent_name, str(e))
+            elif notify or prefs.get("agent_failures", True):
                 await create_notification(
                     db, title=f"{agent_name} failed",
                     body=str(e)[:200], category="error",
@@ -628,11 +653,13 @@ def is_running(agent_id: UUID) -> bool:
     return agent_id in _active_runs
 
 
-def start_background_run(agent_id: UUID, trigger: str, notify: bool = False) -> bool:
+def start_background_run(
+    agent_id: UUID, trigger: str, notify: bool = False, task_id: UUID | None = None,
+) -> bool:
     """Start an agent run in the background. Returns False if it is already running."""
     if agent_id in _active_runs:
         return False
-    task = asyncio.create_task(_run_in_background(agent_id, trigger, notify))
+    task = asyncio.create_task(_run_in_background(agent_id, trigger, notify, task_id))
     _active_runs[agent_id] = task
     task.add_done_callback(lambda _: _active_runs.pop(agent_id, None))
     return True
@@ -650,13 +677,13 @@ async def cancel_run(agent_id: UUID) -> bool:
     return True
 
 
-async def _run_in_background(agent_id: UUID, trigger: str, notify: bool):
+async def _run_in_background(agent_id: UUID, trigger: str, notify: bool, task_id: UUID | None):
     async with async_session() as db:
         agent = await db.get(AgentConfig, agent_id)
         if not agent or agent.status == AgentStatus.DISABLED:
             return
         try:
-            await AgentRunner().start_run(agent, trigger=trigger, db=db, notify=notify)
+            await AgentRunner().start_run(agent, trigger=trigger, db=db, notify=notify, task_id=task_id)
         except asyncio.CancelledError:
             raise
         except Exception:

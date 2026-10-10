@@ -54,10 +54,27 @@ export interface Task {
   status: 'todo' | 'in_progress' | 'blocked' | 'done';
   priority: 'critical' | 'high' | 'medium' | 'low';
   project_id?: string;
+  assigned_agent_id?: string | null;
+  assigned_agent_name?: string | null;
   source: string;
   tags: string[];
   due_date?: string;
+  completed_at?: string | null;
   created_at: string;
+}
+
+export interface TaskComment {
+  id: string;
+  /** "user", "system" or "agent:<slug>" */
+  author: string;
+  body: string;
+  run_id: string | null;
+  created_at: string;
+}
+
+export interface TaskDetail extends Task {
+  agent_running: boolean;
+  comments: TaskComment[];
 }
 
 export const tasks = {
@@ -68,6 +85,16 @@ export const tasks = {
   create: (data: Partial<Task>) => request<{ id: string }>('/api/tasks', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: string, data: Partial<Task>) => request<{ updated: boolean }>(`/api/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (id: string) => request<{ deleted: boolean }>(`/api/tasks/${id}`, { method: 'DELETE' }),
+  get: (id: string) => request<TaskDetail>(`/api/tasks/${id}`),
+  /** Assign to an agent (it starts working right away), or pass null to unassign. */
+  assign: (id: string, agentId: string | null, note?: string) =>
+    request<{ assigned: string | null; started?: boolean }>(`/api/tasks/${id}/assign`, {
+      method: 'POST', body: JSON.stringify({ agent_id: agentId, note }),
+    }),
+  comment: (id: string, body: string) =>
+    request<{ added: boolean; agent: string | null }>(`/api/tasks/${id}/comments`, {
+      method: 'POST', body: JSON.stringify({ body }),
+    }),
 };
 
 // --- Agents ---

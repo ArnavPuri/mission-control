@@ -20,6 +20,7 @@ from app.config import settings
 from app.db.session import async_session
 from app.db.models import AgentConfig, AgentStatus
 from app.orchestrator.runner import start_background_run
+from app.orchestrator.threads import pending_assignments
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +137,13 @@ class Scheduler:
                 )
             )
             agents = result.scalars().all()
+
+            # Assigned tasks waiting on an agent that was busy go first
+            pending = await pending_assignments(db)
+
+        for agent_id, task_id in pending:
+            if start_background_run(agent_id, trigger="task", task_id=task_id):
+                logger.info(f"Picked up assigned task {task_id}")
 
         now = datetime.now(timezone.utc)
         for agent in agents:
