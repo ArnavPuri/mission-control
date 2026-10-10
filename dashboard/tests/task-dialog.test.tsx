@@ -16,6 +16,7 @@ const detail: api.TaskDetail = {
   comments: [
     { id: 'c1', author: 'user', body: 'Assigned to Navigator', run_id: null, created_at: '2026-10-10T10:00:00Z' },
     { id: 'c2', author: 'agent:navigator-web-researcher', body: 'Which region?', run_id: 'r1', created_at: '2026-10-10T10:01:00Z' },
+    { id: 'c3', author: 'agent:navigator-web-researcher', body: 'Plausible is **$9/mo**.', run_id: 'r1', created_at: '2026-10-10T10:02:00Z' },
   ],
 };
 
@@ -29,8 +30,16 @@ describe('TaskDialog', () => {
     render(<TaskDialog taskId="t1" agents={agents} projects={[]} refreshTick={0} onClose={() => {}} onChanged={() => {}} />);
 
     expect(await screen.findByText('Which region?')).toBeInTheDocument();
-    expect(screen.getByText('waiting on you')).toBeInTheDocument();
+    expect(screen.getByText(/waiting on you/i)).toBeInTheDocument();
     expect(screen.getAllByText(/Navigator \(Web Researcher\)/).length).toBeGreaterThan(0);
+  });
+
+  it('renders agent replies as markdown', async () => {
+    vi.spyOn(api.tasks, 'get').mockResolvedValue(detail);
+    render(<TaskDialog taskId="t1" agents={agents} projects={[]} refreshTick={0} onClose={() => {}} onChanged={() => {}} />);
+
+    const bold = await screen.findByText('$9/mo');
+    expect(bold.tagName).toBe('STRONG');
   });
 
   it('sends a reply to the agent', async () => {

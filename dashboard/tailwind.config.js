@@ -1,3 +1,7 @@
+const colors = require('tailwindcss/colors');
+
+const token = (name) => `rgb(var(--${name}) / <alpha-value>)`;
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: 'class',
@@ -5,40 +9,57 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        // Neutral grays everywhere are zinc
+        gray: colors.zinc,
+        // Semantic tokens (see globals.css). Older class names map onto them too.
         mc: {
-          bg: '#fafafa',
-          surface: '#ffffff',
-          border: '#e5e7eb',
-          accent: '#2563eb',
-          'accent-light': '#dbeafe',
-          green: '#059669',
-          'green-light': '#d1fae5',
-          yellow: '#d97706',
-          'yellow-light': '#fef3c7',
-          red: '#dc2626',
-          'red-light': '#fee2e2',
-          purple: '#7c3aed',
-          'purple-light': '#ede9fe',
-          text: '#111827',
-          secondary: '#374151',
-          muted: '#6b7280',
-          dim: '#9ca3af',
-          subtle: '#f3f4f6',
+          canvas: token('canvas'),
+          bg: token('canvas'),
+          panel: token('panel'),
+          surface: token('panel'),
+          subtle: token('subtle'),
+          hover: token('hover'),
+          line: token('line'),
+          border: token('line'),
+          'line-strong': token('line-strong'),
+          text: token('fg'),
+          secondary: token('fg-secondary'),
+          muted: token('fg-muted'),
+          dim: token('fg-faint'),
+          accent: token('accent'),
+          'accent-hover': token('accent-hover'),
+          'accent-light': token('accent-soft'),
+          'accent-fg': token('accent-fg'),
+          green: colors.emerald[600],
+          'green-light': colors.emerald[50],
+          yellow: colors.amber[600],
+          'yellow-light': colors.amber[50],
+          red: colors.red[600],
+          'red-light': colors.red[50],
+          purple: colors.violet[600],
+          'purple-light': colors.violet[50],
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        mono: ['JetBrains Mono', 'monospace'],
+        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+      },
+      fontSize: {
+        '2xs': ['11px', '16px'],
+        xs: ['12px', '16px'],
+        sm: ['13px', '20px'],
+        base: ['14px', '22px'],
       },
       boxShadow: {
-        'card': '0 1px 3px 0 rgb(0 0 0 / 0.04), 0 1px 2px -1px rgb(0 0 0 / 0.04)',
-        'card-hover': '0 4px 6px -1px rgb(0 0 0 / 0.06), 0 2px 4px -2px rgb(0 0 0 / 0.04)',
-        'dropdown': '0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.04)',
+        card: '0 1px 2px 0 rgb(var(--shadow-color) / 0.04)',
+        'card-hover': '0 2px 8px -2px rgb(var(--shadow-color) / 0.08)',
+        dropdown: '0 0 0 1px rgb(var(--line)), 0 8px 24px -6px rgb(var(--shadow-color) / 0.16)',
+        sheet: '-12px 0 40px -12px rgb(var(--shadow-color) / 0.25)',
       },
       borderRadius: {
-        'xl': '12px',
+        xl: '12px',
       },
     },
   },
   plugins: [],
-}
+};

@@ -1,76 +1,165 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Design tokens. Colors are RGB triplets so Tailwind can apply opacity
+ * (e.g. bg-mc-accent/10). Dark mode only swaps the variables, so components
+ * rarely need dark: variants.
+ */
+:root {
+  --canvas: 250 250 250;
+  --panel: 255 255 255;
+  --subtle: 244 244 245;
+  --hover: 239 239 241;
+  --line: 228 228 231;
+  --line-strong: 212 212 216;
+  --fg: 24 24 27;
+  --fg-secondary: 63 63 70;
+  --fg-muted: 113 113 122;
+  --fg-faint: 161 161 170;
+  --accent: 94 92 230;
+  --accent-hover: 80 78 214;
+  --accent-soft: 238 238 253;
+  --accent-fg: 255 255 255;
+  --shadow-color: 24 24 27;
+  color-scheme: light;
+}
+
+.dark {
+  --canvas: 9 9 11;
+  --panel: 18 18 21;
+  --subtle: 26 26 30;
+  --hover: 33 33 38;
+  --line: 39 39 44;
+  --line-strong: 58 58 64;
+  --fg: 244 244 245;
+  --fg-secondary: 212 212 216;
+  --fg-muted: 161 161 170;
+  --fg-faint: 113 113 122;
+  --accent: 129 127 255;
+  --accent-hover: 146 144 255;
+  --accent-soft: 34 33 66;
+  --accent-fg: 255 255 255;
+  --shadow-color: 0 0 0;
+  color-scheme: dark;
+}
 
 * {
   box-sizing: border-box;
 }
 
 body {
-  background: #fafafa;
-  color: #111827;
-  font-family: 'Inter', system-ui, sans-serif;
+  background: rgb(var(--canvas));
+  color: rgb(var(--fg));
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  font-size: 14px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-html.dark body {
-  background: #030712;
-  color: #f3f4f6;
+::selection {
+  background: rgb(var(--accent) / 0.2);
 }
 
-/* Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+/* Scrollbars */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 3px;
+  background: rgb(var(--line-strong));
+  border-radius: 8px;
+  border: 2px solid rgb(var(--canvas));
 }
-::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--fg-faint)); }
+
+/* Focus ring for keyboard users (base layer, so outline-none utilities still win) */
+@layer base {
+  :focus-visible {
+    outline: 2px solid rgb(var(--accent) / 0.6);
+    outline-offset: 1px;
+  }
 }
 
-html.dark ::-webkit-scrollbar-thumb {
-  background: #374151;
-}
-html.dark ::-webkit-scrollbar-thumb:hover {
-  background: #4b5563;
-}
-
-/* Pulse animation for running status */
-@keyframes pulse-soft {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-.animate-pulse-soft {
-  animation: pulse-soft 2s ease-in-out infinite;
-}
-
-/* Staggered fade-in */
 @keyframes fade-up {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up { animation: fade-up 0.2s ease-out both; }
+
+@keyframes sheet-in {
+  from { transform: translateX(16px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.animate-sheet-in { animation: sheet-in 0.18s ease-out both; }
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.text-shimmer {
+  background: linear-gradient(90deg, rgb(var(--fg-muted)) 0%, rgb(var(--fg)) 50%, rgb(var(--fg-muted)) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 2.4s linear infinite;
 }
 
-.animate-fade-up {
-  animation: fade-up 0.3s ease-out forwards;
-  opacity: 0;
-}
-
-/* Radix overrides */
+/* Radix popper content above sheets */
 [data-radix-popper-content-wrapper] {
-  z-index: 50 !important;
+  z-index: 60 !important;
 }
+
+/* Rendered markdown (agent replies, notes) */
+.md { line-height: 1.6; overflow-wrap: anywhere; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md p { margin: 0.5em 0; }
+.md h1, .md h2, .md h3, .md h4 { font-weight: 600; line-height: 1.3; margin: 1.1em 0 0.4em; }
+.md h1 { font-size: 1.25em; }
+.md h2 { font-size: 1.1em; }
+.md h3, .md h4 { font-size: 1em; }
+.md ul, .md ol { margin: 0.5em 0; padding-left: 1.3em; }
+.md ul { list-style: disc; }
+.md ol { list-style: decimal; }
+.md li { margin: 0.2em 0; }
+.md li::marker { color: rgb(var(--fg-faint)); }
+.md a { color: rgb(var(--accent)); text-decoration: underline; text-underline-offset: 2px; text-decoration-color: rgb(var(--accent) / 0.4); }
+.md strong { font-weight: 600; }
+.md code {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.85em;
+  background: rgb(var(--subtle));
+  border: 1px solid rgb(var(--line));
+  border-radius: 4px;
+  padding: 0.1em 0.3em;
+}
+.md pre {
+  background: rgb(var(--subtle));
+  border: 1px solid rgb(var(--line));
+  border-radius: 8px;
+  padding: 0.75em 1em;
+  overflow-x: auto;
+  margin: 0.75em 0;
+}
+.md pre code { background: none; border: 0; padding: 0; }
+.md blockquote {
+  border-left: 2px solid rgb(var(--line-strong));
+  padding-left: 0.9em;
+  color: rgb(var(--fg-muted));
+  margin: 0.75em 0;
+}
+.md hr { border: 0; border-top: 1px solid rgb(var(--line)); margin: 1em 0; }
+.md table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75em 0;
+  font-size: 0.92em;
+  display: block;
+  overflow-x: auto;
+}
+.md th, .md td { border: 1px solid rgb(var(--line)); padding: 0.4em 0.65em; text-align: left; }
+.md th { background: rgb(var(--subtle)); font-weight: 600; }

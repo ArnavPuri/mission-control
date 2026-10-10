@@ -16,7 +16,7 @@ from app.config import settings
 from app.db.session import init_db
 from app.api import (
     projects, tasks, agents, ws, health, approvals, search,
-    notifications, agent_memory, notes, marketing_content, brand,
+    notifications, agent_memory, notes, marketing_content, brand, activity,
 )
 from app.orchestrator.scheduler import Scheduler
 from app.orchestrator.runner import recover_interrupted_runs
@@ -83,4 +83,5 @@ app.include_router(agent_memory.router, prefix="/api/agents", tags=["agent-memor
 app.include_router(notes.router, prefix="/api/notes", tags=["notes"])
 app.include_router(marketing_content.router, prefix="/api/mkt-content", tags=["marketing"])
 app.include_router(brand.router, prefix="/api/brand-profile", tags=["brand"])
+app.include_router(activity.router, prefix="/api/activity", tags=["activity"])
 app.include_router(ws.router, tags=["websocket"])

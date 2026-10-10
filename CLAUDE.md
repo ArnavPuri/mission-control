@@ -43,7 +43,11 @@ A simple dashboard provides an overview and lets you manage agents and scheduled
 - `backend/app/integrations/github.py` — Dev tasks as GitHub issues for Claude Code
 - `backend/app/notifications/dispatcher.py` — Telegram notification delivery
 - `backend/app/notifications/morning.py` — Morning briefing generator
-- `dashboard/app/page.tsx` — Main dashboard UI
+- `dashboard/app/page.tsx` — Home (Today view); `tasks/`, `agents/`, `notes/`, `settings/` are the other pages
+- `dashboard/app/components/app-shell.tsx` — Sidebar, ⌘K command menu, and the task/project dialogs any page can open
+- `dashboard/app/components/workspace.tsx` — Shared live data (tasks, projects, agents, review items), refreshed on backend events
+- `dashboard/app/components/shared.tsx` — UI primitives (Button, Badge, Avatar, PageHeader, …)
+- `dashboard/app/globals.css` — Design tokens as CSS variables (light + dark); use `mc-*` Tailwind colors, not raw grays
 - `dashboard/app/lib/api.ts` — API client
 
 ## Database Tables

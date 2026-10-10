@@ -174,3 +174,25 @@ async def test_create_agent_duplicate_name(client):
         "prompt_template": "test2", "model": "claude-haiku-4-5",
     })
     assert r.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_activity_feed_lists_thread_messages_newest_first(client, db_session):
+    from app.db.models import AgentConfig, Task, TaskComment
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
+    task = Task(text="Compare pricing")
+    async with db_session() as db:
+        db.add_all([task, AgentConfig(name="Ace (Assistant)", slug="ace-assistant", agent_type="general", prompt_template="p")])
+        await db.flush()
+        db.add_all([
+            TaskComment(task_id=task.id, author="user", body="Assigned", created_at=now - timedelta(minutes=5)),
+            TaskComment(task_id=task.id, author="agent:ace-assistant", body="Plausible is cheaper", created_at=now),
+        ])
+        await db.commit()
+
+    feed = (await client.get("/api/activity")).json()
+    assert [(e["author_name"], e["body"]) for e in feed] == [
+        ("Ace (Assistant)", "Plausible is cheaper"), ("You", "Assigned"),
+    ]
+    assert feed[0]["task"]["text"] == "Compare pricing"

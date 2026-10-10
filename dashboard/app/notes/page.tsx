@@ -1,170 +1,229 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { clsx } from 'clsx';
+import { ArrowLeft, Eye, FileText, Pencil, Pin, Plus, Search, Trash2 } from 'lucide-react';
 import * as api from '../lib/api';
-import { StickyNote, Pin, Plus, Trash2, Search } from 'lucide-react';
+import { useWorkspace } from '../components/workspace';
+import { Markdown } from '../components/markdown';
+import { Badge, Button, EmptyState, IconButton, PageHeader, Spinner, timeAgo } from '../components/shared';
 
-export default function NotesPage() {
-  const [notes, setNotes] = useState<api.Note[]>([]);
-  const [selected, setSelected] = useState<api.Note | null>(null);
-  const [searchQ, setSearchQ] = useState('');
-  const [showNew, setShowNew] = useState(false);
-  const [newTitle, setNewTitle] = useState('');
-  const [newContent, setNewContent] = useState('');
-  const [newTags, setNewTags] = useState('');
+function NoteEditor({ note, onChange, onDelete, onBack }: {
+  note: api.Note;
+  onChange: (patch: Partial<api.Note>) => void;
+  onDelete: () => void;
+  onBack: () => void;
+}) {
+  const [title, setTitle] = useState(note.title);
+  const [content, setContent] = useState(note.content);
+  const [tags, setTags] = useState((note.tags || []).join(', '));
+  const [editing, setEditing] = useState(!note.content);
+  const [saved, setSaved] = useState(true);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    api.notes.list().then(setNotes);
-  }, []);
+    setTitle(note.title);
+    setContent(note.content);
+    setTags((note.tags || []).join(', '));
+    setEditing(!note.content);
+    setSaved(true);
+  }, [note.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const filtered = notes.filter((n) => {
-    if (!searchQ) return true;
-    const q = searchQ.toLowerCase();
-    return n.title.toLowerCase().includes(q) || n.content.toLowerCase().includes(q) || (n.tags || []).some((t) => t.includes(q));
-  });
-
-  const pinned = filtered.filter((n) => n.is_pinned);
-  const unpinned = filtered.filter((n) => !n.is_pinned);
-
-  async function createNote() {
-    if (!newTitle.trim()) return;
-    await api.notes.create({
-      title: newTitle,
-      content: newContent,
-      tags: newTags ? newTags.split(',').map((t) => t.trim()) : [],
-    });
-    setNewTitle('');
-    setNewContent('');
-    setNewTags('');
-    setShowNew(false);
-    api.notes.list().then(setNotes);
-  }
-
-  async function togglePin(note: api.Note) {
-    await api.notes.update(note.id, { is_pinned: !note.is_pinned });
-    api.notes.list().then(setNotes);
-  }
-
-  async function deleteNote(id: string) {
-    await api.notes.delete(id);
-    if (selected?.id === id) setSelected(null);
-    api.notes.list().then(setNotes);
-  }
+  // Autosave shortly after typing stops
+  const schedule = (patch: Partial<api.Note>) => {
+    setSaved(false);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => { onChange(patch); setSaved(true); }, 700);
+  };
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-2">
-          <StickyNote size={20} className="text-mc-accent" />
-          <h1 className="text-lg font-semibold text-mc-text dark:text-gray-100">Notes</h1>
-          <span className="text-xs text-mc-dim bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">{notes.length}</span>
-        </div>
-        <button
-          onClick={() => setShowNew(!showNew)}
-          className="flex items-center gap-1.5 text-xs bg-mc-accent text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors cursor-pointer border-none"
-        >
-          <Plus size={14} /> New Note
-        </button>
-      </div>
-
-      {/* Search */}
-      <div className="relative mb-4">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-mc-dim" />
-        <input
-          type="text"
-          placeholder="Search notes..."
-          value={searchQ}
-          onChange={(e) => setSearchQ(e.target.value)}
-          className="w-full pl-9 pr-4 py-2 text-sm border border-mc-border dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-mc-text dark:text-gray-100"
+    <div className="flex flex-col min-h-0 h-full">
+      <div className="flex items-center gap-1 h-11 px-4 border-b border-mc-line flex-shrink-0">
+        <IconButton label="Back to list" icon={ArrowLeft} className="lg:hidden" onClick={onBack} />
+        <span className="text-2xs text-mc-dim">
+          {note.source !== 'manual' ? `From ${note.source} · ` : ''}{saved ? `Edited ${timeAgo(note.updated_at)}` : 'Saving…'}
+        </span>
+        <span className="flex-1" />
+        <IconButton
+          label={editing ? 'Preview' : 'Edit'}
+          icon={editing ? Eye : Pencil}
+          onClick={() => setEditing(!editing)}
         />
+        <IconButton
+          label={note.is_pinned ? 'Unpin' : 'Pin'}
+          icon={Pin}
+          className={note.is_pinned ? 'text-mc-accent' : ''}
+          onClick={() => onChange({ is_pinned: !note.is_pinned })}
+        />
+        <IconButton label="Delete note" icon={Trash2} className="hover:text-red-500" onClick={onDelete} />
       </div>
-
-      {/* New note form */}
-      {showNew && (
-        <div className="bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-700 rounded-xl p-4 mb-4">
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-3xl mx-auto px-6 sm:px-10 py-8">
           <input
-            type="text"
-            placeholder="Note title..."
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            className="w-full text-sm font-medium mb-2 px-3 py-2 border border-mc-border dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-mc-text dark:text-gray-100"
-            autoFocus
+            value={title}
+            onChange={(e) => { setTitle(e.target.value); schedule({ title: e.target.value }); }}
+            placeholder="Untitled"
+            className="w-full bg-transparent text-2xl font-semibold tracking-tight text-mc-text outline-none placeholder:text-mc-dim"
           />
-          <textarea
-            placeholder="Write your note in markdown..."
-            value={newContent}
-            onChange={(e) => setNewContent(e.target.value)}
-            rows={6}
-            className="w-full text-sm mb-2 px-3 py-2 border border-mc-border dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-mc-text dark:text-gray-100 font-mono resize-y"
+          <input
+            value={tags}
+            onChange={(e) => {
+              setTags(e.target.value);
+              schedule({ tags: e.target.value.split(',').map((t) => t.trim()).filter(Boolean) });
+            }}
+            placeholder="Add tags, comma-separated"
+            className="w-full bg-transparent text-xs text-mc-muted outline-none mt-2 placeholder:text-mc-dim"
           />
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              placeholder="Tags (comma-separated)"
-              value={newTags}
-              onChange={(e) => setNewTags(e.target.value)}
-              className="flex-1 text-xs px-3 py-1.5 border border-mc-border dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-mc-text dark:text-gray-100"
-            />
-            <button onClick={createNote} className="text-xs bg-mc-accent text-white px-4 py-1.5 rounded-lg hover:bg-blue-700 cursor-pointer border-none">
-              Save
-            </button>
+          <div className="mt-6">
+            {editing ? (
+              <textarea
+                autoFocus={!note.content}
+                value={content}
+                onChange={(e) => { setContent(e.target.value); schedule({ content: e.target.value }); }}
+                placeholder="Write in markdown…"
+                className="w-full min-h-[50vh] bg-transparent text-sm leading-relaxed text-mc-secondary outline-none resize-none font-mono"
+              />
+            ) : content ? (
+              <div onDoubleClick={() => setEditing(true)} title="Double-click to edit">
+                <Markdown className="text-[15px] text-mc-secondary">{content}</Markdown>
+              </div>
+            ) : (
+              <button onClick={() => setEditing(true)} className="text-sm text-mc-dim hover:text-mc-muted cursor-pointer">Empty note — click to write</button>
+            )}
           </div>
         </div>
-      )}
+      </div>
+    </div>
+  );
+}
 
-      {/* Notes grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {[...pinned, ...unpinned].map((note) => (
-          <div
-            key={note.id}
-            className="bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-700 rounded-xl p-4 hover:shadow-sm transition-shadow cursor-pointer"
-            onClick={() => setSelected(selected?.id === note.id ? null : note)}
-          >
-            <div className="flex items-start justify-between mb-2">
-              <h3 className="text-sm font-medium text-mc-text dark:text-gray-100 line-clamp-1">{note.title}</h3>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={(e) => { e.stopPropagation(); togglePin(note); }}
-                  className={`p-1 rounded cursor-pointer border-none bg-transparent ${note.is_pinned ? 'text-mc-accent' : 'text-mc-dim hover:text-mc-text'}`}
-                >
-                  <Pin size={12} />
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); deleteNote(note.id); }}
-                  className="p-1 rounded text-mc-dim hover:text-red-500 cursor-pointer border-none bg-transparent"
-                >
-                  <Trash2 size={12} />
-                </button>
+function Notes() {
+  const params = useSearchParams();
+  const { tick } = useWorkspace();
+  const [notes, setNotes] = useState<api.Note[] | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(params.get('id'));
+  const [query, setQuery] = useState('');
+  const [mobileDetail, setMobileDetail] = useState(!!params.get('id'));
+
+  const load = useCallback(async () => {
+    const list = await api.notes.list().catch(() => [] as api.Note[]);
+    setNotes(list);
+    return list;
+  }, []);
+
+  useEffect(() => { load(); }, [load, tick]);
+
+  useEffect(() => {
+    if (!selectedId && notes && notes.length) setSelectedId(notes[0].id);
+  }, [notes, selectedId]);
+
+  const q = query.trim().toLowerCase();
+  const filtered = (notes ?? []).filter((n) =>
+    !q || n.title.toLowerCase().includes(q) || n.content.toLowerCase().includes(q) || (n.tags || []).some((t) => t.toLowerCase().includes(q)));
+  const pinned = filtered.filter((n) => n.is_pinned);
+  const rest = filtered.filter((n) => !n.is_pinned);
+  const selected = notes?.find((n) => n.id === selectedId) ?? null;
+
+  const create = async () => {
+    const { id } = await api.notes.create({ title: 'Untitled', content: '' });
+    await load();
+    setSelectedId(id);
+    setMobileDetail(true);
+  };
+
+  const update = async (id: string, patch: Partial<api.Note>) => {
+    setNotes((prev) => prev?.map((n) => (n.id === id ? { ...n, ...patch, updated_at: new Date().toISOString() } : n)) ?? null);
+    await api.notes.update(id, patch);
+  };
+
+  const remove = async (note: api.Note) => {
+    if (!confirm(`Delete “${note.title}”?`)) return;
+    await api.notes.delete(note.id);
+    setSelectedId(null);
+    setMobileDetail(false);
+    load();
+  };
+
+  const NoteItem = ({ n }: { n: api.Note }) => (
+    <button
+      onClick={() => { setSelectedId(n.id); setMobileDetail(true); }}
+      className={clsx(
+        'w-full text-left px-3 py-2.5 rounded-lg transition-colors cursor-pointer',
+        n.id === selectedId ? 'bg-mc-panel ring-1 ring-mc-line shadow-card' : 'hover:bg-mc-hover/60',
+      )}
+    >
+      <div className="flex items-center gap-1.5">
+        {n.is_pinned && <Pin size={11} className="text-mc-accent flex-shrink-0" />}
+        <span className="text-sm font-medium text-mc-text truncate flex-1">{n.title || 'Untitled'}</span>
+        <span className="text-2xs text-mc-dim flex-shrink-0">{timeAgo(n.updated_at)}</span>
+      </div>
+      <p className="text-xs text-mc-muted line-clamp-2 mt-0.5">
+        {n.content.replace(/[#*_`>|-]+/g, ' ').replace(/\s+/g, ' ').trim() || 'No content'}
+      </p>
+      {(n.tags || []).length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-1.5">{n.tags.slice(0, 3).map((t) => <Badge key={t}>{t}</Badge>)}</div>
+      )}
+    </button>
+  );
+
+  return (
+    <div className="flex flex-col h-[calc(100vh-3rem)] md:h-screen">
+      <PageHeader
+        title="Notes"
+        subtitle={notes ? `${notes.length} notes · agents save research and reviews here` : undefined}
+        actions={<Button variant="primary" icon={Plus} onClick={create}>New note</Button>}
+      />
+      {notes === null ? (
+        <div className="flex-1 flex items-center justify-center"><Spinner size={20} /></div>
+      ) : notes.length === 0 ? (
+        <EmptyState icon={FileText} message="No notes yet. Agents like Navigator and Atlas write their findings here.">
+          <Button className="mt-4" icon={Plus} onClick={create}>Write a note</Button>
+        </EmptyState>
+      ) : (
+        <div className="flex-1 min-h-0 grid lg:grid-cols-[320px_1fr]">
+          <aside className={clsx('min-h-0 flex-col border-r border-mc-line', mobileDetail ? 'hidden lg:flex' : 'flex')}>
+            <div className="p-3">
+              <div className="relative">
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-mc-dim" />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search notes"
+                  className="h-8 w-full rounded-lg bg-mc-panel pl-8 pr-2.5 text-sm text-mc-text ring-1 ring-inset ring-mc-line placeholder:text-mc-dim outline-none focus:ring-2 focus:ring-mc-accent/50"
+                />
               </div>
             </div>
-            <p className="text-xs text-mc-secondary dark:text-gray-400 line-clamp-3 mb-2">{note.content.slice(0, 150)}</p>
-            {(note.tags || []).length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {note.tags.slice(0, 3).map((t) => (
-                  <span key={t} className="text-[10px] bg-gray-100 dark:bg-gray-800 text-mc-dim px-1.5 py-0.5 rounded">{t}</span>
-                ))}
-              </div>
+            <div className="flex-1 overflow-y-auto px-2 pb-3 space-y-0.5">
+              {pinned.length > 0 && <div className="px-3 pt-1 pb-1 text-2xs font-semibold text-mc-dim uppercase tracking-wider">Pinned</div>}
+              {pinned.map((n) => <NoteItem key={n.id} n={n} />)}
+              {pinned.length > 0 && rest.length > 0 && <div className="px-3 pt-3 pb-1 text-2xs font-semibold text-mc-dim uppercase tracking-wider">All notes</div>}
+              {rest.map((n) => <NoteItem key={n.id} n={n} />)}
+              {filtered.length === 0 && <p className="text-xs text-mc-dim text-center py-6">No matches</p>}
+            </div>
+          </aside>
+          <section className={clsx('min-h-0 bg-mc-panel', mobileDetail ? 'block' : 'hidden lg:block')}>
+            {selected ? (
+              <NoteEditor
+                note={selected}
+                onChange={(patch) => update(selected.id, patch)}
+                onDelete={() => remove(selected)}
+                onBack={() => setMobileDetail(false)}
+              />
+            ) : (
+              <EmptyState icon={FileText} message="Select a note" />
             )}
-          </div>
-        ))}
-      </div>
-
-      {/* Selected note detail */}
-      {selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={() => setSelected(null)}>
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-mc-border dark:border-gray-800 shadow-xl p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold text-mc-text dark:text-gray-100 mb-4">{selected.title}</h2>
-            <pre className="text-sm text-mc-secondary dark:text-gray-300 whitespace-pre-wrap font-mono">{selected.content}</pre>
-            {(selected.tags || []).length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-4">
-                {selected.tags.map((t) => (
-                  <span key={t} className="text-xs bg-gray-100 dark:bg-gray-800 text-mc-dim px-2 py-0.5 rounded">{t}</span>
-                ))}
-              </div>
-            )}
-          </div>
+          </section>
         </div>
       )}
     </div>
+  );
+}
+
+export default function NotesPage() {
+  return (
+    <Suspense fallback={<div className="py-24 flex justify-center"><Spinner size={20} /></div>}>
+      <Notes />
+    </Suspense>
   );
 }

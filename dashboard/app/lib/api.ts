@@ -355,6 +355,34 @@ export const agentMemory = {
     request<{ deleted: boolean }>(`/api/agents/${agentId}/memory/${encodeURIComponent(key)}`, { method: 'DELETE' }),
 };
 
+// --- System & Activity ---
+
+export interface Health {
+  status: string;
+  database: string;
+  llm: string;
+  telegram: string;
+  github?: string;
+}
+
+export interface ActivityItem {
+  id: string;
+  /** "user", "system" or "agent:<slug>" */
+  author: string;
+  author_name: string;
+  body: string;
+  created_at: string;
+  task: { id: string; text: string; status: Task['status'] };
+}
+
+export const system = {
+  health: () => request<Health>('/health'),
+};
+
+export const activity = {
+  list: (limit = 20) => request<ActivityItem[]>(`/api/activity?limit=${limit}`),
+};
+
 // --- WebSocket ---
 
 export function connectWebSocket(onMessage: (event: { type: string; data: any }) => void): WebSocket | null {

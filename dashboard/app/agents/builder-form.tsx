@@ -316,19 +316,19 @@ export function AgentBuilderForm({
   // ── Render helpers ──
 
   const inputClass =
-    'w-full border border-mc-border dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-mc-text dark:text-gray-200 bg-white dark:bg-gray-800 outline-none focus:border-mc-accent focus:ring-2 focus:ring-mc-accent/10 placeholder:text-mc-dim transition-all';
+    'w-full border border-mc-border rounded-lg px-3 py-2 text-sm text-mc-text bg-mc-panel outline-none focus:border-mc-accent focus:ring-2 focus:ring-mc-accent/10 placeholder:text-mc-dim transition-all';
 
   const selectClass =
-    'w-full border border-mc-border dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-mc-text dark:text-gray-200 bg-white dark:bg-gray-800 outline-none focus:border-mc-accent focus:ring-2 focus:ring-mc-accent/10 transition-all appearance-none cursor-pointer';
+    'w-full border border-mc-border rounded-lg px-3 py-2 text-sm text-mc-text bg-mc-panel outline-none focus:border-mc-accent focus:ring-2 focus:ring-mc-accent/10 transition-all appearance-none cursor-pointer';
 
-  const labelClass = 'block text-xs font-semibold text-mc-text dark:text-gray-300 mb-1.5';
+  const labelClass = 'block text-xs font-semibold text-mc-text mb-1.5';
 
   const sectionTitle = (title: string, number: number) => (
     <div className="flex items-center gap-2 mb-4">
-      <span className="w-6 h-6 rounded-full bg-mc-accent/10 dark:bg-blue-950 text-mc-accent text-xs font-bold flex items-center justify-center">
+      <span className="w-6 h-6 rounded-full bg-mc-accent/10 text-mc-accent text-xs font-bold flex items-center justify-center">
         {number}
       </span>
-      <h3 className="text-sm font-bold text-mc-text dark:text-gray-100">{title}</h3>
+      <h3 className="text-sm font-bold text-mc-text">{title}</h3>
     </div>
   );
 
@@ -342,8 +342,8 @@ export function AgentBuilderForm({
       className={clsx(
         'flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium cursor-pointer transition-all',
         checked
-          ? 'bg-mc-accent/5 dark:bg-blue-950/50 border-mc-accent/30 dark:border-blue-800 text-mc-accent dark:text-blue-400'
-          : 'bg-white dark:bg-gray-800 border-mc-border dark:border-gray-700 text-mc-muted dark:text-gray-400 hover:border-mc-accent/20',
+          ? 'bg-mc-accent/5 border-mc-accent/30 text-mc-accent'
+          : 'bg-mc-panel border-mc-border text-mc-muted hover:border-mc-accent/20',
       )}
     >
       <input
@@ -357,7 +357,7 @@ export function AgentBuilderForm({
           'w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-colors',
           checked
             ? 'bg-mc-accent border-mc-accent text-white'
-            : 'border-gray-300 dark:border-gray-600',
+            : 'border-gray-300',
         )}
       >
         {checked && (
@@ -375,7 +375,7 @@ export function AgentBuilderForm({
       {/* Template Picker */}
       {showTemplates && !showForm && (
         <div className="mb-8">
-          <h2 className="text-sm font-bold text-mc-text dark:text-gray-100 mb-4">Choose a template</h2>
+          <h2 className="text-sm font-bold text-mc-text mb-4">Choose a template</h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {TEMPLATES.map((t) => {
               const Icon = ICON_MAP[t.icon] || Zap;
@@ -385,16 +385,16 @@ export function AgentBuilderForm({
                   onClick={() => applyTemplate(t)}
                   className="text-left cursor-pointer"
                 >
-                  <Card className="p-5 hover:shadow-card-hover hover:border-mc-accent/30 dark:hover:border-blue-800 transition-all h-full">
+                  <Card className="p-5 hover:shadow-card-hover hover:border-mc-accent/30 transition-all h-full">
                     <div className="flex items-center gap-2.5 mb-2">
-                      <div className="w-8 h-8 rounded-lg bg-mc-accent/10 dark:bg-blue-950 flex items-center justify-center">
+                      <div className="w-8 h-8 rounded-lg bg-mc-accent/10 flex items-center justify-center">
                         <Icon size={16} className="text-mc-accent" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-semibold text-mc-text dark:text-gray-100">{t.name}</div>
+                        <div className="text-sm font-semibold text-mc-text">{t.name}</div>
                       </div>
                     </div>
-                    <p className="text-xs text-mc-muted dark:text-gray-400 mb-3">{t.description}</p>
+                    <p className="text-xs text-mc-muted mb-3">{t.description}</p>
                     <div className="flex items-center gap-1.5">
                       <Badge variant={t.category === 'marketing' ? 'purple' : 'blue'}>{t.category}</Badge>
                       <Badge>{t.defaults.model}</Badge>
@@ -407,12 +407,12 @@ export function AgentBuilderForm({
               onClick={startFromScratch}
               className="text-left cursor-pointer"
             >
-              <Card className="p-5 hover:shadow-card-hover hover:border-mc-accent/30 dark:hover:border-blue-800 transition-all h-full flex flex-col items-center justify-center">
-                <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-2">
-                  <Plus size={16} className="text-mc-muted dark:text-gray-400" />
+              <Card className="p-5 hover:shadow-card-hover hover:border-mc-accent/30 transition-all h-full flex flex-col items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-mc-subtle flex items-center justify-center mb-2">
+                  <Plus size={16} className="text-mc-muted" />
                 </div>
-                <div className="text-sm font-semibold text-mc-text dark:text-gray-100 mb-1">Start from Scratch</div>
-                <p className="text-xs text-mc-muted dark:text-gray-400 text-center">Create a custom agent with a blank canvas.</p>
+                <div className="text-sm font-semibold text-mc-text mb-1">Start from Scratch</div>
+                <p className="text-xs text-mc-muted text-center">Create a custom agent with a blank canvas.</p>
               </Card>
             </button>
           </div>
@@ -425,7 +425,7 @@ export function AgentBuilderForm({
           {showTemplates && (
             <button
               onClick={() => setShowForm(false)}
-              className="text-xs text-mc-muted dark:text-gray-400 hover:text-mc-accent transition-colors self-start cursor-pointer flex items-center gap-1"
+              className="text-xs text-mc-muted hover:text-mc-accent transition-colors self-start cursor-pointer flex items-center gap-1"
             >
               <ChevronDown size={12} className="rotate-90" /> Back to templates
             </button>
@@ -506,7 +506,7 @@ export function AgentBuilderForm({
                   onChange={(e) => setAiDescription(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && !aiWriting && handleAiWrite()}
                   placeholder="Describe what you want the agent to do..."
-                  className="flex-1 border border-purple-200 dark:border-purple-800/50 rounded-lg px-3 py-1.5 text-sm text-mc-text dark:text-gray-200 bg-white dark:bg-gray-800 outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-400/10 placeholder:text-mc-dim"
+                  className="flex-1 border border-purple-200 dark:border-purple-800/50 rounded-lg px-3 py-1.5 text-sm text-mc-text bg-mc-panel outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-400/10 placeholder:text-mc-dim"
                 />
                 <button
                   onClick={handleAiWrite}
@@ -531,14 +531,14 @@ export function AgentBuilderForm({
               <label className={labelClass + ' mb-0'}>Prompt Template</label>
               <button
                 onClick={() => setPreviewPrompt(!previewPrompt)}
-                className="flex items-center gap-1 text-[11px] text-mc-muted dark:text-gray-400 hover:text-mc-accent transition-colors cursor-pointer"
+                className="flex items-center gap-1 text-[11px] text-mc-muted hover:text-mc-accent transition-colors cursor-pointer"
               >
                 {previewPrompt ? <EyeOff size={12} /> : <Eye size={12} />}
                 {previewPrompt ? 'Edit' : 'Preview'}
               </button>
             </div>
             {previewPrompt ? (
-              <div className="w-full border border-mc-border dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-mc-text dark:text-gray-200 bg-gray-50 dark:bg-gray-800/50 font-mono whitespace-pre-wrap min-h-[288px]">
+              <div className="w-full border border-mc-border rounded-lg px-3 py-2 text-sm text-mc-text bg-mc-subtle font-mono whitespace-pre-wrap min-h-[288px]">
                 {getPreviewedPrompt() || <span className="text-mc-dim">No prompt to preview</span>}
               </div>
             ) : (
@@ -556,7 +556,7 @@ export function AgentBuilderForm({
                 {form.data_reads.map((r) => (
                   <code
                     key={r}
-                    className="text-[11px] px-1.5 py-0.5 bg-mc-accent/5 dark:bg-blue-950/50 text-mc-accent dark:text-blue-400 rounded font-mono"
+                    className="text-[11px] px-1.5 py-0.5 bg-mc-accent/5 text-mc-accent rounded font-mono"
                   >
                     {VARIABLE_MAP[r]}
                   </code>
@@ -696,18 +696,18 @@ export function AgentBuilderForm({
                   <span
                     className={clsx(
                       'relative w-9 h-5 rounded-full transition-colors',
-                      form.requires_approval ? 'bg-mc-accent' : 'bg-gray-200 dark:bg-gray-700',
+                      form.requires_approval ? 'bg-mc-accent' : 'bg-mc-line',
                     )}
                     onClick={() => updateField('requires_approval', !form.requires_approval)}
                   >
                     <span
                       className={clsx(
-                        'absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform',
+                        'absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-mc-panel shadow transition-transform',
                         form.requires_approval && 'translate-x-4',
                       )}
                     />
                   </span>
-                  <span className="text-xs font-semibold text-mc-text dark:text-gray-300">
+                  <span className="text-xs font-semibold text-mc-text">
                     Requires approval
                   </span>
                 </label>
@@ -733,11 +733,11 @@ export function AgentBuilderForm({
           )}
 
           {/* Actions */}
-          <div className="sticky bottom-0 bg-mc-bg/80 dark:bg-gray-950/80 backdrop-blur-sm border-t border-mc-border dark:border-gray-800 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-4">
+          <div className="sticky bottom-0 bg-mc-bg/80 backdrop-blur-sm border-t border-mc-border -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-4">
             <div className="max-w-[1600px] mx-auto flex items-center justify-end gap-3">
               <Link
                 href="/agents"
-                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-mc-muted dark:text-gray-400 bg-white dark:bg-gray-800 border border-mc-border dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-mc-muted bg-mc-panel border border-mc-border rounded-lg hover:bg-mc-hover transition-colors"
               >
                 <X size={14} /> Cancel
               </Link>
@@ -745,8 +745,8 @@ export function AgentBuilderForm({
                 onClick={handleSave}
                 disabled={saving}
                 className={clsx(
-                  'flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors cursor-pointer',
-                  saving ? 'bg-mc-accent/60' : 'bg-mc-accent hover:bg-blue-700',
+                  'flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-mc-accent-fg rounded-lg transition-colors cursor-pointer',
+                  saving ? 'bg-mc-accent/60' : 'bg-mc-accent hover:bg-mc-accent-hover',
                 )}
               >
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}

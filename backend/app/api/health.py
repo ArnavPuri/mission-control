@@ -33,6 +33,7 @@ async def health_check(db: AsyncSession = Depends(get_db)):
         "database": "connected" if db_ok else "disconnected",
         "llm": "configured" if settings.llm_configured else "not_configured",
         "telegram": "configured" if settings.telegram_bot_token else "not_configured",
+        "github": "configured" if settings.github_token else "not_configured",
     }
 
 

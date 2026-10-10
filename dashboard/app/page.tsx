@@ -1,919 +1,379 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import * as api from './lib/api';
-import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import * as Dialog from '@radix-ui/react-dialog';
-import {
-  Search, Bell, Plus, Play, Check, X, ChevronRight,
-  FolderOpen, ListTodo, Clock, Activity,
-  Loader2, Sun, Moon, Pencil, FileText, Pin,
-  Bot, StickyNote, Megaphone, Send,
-} from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { clsx } from 'clsx';
-import { TaskDialog } from './components/task-dialog';
-import { ProjectDialog } from './components/project-dialog';
-
-// ─── Theme ───────────────────────────────────────────────
-
-type Theme = 'light' | 'dark';
-
-function useTheme(): [Theme, (t: Theme) => void] {
-  const [theme, setThemeState] = useState<Theme>('light');
-
-  useEffect(() => {
-    const stored = localStorage.getItem('mc-theme') as Theme | null;
-    if (stored) {
-      setThemeState(stored);
-      document.documentElement.classList.toggle('dark', stored === 'dark');
-    }
-  }, []);
-
-  const setTheme = (t: Theme) => {
-    setThemeState(t);
-    localStorage.setItem('mc-theme', t);
-    document.documentElement.classList.toggle('dark', t === 'dark');
-  };
-
-  return [theme, setTheme];
-}
-
-// ─── Shared UI Primitives ────────────────────────────────
-
-function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return (
-    <div className={clsx('bg-white dark:bg-gray-900 rounded-xl border border-mc-border dark:border-gray-800 shadow-card', className)}>
-      {children}
-    </div>
-  );
-}
-
-function Badge({ children, variant = 'default' }: {
-  children: React.ReactNode;
-  variant?: 'default' | 'success' | 'warning' | 'error' | 'purple' | 'blue';
-}) {
-  const styles: Record<string, string> = {
-    default: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
-    success: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
-    warning: 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-400',
-    error: 'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-400',
-    purple: 'bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-400',
-    blue: 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
-  };
-  return (
-    <span className={clsx('inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium', styles[variant])}>
-      {children}
-    </span>
-  );
-}
-
-function SectionHeader({ icon: Icon, title, count, onAdd, extra }: {
-  icon: React.ElementType; title: string; count: number; onAdd?: () => void; extra?: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between mb-3">
-      <div className="flex items-center gap-2">
-        <Icon size={15} className="text-mc-muted dark:text-gray-500" />
-        <h3 className="text-sm font-semibold text-mc-text dark:text-gray-100">{title}</h3>
-        <span className="text-xs text-mc-dim dark:text-gray-500 font-medium">{count}</span>
-      </div>
-      <div className="flex items-center gap-2">
-        {extra}
-        {onAdd && (
-          <button
-            onClick={onAdd}
-            className="w-7 h-7 rounded-lg border border-mc-border dark:border-gray-700 bg-white dark:bg-gray-800 text-mc-muted dark:text-gray-400 hover:bg-mc-accent-light hover:text-mc-accent dark:hover:bg-blue-950 dark:hover:text-blue-400 hover:border-mc-accent/30 transition-all flex items-center justify-center cursor-pointer"
-          >
-            <Plus size={14} />
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function InlineInput({ placeholder, onSubmit, onCancel }: {
-  placeholder: string; onSubmit: (v: string) => void; onCancel: () => void;
-}) {
-  const [val, setVal] = useState('');
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => { ref.current?.focus(); }, []);
-  return (
-    <div className="flex gap-2 mb-3">
-      <input
-        ref={ref} value={val} onChange={(e) => setVal(e.target.value)} placeholder={placeholder}
-        onKeyDown={(e) => { if (e.key === 'Enter' && val.trim()) { onSubmit(val.trim()); setVal(''); } if (e.key === 'Escape') onCancel(); }}
-        className="flex-1 border border-mc-border dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-mc-text dark:text-gray-200 bg-white dark:bg-gray-800 outline-none focus:border-mc-accent focus:ring-2 focus:ring-mc-accent/10 placeholder:text-mc-dim transition-all"
-      />
-      <button
-        onClick={() => { if (val.trim()) { onSubmit(val.trim()); setVal(''); } }}
-        className="px-3 py-2 bg-mc-accent text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors cursor-pointer"
-      >
-        Add
-      </button>
-      <button onClick={onCancel} className="px-2 py-2 bg-white dark:bg-gray-800 border border-mc-border dark:border-gray-700 text-mc-muted rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors cursor-pointer">
-        <X size={14} />
-      </button>
-    </div>
-  );
-}
-
-function StatusIndicator({ status }: { status: string }) {
-  const config: Record<string, { color: string; pulse: boolean }> = {
-    running: { color: 'bg-emerald-500', pulse: true },
-    active: { color: 'bg-emerald-500', pulse: true },
-    idle: { color: 'bg-gray-300 dark:bg-gray-600', pulse: false },
-    planning: { color: 'bg-amber-400', pulse: false },
-    paused: { color: 'bg-amber-400', pulse: false },
-    error: { color: 'bg-red-500', pulse: false },
-    disabled: { color: 'bg-gray-200 dark:bg-gray-700', pulse: false },
-    archived: { color: 'bg-gray-200 dark:bg-gray-700', pulse: false },
-  };
-  const c = config[status] || { color: 'bg-gray-300', pulse: false };
-  return (
-    <span className="relative flex h-2.5 w-2.5">
-      {c.pulse && <span className={clsx('animate-ping absolute inline-flex h-full w-full rounded-full opacity-50', c.color)} />}
-      <span className={clsx('relative inline-flex rounded-full h-2.5 w-2.5', c.color)} />
-    </span>
-  );
-}
-
-// ─── Helper ──────────────────────────────────────────────
-
-function timeAgo(dateStr: string | undefined): string {
-  if (!dateStr) return 'never';
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-}
+import {
+  ArrowRight, Bot, CheckCheck, Check, CircleCheck, Inbox, Megaphone, MessageSquare, Play, Plus, Send, X,
+} from 'lucide-react';
+import * as api from './lib/api';
+import { useWorkspace } from './components/workspace';
+import {
+  Avatar, Badge, Button, Card, EmptyState, IconButton, InlineInput, PriorityIcon, SectionHeader, Spinner,
+  StatusIndicator, TaskStatusIcon, agentDisplay, timeAgo,
+} from './components/shared';
 
 const PRIORITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
-const PRIORITY_VARIANT: Record<string, 'error' | 'warning' | 'blue' | 'default'> = {
-  critical: 'error', high: 'warning', medium: 'blue', low: 'default',
-};
 
-// ─── Tasks Section ───────────────────────────────────────
+function greeting(): string {
+  const h = new Date().getHours();
+  return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+}
 
-function TasksSection({ tasks, onRefresh, onOpen }: {
-  tasks: api.Task[]; onRefresh: () => void; onOpen: (id: string) => void;
+function Kpi({ label, value, tone, icon: Icon }: {
+  label: string; value: number; tone?: 'rose' | 'emerald' | 'accent'; icon: React.ElementType;
 }) {
-  const [adding, setAdding] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editText, setEditText] = useState('');
-
-  const openTasks = tasks
-    .filter((t) => t.status !== 'done')
-    .sort((a, b) => (PRIORITY_ORDER[a.priority] ?? 9) - (PRIORITY_ORDER[b.priority] ?? 9));
-  // Finished in the last 3 days, so agent answers stay one click away
-  const recentCutoff = Date.now() - 3 * 24 * 3600 * 1000;
-  const doneRecently = tasks
-    .filter((t) => t.status === 'done' && t.completed_at && new Date(t.completed_at).getTime() > recentCutoff)
-    .sort((a, b) => new Date(b.completed_at!).getTime() - new Date(a.completed_at!).getTime());
-
-  const handleAdd = async (text: string) => {
-    await api.tasks.create({ text, status: 'todo', priority: 'medium' });
-    setAdding(false);
-    onRefresh();
-  };
-
-  const handleComplete = async (id: string) => {
-    await api.tasks.update(id, { status: 'done' });
-    onRefresh();
-  };
-
-  const handleEditSave = async (id: string) => {
-    if (editText.trim()) {
-      await api.tasks.update(id, { text: editText.trim() });
-      onRefresh();
-    }
-    setEditingId(null);
-  };
-
-  const handlePriorityChange = async (id: string, priority: string) => {
-    await api.tasks.update(id, { priority: priority as api.Task['priority'] });
-    onRefresh();
-  };
-
   return (
-    <Card className="p-4">
-      <SectionHeader icon={ListTodo} title="Tasks" count={openTasks.length} onAdd={() => setAdding(true)} />
-      {adding && <InlineInput placeholder="New task..." onSubmit={handleAdd} onCancel={() => setAdding(false)} />}
-      <div className="space-y-1 max-h-[400px] overflow-y-auto">
-        {openTasks.length === 0 && (
-          <p className="text-sm text-mc-dim dark:text-gray-500 py-4 text-center">No open tasks</p>
-        )}
-        {openTasks.map((task) => (
-          <div
-            key={task.id}
-            className="group flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors"
-          >
-            <button
-              onClick={() => handleComplete(task.id)}
-              className="flex-shrink-0 w-5 h-5 rounded-full border-2 border-mc-border dark:border-gray-600 hover:border-mc-accent hover:bg-mc-accent-light dark:hover:border-blue-500 dark:hover:bg-blue-950 transition-all flex items-center justify-center cursor-pointer"
-            >
-              <Check size={10} className="text-transparent group-hover:text-mc-accent dark:group-hover:text-blue-400" />
-            </button>
-            {editingId === task.id ? (
-              <input
-                value={editText}
-                onChange={(e) => setEditText(e.target.value)}
-                onBlur={() => handleEditSave(task.id)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleEditSave(task.id); if (e.key === 'Escape') setEditingId(null); }}
-                autoFocus
-                className="flex-1 text-sm bg-transparent border-b border-mc-accent outline-none text-mc-text dark:text-gray-200"
-              />
-            ) : (
-              <button
-                className="flex-1 min-w-0 text-left text-sm text-mc-text dark:text-gray-300 truncate cursor-pointer hover:text-mc-accent"
-                onClick={() => onOpen(task.id)}
-                title="Open thread"
-              >
-                {task.text}
-              </button>
-            )}
-            {task.status === 'blocked' && <Badge variant="warning">needs you</Badge>}
-            {task.assigned_agent_name && (
-              <span className="flex-shrink-0 inline-flex items-center gap-1 text-[11px] text-mc-muted dark:text-gray-400">
-                <Bot size={11} />{task.assigned_agent_name.replace(/\s*\(.*\)$/, '')}
-              </span>
-            )}
-            <DropdownMenu.Root>
-              <DropdownMenu.Trigger asChild>
-                <button className="flex-shrink-0 cursor-pointer">
-                  <Badge variant={PRIORITY_VARIANT[task.priority]}>{task.priority}</Badge>
-                </button>
-              </DropdownMenu.Trigger>
-              <DropdownMenu.Portal>
-                <DropdownMenu.Content className="bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-700 rounded-lg shadow-dropdown p-1 z-50" sideOffset={4}>
-                  {['critical', 'high', 'medium', 'low'].map((p) => (
-                    <DropdownMenu.Item
-                      key={p}
-                      onSelect={() => handlePriorityChange(task.id, p)}
-                      className="px-3 py-1.5 text-sm text-mc-text dark:text-gray-300 rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 outline-none capitalize"
-                    >
-                      {p}
-                    </DropdownMenu.Item>
-                  ))}
-                </DropdownMenu.Content>
-              </DropdownMenu.Portal>
-            </DropdownMenu.Root>
-            {task.due_date && (
-              <span className="text-[11px] text-mc-dim dark:text-gray-500 flex-shrink-0">
-                <Clock size={10} className="inline mr-0.5" />
-                {new Date(task.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-              </span>
-            )}
-            <button
-              onClick={() => { setEditingId(task.id); setEditText(task.text); }}
-              className="opacity-0 group-hover:opacity-100 text-mc-dim hover:text-mc-text dark:hover:text-gray-200 transition-all cursor-pointer"
-            >
-              <Pencil size={12} />
-            </button>
-          </div>
-        ))}
+    <Card className="px-4 py-3.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-mc-muted">{label}</span>
+        <Icon size={14} className="text-mc-dim" />
       </div>
-      {doneRecently.length > 0 && (
-        <details className="mt-3 border-t border-mc-border dark:border-gray-800 pt-2">
-          <summary className="text-xs text-mc-muted dark:text-gray-400 cursor-pointer select-none">
-            Done recently ({doneRecently.length})
-          </summary>
-          <div className="space-y-1 mt-1">
-            {doneRecently.map((task) => (
-              <button
-                key={task.id}
-                onClick={() => onOpen(task.id)}
-                className="w-full flex items-center gap-2 px-2 py-1 rounded-lg text-left hover:bg-gray-50 dark:hover:bg-gray-800/60 cursor-pointer"
-              >
-                <Check size={12} className="text-emerald-500 flex-shrink-0" />
-                <span className="flex-1 text-sm text-mc-muted dark:text-gray-400 truncate">{task.text}</span>
-                {task.assigned_agent_name && (
-                  <span className="text-[11px] text-mc-dim inline-flex items-center gap-1">
-                    <Bot size={11} />{task.assigned_agent_name.replace(/\s*\(.*\)$/, '')}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-        </details>
-      )}
+      <div className={clsx(
+        'mt-1 text-2xl font-semibold tabular-nums tracking-tight',
+        value > 0 && tone === 'rose' && 'text-rose-600 dark:text-rose-400',
+        value > 0 && tone === 'emerald' && 'text-emerald-600 dark:text-emerald-400',
+        value > 0 && tone === 'accent' && 'text-mc-accent',
+        (!tone || value === 0) && 'text-mc-text',
+      )}>
+        {value}
+      </div>
     </Card>
   );
 }
 
-// ─── Projects Section ────────────────────────────────────
+function Row({ children, onClick, className }: { children: React.ReactNode; onClick?: () => void; className?: string }) {
+  return (
+    <div
+      onClick={onClick}
+      className={clsx('flex items-start gap-3 px-4 py-3 transition-colors', onClick && 'cursor-pointer hover:bg-mc-hover/50', className)}
+    >
+      {children}
+    </div>
+  );
+}
 
-function ProjectsSection({ projects, onRefresh, onOpen }: {
-  projects: api.Project[]; onRefresh: () => void; onOpen: (p: api.Project) => void;
-}) {
-  const [adding, setAdding] = useState(false);
-  const handleAdd = async (name: string) => {
-    await api.projects.create({ name, status: 'active' });
-    setAdding(false);
-    onRefresh();
-  };
+// ─── Needs you ───────────────────────────────────────────
 
-  const statusVariant: Record<string, 'success' | 'warning' | 'default' | 'purple'> = {
-    active: 'success', planning: 'warning', launched: 'purple', paused: 'default', archived: 'default',
+function NeedsYou() {
+  const { approvals, tasks, content, agents, refresh, openTask } = useWorkspace();
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const waiting = tasks.filter((t) => t.status === 'blocked');
+  const drafts = content.filter((c) => c.status === 'draft');
+  const total = approvals.length + waiting.length + drafts.length;
+
+  const act = async (id: string, fn: () => Promise<unknown>) => {
+    setBusy(id);
+    try { await fn(); await refresh(); } finally { setBusy(null); }
   };
 
   return (
-    <Card className="p-4">
-      <SectionHeader icon={FolderOpen} title="Projects" count={projects.length} onAdd={() => setAdding(true)} />
-      {adding && <InlineInput placeholder="Project name..." onSubmit={handleAdd} onCancel={() => setAdding(false)} />}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        {projects.length === 0 && (
-          <p className="text-sm text-mc-dim dark:text-gray-500 py-4 text-center col-span-2">No projects</p>
+    <section>
+      <SectionHeader icon={Inbox} title="Needs you" count={total} />
+      <Card className="divide-y divide-mc-line overflow-hidden">
+        {total === 0 && (
+          <EmptyState icon={CheckCheck} message="You're all caught up." small />
         )}
-        {projects.map((project) => (
-          <button
-            key={project.id}
-            onClick={() => onOpen(project)}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-mc-border dark:border-gray-800 hover:shadow-card-hover transition-shadow text-left cursor-pointer"
-          >
-            <div
-              className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-              style={{ backgroundColor: project.color || '#6b7280' }}
-            />
+
+        {approvals.map((a) => {
+          const agent = agents.find((x) => x.id === a.agent_id);
+          return (
+            <Row key={a.id} className="flex-wrap sm:flex-nowrap">
+              <Avatar name={a.agent_name} size={24} />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-mc-text">
+                  <span className="font-medium">{agentDisplay(agent?.name ?? a.agent_name).name}</span>
+                  <span className="text-mc-muted"> wants to take {a.action_count} action{a.action_count === 1 ? '' : 's'}</span>
+                </p>
+                {a.summary && <p className="text-xs text-mc-muted mt-0.5 line-clamp-2">{a.summary}</p>}
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {a.actions.slice(0, 4).map((act, i) => (
+                    <Badge key={i}>{String(act.type).replace('create_', '+ ').replace('_', ' ')}: {String(act.text || act.title || act.key || '').slice(0, 48)}</Badge>
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-1.5 flex-shrink-0 w-full sm:w-auto pl-9 sm:pl-0">
+                <Button size="sm" variant="success" icon={Check} loading={busy === a.id}
+                  onClick={() => act(a.id, () => api.approvals.approve(a.id))}>Approve</Button>
+                <Button size="sm" disabled={busy === a.id}
+                  onClick={() => act(a.id, () => api.approvals.reject(a.id))}>Reject</Button>
+              </div>
+            </Row>
+          );
+        })}
+
+        {waiting.map((t) => (
+          <Row key={t.id} onClick={() => openTask(t.id)}>
+            {t.assigned_agent_name ? <Avatar name={t.assigned_agent_name} size={24} /> : <TaskStatusIcon status={t.status} size={18} />}
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-mc-text dark:text-gray-200 truncate">
-                  {project.name}
-                </span>
-                <Badge variant={statusVariant[project.status] || 'default'}>{project.status}</Badge>
-              </div>
-              <div className="flex items-center gap-3 mt-0.5 text-[11px] text-mc-dim dark:text-gray-500">
-                <span>{project.open_task_count} open tasks</span>
-                {project.agent_count > 0 && <span>{project.agent_count} agents</span>}
-                {project.github_repo && <span className="truncate">{project.github_repo}</span>}
-              </div>
+              <p className="text-sm text-mc-text truncate">{t.text}</p>
+              <p className="text-xs text-mc-muted mt-0.5">
+                {t.assigned_agent_name ? `${agentDisplay(t.assigned_agent_name).name} is waiting for your answer` : 'Blocked'}
+              </p>
             </div>
-            <ChevronRight size={14} className="text-mc-dim dark:text-gray-600 flex-shrink-0" />
+            <Button size="sm" icon={MessageSquare}>Reply</Button>
+          </Row>
+        ))}
+
+        {drafts.slice(0, 5).map((d) => (
+          <Row key={d.id}>
+            <span className="w-6 h-6 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-300 flex items-center justify-center flex-shrink-0">
+              <Megaphone size={13} />
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-mc-text truncate"><span className="text-mc-muted">Draft for {d.channel} · </span>{d.title}</p>
+              <p className="text-xs text-mc-muted mt-0.5 line-clamp-2">{d.body}</p>
+            </div>
+            <div className="flex gap-0.5 flex-shrink-0">
+              <IconButton label="Approve draft" icon={Check} disabled={busy === d.id}
+                onClick={() => act(d.id, () => api.marketingContent.update(d.id, { status: 'approved' }))} />
+              <IconButton label="Mark as posted" icon={Send} disabled={busy === d.id}
+                onClick={() => act(d.id, () => api.marketingContent.update(d.id, { status: 'posted' }))} />
+              <IconButton label="Discard draft" icon={X} disabled={busy === d.id}
+                onClick={() => act(d.id, () => api.marketingContent.update(d.id, { status: 'archived' }))} />
+            </div>
+          </Row>
+        ))}
+      </Card>
+    </section>
+  );
+}
+
+// ─── Delegated work ──────────────────────────────────────
+
+function WithAgents() {
+  const { tasks, agents, projects, openTask, openCommandMenu } = useWorkspace();
+  const delegated = tasks.filter((t) => t.assigned_agent_id && (t.status === 'todo' || t.status === 'in_progress'));
+
+  return (
+    <section>
+      <SectionHeader icon={Bot} title="With agents" count={delegated.length} />
+      <Card className="divide-y divide-mc-line overflow-hidden">
+        {delegated.length === 0 && (
+          <EmptyState icon={Bot} message="Nothing delegated right now." small>
+            <button onClick={openCommandMenu} className="mt-2 text-xs text-mc-accent hover:underline cursor-pointer">
+              Press ⌘K, describe a task, and hand it to an agent
+            </button>
+          </EmptyState>
+        )}
+        {delegated.map((t) => {
+          const agent = agents.find((a) => a.id === t.assigned_agent_id);
+          const working = agent?.status === 'running';
+          const project = projects.find((p) => p.id === t.project_id);
+          return (
+            <Row key={t.id} onClick={() => openTask(t.id)} className="items-center">
+              <Avatar name={t.assigned_agent_name ?? 'Agent'} size={24} />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-mc-text truncate">{t.text}</p>
+                <p className="text-xs mt-0.5 flex items-center gap-1.5">
+                  {working
+                    ? <span className="text-shimmer">{agentDisplay(t.assigned_agent_name).name} is working…</span>
+                    : <span className="text-mc-muted">{agentDisplay(t.assigned_agent_name).name} · in progress</span>}
+                  {project && (
+                    <span className="flex items-center gap-1 text-mc-dim">
+                      · <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: project.color }} />{project.name}
+                    </span>
+                  )}
+                </p>
+              </div>
+              <ArrowRight size={14} className="text-mc-dim" />
+            </Row>
+          );
+        })}
+      </Card>
+    </section>
+  );
+}
+
+// ─── Your tasks ──────────────────────────────────────────
+
+function YourTasks() {
+  const { tasks, projects, refresh, openTask } = useWorkspace();
+  const [adding, setAdding] = useState(false);
+
+  const mine = tasks
+    .filter((t) => !t.assigned_agent_id && (t.status === 'todo' || t.status === 'in_progress') && !t.tags.includes('lead'))
+    .sort((a, b) => (PRIORITY_ORDER[a.priority] ?? 9) - (PRIORITY_ORDER[b.priority] ?? 9));
+
+  const complete = async (id: string) => {
+    await api.tasks.update(id, { status: 'done' });
+    refresh();
+  };
+
+  return (
+    <section>
+      <SectionHeader
+        icon={CircleCheck}
+        title="Your tasks"
+        count={mine.length}
+        onAdd={() => setAdding(true)}
+        extra={<Link href="/tasks" className="text-xs text-mc-muted hover:text-mc-text px-1.5">View board</Link>}
+      />
+      {adding && (
+        <InlineInput placeholder="What needs doing?" onCancel={() => setAdding(false)}
+          onSubmit={async (text) => { await api.tasks.create({ text }); setAdding(false); refresh(); }} />
+      )}
+      <Card className="divide-y divide-mc-line overflow-hidden">
+        {mine.length === 0 && <EmptyState icon={CircleCheck} message="No open tasks of your own." small />}
+        {mine.slice(0, 8).map((t) => {
+          const project = projects.find((p) => p.id === t.project_id);
+          return (
+            <div key={t.id} className="group flex items-center gap-3 px-4 h-11 hover:bg-mc-hover/50 transition-colors">
+              <button
+                onClick={() => complete(t.id)}
+                aria-label="Mark done"
+                className="w-4 h-4 rounded-full ring-1 ring-mc-line-strong hover:ring-mc-accent hover:bg-mc-accent/10 flex items-center justify-center cursor-pointer flex-shrink-0"
+              >
+                <Check size={10} className="text-transparent group-hover:text-mc-accent" />
+              </button>
+              <PriorityIcon priority={t.priority} />
+              <button onClick={() => openTask(t.id)} className="flex-1 min-w-0 text-left text-sm text-mc-text truncate cursor-pointer">
+                {t.text}
+              </button>
+              {project && (
+                <span className="hidden sm:flex items-center gap-1.5 text-xs text-mc-muted flex-shrink-0">
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: project.color }} />{project.name}
+                </span>
+              )}
+              {t.due_date && <span className="text-xs text-mc-dim flex-shrink-0">{new Date(t.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}
+            </div>
+          );
+        })}
+        {mine.length > 8 && (
+          <Link href="/tasks" className="flex items-center justify-center h-9 text-xs text-mc-muted hover:text-mc-text">
+            {mine.length - 8} more on the board
+          </Link>
+        )}
+      </Card>
+    </section>
+  );
+}
+
+// ─── Activity ────────────────────────────────────────────
+
+function Activity() {
+  const { tick, openTask } = useWorkspace();
+  const [items, setItems] = useState<api.ActivityItem[] | null>(null);
+
+  useEffect(() => {
+    api.activity.list(15).then(setItems).catch(() => setItems([]));
+  }, [tick]);
+
+  return (
+    <section>
+      <SectionHeader icon={MessageSquare} title="Activity" />
+      <Card className="p-1.5">
+        {items === null && <div className="py-8 flex justify-center"><Spinner /></div>}
+        {items?.length === 0 && <EmptyState icon={MessageSquare} message="Agent replies show up here." small />}
+        {items?.map((e) => (
+          <button
+            key={e.id}
+            onClick={() => openTask(e.task.id)}
+            className="w-full flex items-start gap-2.5 px-2.5 py-2 rounded-lg text-left hover:bg-mc-hover/60 cursor-pointer"
+          >
+            <Avatar name={e.author_name} size={20} className="mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-mc-muted truncate">
+                <span className="font-medium text-mc-text">{agentDisplay(e.author_name).name}</span>
+                {e.author === 'system' ? ' · ' : ' on '}
+                <span className="text-mc-secondary">{e.task.text}</span>
+              </p>
+              <p className="text-xs text-mc-muted line-clamp-2 mt-0.5">{e.body.replace(/[#*_`>|-]+/g, ' ').replace(/\s+/g, ' ').trim()}</p>
+            </div>
+            <span className="text-2xs text-mc-dim flex-shrink-0 mt-0.5">{timeAgo(e.created_at)}</span>
           </button>
         ))}
-      </div>
-    </Card>
+      </Card>
+    </section>
   );
 }
 
-// ─── Agents Section ──────────────────────────────────────
+// ─── Agents ──────────────────────────────────────────────
 
-function AgentsSection({ agents, onRefresh }: { agents: api.Agent[]; onRefresh: () => void }) {
-  const [runningId, setRunningId] = useState<string | null>(null);
+function AgentsGlance() {
+  const { agents, refresh } = useWorkspace();
+  const visible = agents.filter((a) => a.status !== 'disabled');
 
-  const handleRun = async (id: string) => {
-    setRunningId(id);
-    try {
-      // Starts the run in the background; the websocket refreshes the list when it ends
-      await api.agents.triggerRun(id);
-      onRefresh();
-    } catch {
-      // error handled silently
-    } finally {
-      setRunningId(null);
-    }
-  };
-
-  const statusVariant: Record<string, 'success' | 'error' | 'default'> = {
-    running: 'success', error: 'error', idle: 'default', disabled: 'default',
+  const runNow = async (id: string) => {
+    try { await api.agents.run(id); } finally { refresh(); }
   };
 
   return (
-    <Card className="p-4">
-      <SectionHeader icon={Bot} title="Agents" count={agents.length} />
-      <div className="space-y-2 max-h-[350px] overflow-y-auto">
-        {agents.length === 0 && (
-          <p className="text-sm text-mc-dim dark:text-gray-500 py-4 text-center">No agents configured</p>
-        )}
-        {agents.map((agent) => (
-          <div
-            key={agent.id}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-mc-border dark:border-gray-800 hover:shadow-card-hover transition-shadow"
-          >
-            <StatusIndicator status={agent.status} />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-mc-text dark:text-gray-200 truncate">
-                  {agent.name}
-                </span>
-                <Badge variant={statusVariant[agent.status] || 'default'}>{agent.status}</Badge>
+    <section>
+      <SectionHeader icon={Bot} title="Agents" extra={<Link href="/agents" className="text-xs text-mc-muted hover:text-mc-text px-1.5">Manage</Link>} />
+      <Card className="p-1.5">
+        {visible.map((a) => {
+          const d = agentDisplay(a.name);
+          return (
+            <div key={a.id} className="group flex items-center gap-2.5 px-2.5 h-10 rounded-lg hover:bg-mc-hover/60">
+              <Avatar name={a.name} size={22} />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-mc-text truncate leading-tight">{d.name} <span className="text-mc-dim">{d.role}</span></p>
               </div>
-              <div className="flex items-center gap-3 mt-0.5 text-[11px] text-mc-dim dark:text-gray-500">
-                <span>{agent.model}</span>
-                <span>Last run: {timeAgo(agent.last_run_at)}</span>
-                {agent.schedule_value && <span>Every {agent.schedule_value}</span>}
-              </div>
-            </div>
-            <button
-              onClick={() => handleRun(agent.id)}
-              disabled={agent.status === 'disabled' || agent.status === 'running' || runningId === agent.id}
-              className={clsx(
-                'w-8 h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer',
-                agent.status === 'disabled' || agent.status === 'running'
-                  ? 'bg-gray-100 dark:bg-gray-800 text-mc-dim cursor-not-allowed'
-                  : 'bg-mc-accent-light dark:bg-blue-950 text-mc-accent dark:text-blue-400 hover:bg-mc-accent hover:text-white dark:hover:bg-blue-900'
-              )}
-            >
-              {runningId === agent.id ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-            </button>
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-// ─── Notes Section ───────────────────────────────────────
-
-function NotesSection({ notes, onRefresh }: { notes: api.Note[]; onRefresh: () => void }) {
-  const [adding, setAdding] = useState(false);
-
-  const sorted = [...notes].sort((a, b) => {
-    if (a.is_pinned !== b.is_pinned) return a.is_pinned ? -1 : 1;
-    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
-  });
-
-  const handleAdd = async (title: string) => {
-    await api.notes.create({ title, content: '', source: 'dashboard' });
-    setAdding(false);
-    onRefresh();
-  };
-
-  return (
-    <Card className="p-4">
-      <SectionHeader icon={StickyNote} title="Notes" count={notes.length} onAdd={() => setAdding(true)} />
-      {adding && <InlineInput placeholder="Note title..." onSubmit={handleAdd} onCancel={() => setAdding(false)} />}
-      <div className="space-y-1 max-h-[300px] overflow-y-auto">
-        {sorted.length === 0 && (
-          <p className="text-sm text-mc-dim dark:text-gray-500 py-4 text-center">No notes yet</p>
-        )}
-        {sorted.slice(0, 10).map((note) => (
-          <div
-            key={note.id}
-            className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors"
-          >
-            {note.is_pinned ? (
-              <Pin size={12} className="text-mc-accent dark:text-blue-400 flex-shrink-0" />
-            ) : (
-              <FileText size={12} className="text-mc-dim dark:text-gray-500 flex-shrink-0" />
-            )}
-            <span className="flex-1 text-sm text-mc-text dark:text-gray-300 truncate">
-              {note.title || 'Untitled'}
-            </span>
-            {note.tags.length > 0 && (
-              <Badge variant="default">{note.tags[0]}{note.tags.length > 1 ? ` +${note.tags.length - 1}` : ''}</Badge>
-            )}
-            <span className="text-[11px] text-mc-dim dark:text-gray-500 flex-shrink-0">
-              {timeAgo(note.updated_at)}
-            </span>
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-// ─── Content Section ─────────────────────────────────────
-
-function ContentSection({ content, onRefresh }: { content: api.MarketingContent[]; onRefresh: () => void }) {
-  const setStatus = async (id: string, status: api.MarketingContent['status']) => {
-    await api.marketingContent.update(id, { status });
-    onRefresh();
-  };
-
-  const statusVariant: Record<string, 'default' | 'warning' | 'success' | 'purple'> = {
-    draft: 'warning', approved: 'blue' as any, posted: 'success', archived: 'default',
-  };
-
-  const recent = [...content]
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .slice(0, 8);
-
-  return (
-    <Card className="p-4">
-      <SectionHeader icon={Megaphone} title="Content" count={content.length} />
-      <div className="space-y-1 max-h-[300px] overflow-y-auto">
-        {recent.length === 0 && (
-          <p className="text-sm text-mc-dim dark:text-gray-500 py-4 text-center">No content drafts</p>
-        )}
-        {recent.map((item) => (
-          <div
-            key={item.id}
-            className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors"
-          >
-            <span className="flex-1 text-sm text-mc-text dark:text-gray-300 truncate">
-              {item.title}
-            </span>
-            <Badge variant="purple">{item.channel}</Badge>
-            <Badge variant={statusVariant[item.status] || 'default'}>{item.status}</Badge>
-            {(item.status === 'draft' || item.status === 'approved') && (
-              <span className="flex items-center gap-1">
-                {item.status === 'draft' && (
-                  <button onClick={() => setStatus(item.id, 'approved')} title="Approve" aria-label="Approve draft"
-                    className="p-1 rounded text-mc-dim hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950 cursor-pointer">
-                    <Check size={13} />
-                  </button>
+              {a.status === 'running'
+                ? <span className="flex items-center gap-1.5 text-2xs text-emerald-600 dark:text-emerald-400"><StatusIndicator status="running" /> running</span>
+                : (
+                  <>
+                    <span className={clsx('text-2xs group-hover:hidden', a.status === 'error' ? 'text-red-500' : 'text-mc-dim')}>
+                      {a.status === 'error' ? 'last run failed' : a.last_run_at ? timeAgo(a.last_run_at) : 'never run'}
+                    </span>
+                    <IconButton label={`Run ${d.name}`} icon={Play} className="hidden group-hover:inline-flex" onClick={() => runNow(a.id)} />
+                  </>
                 )}
-                <button onClick={() => setStatus(item.id, 'posted')} title="Mark as posted" aria-label="Mark as posted"
-                  className="p-1 rounded text-mc-dim hover:text-mc-accent hover:bg-blue-50 dark:hover:bg-blue-950 cursor-pointer">
-                  <Send size={13} />
-                </button>
-                <button onClick={() => setStatus(item.id, 'archived')} title="Discard" aria-label="Discard draft"
-                  className="p-1 rounded text-mc-dim hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 cursor-pointer">
-                  <X size={13} />
-                </button>
-              </span>
-            )}
-            <span className="text-[11px] text-mc-dim dark:text-gray-500 flex-shrink-0">
-              {timeAgo(item.created_at)}
-            </span>
-          </div>
-        ))}
-      </div>
-    </Card>
+            </div>
+          );
+        })}
+      </Card>
+    </section>
   );
 }
 
-// ─── Review Section ──────────────────────────────────────
+// ─── Page ────────────────────────────────────────────────
 
-function ReviewSection({ approvals, onRefresh }: { approvals: api.Approval[]; onRefresh: () => void }) {
-  const [busyId, setBusyId] = useState<string | null>(null);
-  if (approvals.length === 0) return null;
+export default function HomePage() {
+  const { loaded, tasks, agents, approvals, content, openCommandMenu } = useWorkspace();
+  const today = useMemo(() => new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }), []);
 
-  const decide = async (id: string, approve: boolean) => {
-    setBusyId(id);
-    try {
-      await (approve ? api.approvals.approve(id) : api.approvals.reject(id));
-      onRefresh();
-    } finally {
-      setBusyId(null);
-    }
-  };
+  const waiting = tasks.filter((t) => t.status === 'blocked').length + approvals.length;
+  const working = agents.filter((a) => a.status === 'running').length;
+  const open = tasks.filter((t) => t.status !== 'done').length;
+  const drafts = content.filter((c) => c.status === 'draft').length;
 
   return (
-    <Card className="p-4 lg:col-span-2 border-amber-300 dark:border-amber-800">
-      <SectionHeader icon={Clock} title="Needs your review" count={approvals.length} />
-      <div className="space-y-2">
-        {approvals.map((a) => (
-          <div key={a.id} className="flex items-start gap-3 px-2 py-2 rounded-lg bg-amber-50/60 dark:bg-amber-950/20">
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-mc-text dark:text-gray-200">
-                {a.agent_name} wants to take {a.action_count} action{a.action_count === 1 ? '' : 's'}
-              </p>
-              {a.summary && <p className="text-xs text-mc-muted dark:text-gray-400 mt-0.5">{a.summary}</p>}
-              <ul className="mt-1 text-xs text-mc-muted dark:text-gray-400 list-disc pl-4">
-                {a.actions.slice(0, 5).map((act, i) => (
-                  <li key={i} className="truncate">{act.type}: {act.text || act.title || act.key || ''}</li>
-                ))}
-              </ul>
-            </div>
-            <div className="flex gap-1.5 flex-shrink-0">
-              <button disabled={busyId === a.id} onClick={() => decide(a.id, true)}
-                className="px-2.5 py-1 text-xs font-medium rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 cursor-pointer">
-                Approve
-              </button>
-              <button disabled={busyId === a.id} onClick={() => decide(a.id, false)}
-                className="px-2.5 py-1 text-xs font-medium rounded-lg border border-mc-border dark:border-gray-700 text-mc-muted hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 cursor-pointer">
-                Reject
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-// ─── Notification Panel ──────────────────────────────────
-
-function NotificationPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [items, setItems] = useState<api.Notification[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (open) {
-      setLoading(true);
-      api.notifications.list(false, 20).then(setItems).finally(() => setLoading(false));
-    }
-  }, [open]);
-
-  const handleMarkAllRead = async () => {
-    await api.notifications.markAllRead();
-    setItems((prev) => prev.map((n) => ({ ...n, is_read: true })));
-  };
-
-  const categoryIcon: Record<string, 'success' | 'warning' | 'error' | 'blue' | 'purple' | 'default'> = {
-    success: 'success', warning: 'warning', error: 'error', approval: 'purple', info: 'blue',
-  };
-
-  return (
-    <Dialog.Root open={open} onOpenChange={(v) => !v && onClose()}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/30 z-40" />
-        <Dialog.Content className="fixed right-4 top-16 w-96 max-h-[500px] bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-800 rounded-xl shadow-dropdown z-50 flex flex-col overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-mc-border dark:border-gray-800">
-            <Dialog.Title className="text-sm font-semibold text-mc-text dark:text-gray-100">Notifications</Dialog.Title>
-            <div className="flex items-center gap-2">
-              <button onClick={handleMarkAllRead} className="text-[11px] text-mc-accent hover:underline cursor-pointer">
-                Mark all read
-              </button>
-              <Dialog.Close className="text-mc-dim hover:text-mc-text dark:hover:text-gray-200 cursor-pointer">
-                <X size={16} />
-              </Dialog.Close>
-            </div>
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            {loading && (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 size={20} className="animate-spin text-mc-dim" />
-              </div>
-            )}
-            {!loading && items.length === 0 && (
-              <p className="text-sm text-mc-dim dark:text-gray-500 py-8 text-center">No notifications</p>
-            )}
-            {!loading && items.map((n) => (
-              <div
-                key={n.id}
-                className={clsx(
-                  'px-4 py-3 border-b border-mc-border/50 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/40',
-                  !n.is_read && 'bg-blue-50/50 dark:bg-blue-950/20'
-                )}
-              >
-                <div className="flex items-start gap-2">
-                  <Badge variant={categoryIcon[n.category] || 'default'}>{n.category}</Badge>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-mc-text dark:text-gray-200 truncate">{n.title}</p>
-                    <p className="text-xs text-mc-muted dark:text-gray-400 mt-0.5 line-clamp-2">{n.body}</p>
-                    <span className="text-[10px] text-mc-dim dark:text-gray-500 mt-1 block">{timeAgo(n.created_at)}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
-  );
-}
-
-// ─── Search Dialog ───────────────────────────────────────
-
-function SearchDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<api.SearchResult[]>([]);
-  const [searching, setSearching] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (open) {
-      setQuery('');
-      setResults([]);
-      setTimeout(() => inputRef.current?.focus(), 50);
-    }
-  }, [open]);
-
-  useEffect(() => {
-    if (!query.trim()) { setResults([]); return; }
-    const timeout = setTimeout(async () => {
-      setSearching(true);
-      try {
-        const res = await api.search.query(query.trim());
-        setResults(res.results);
-      } catch {
-        setResults([]);
-      } finally {
-        setSearching(false);
-      }
-    }, 300);
-    return () => clearTimeout(timeout);
-  }, [query]);
-
-  const typeIcon: Record<string, string> = {
-    task: 'T', project: 'P', note: 'N', agent: 'A',
-  };
-
-  return (
-    <Dialog.Root open={open} onOpenChange={(v) => !v && onClose()}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/30 z-40" />
-        <Dialog.Content className="fixed left-1/2 top-[20%] -translate-x-1/2 w-full max-w-lg bg-white dark:bg-gray-900 border border-mc-border dark:border-gray-800 rounded-xl shadow-dropdown z-50 overflow-hidden">
-          <Dialog.Title className="sr-only">Search</Dialog.Title>
-          <div className="flex items-center gap-3 px-4 py-3 border-b border-mc-border dark:border-gray-800">
-            <Search size={16} className="text-mc-dim" />
-            <input
-              ref={inputRef}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search tasks, projects, notes..."
-              className="flex-1 bg-transparent text-sm text-mc-text dark:text-gray-200 outline-none placeholder:text-mc-dim"
-            />
-            {searching && <Loader2 size={14} className="animate-spin text-mc-dim" />}
-          </div>
-          {results.length > 0 && (
-            <div className="max-h-72 overflow-y-auto py-1">
-              {results.map((r) => (
-                <div key={`${r.type}-${r.id}`} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800/60 cursor-pointer">
-                  <span className="w-5 h-5 rounded bg-gray-100 dark:bg-gray-800 text-[10px] font-bold text-mc-muted flex items-center justify-center">
-                    {typeIcon[r.type] || '?'}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-mc-text dark:text-gray-200 truncate">{r.title}</p>
-                    <p className="text-[11px] text-mc-dim dark:text-gray-500">{r.type}{r.status ? ` / ${r.status}` : ''}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          {query.trim() && !searching && results.length === 0 && (
-            <p className="text-sm text-mc-dim dark:text-gray-500 py-6 text-center">No results found</p>
-          )}
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
-  );
-}
-
-// ─── Main Dashboard ──────────────────────────────────────
-
-export default function Dashboard() {
-  const [theme, setTheme] = useTheme();
-  const [tasks, setTasks] = useState<api.Task[]>([]);
-  const [projects, setProjects] = useState<api.Project[]>([]);
-  const [agents, setAgents] = useState<api.Agent[]>([]);
-  const [notesList, setNotesList] = useState<api.Note[]>([]);
-  const [content, setContent] = useState<api.MarketingContent[]>([]);
-  const [pendingApprovals, setPendingApprovals] = useState<api.Approval[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [showSearch, setShowSearch] = useState(false);
-  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
-  const [editingProject, setEditingProject] = useState<api.Project | null>(null);
-  const [eventTick, setEventTick] = useState(0);
-
-  const fetchAll = useCallback(async () => {
-    try {
-      const [t, p, a, n, c, nc, ap] = await Promise.all([
-        api.tasks.list(),
-        api.projects.list(),
-        api.agents.list(),
-        api.notes.list(),
-        api.marketingContent.list(),
-        api.notifications.count(),
-        api.approvals.list(),
-      ]);
-      setTasks(t);
-      setProjects(p);
-      setAgents(a);
-      setNotesList(n);
-      setContent(c);
-      setUnreadCount(nc.unread);
-      setPendingApprovals(ap);
-    } catch {
-      // silent — API may not be up
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
-
-  // WebSocket for live updates
-  useEffect(() => {
-    // Event names come from broadcast() calls in the backend ("task.created", "agent.completed", ...)
-    const ws = api.connectWebSocket((event) => {
-      if (/^(task|note|content|agent|approval|notification)\./.test(event.type)) {
-        fetchAll();
-        setEventTick((t) => t + 1);
-      }
-    });
-    return () => { ws?.close(); };
-  }, [fetchAll]);
-
-  // Keyboard shortcut: Cmd+K for search
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setShowSearch(true);
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-mc-bg dark:bg-gray-950 flex items-center justify-center">
-        <Loader2 size={32} className="animate-spin text-mc-accent" />
-      </div>
-    );
-  }
-
-  const openTaskCount = tasks.filter((t) => t.status !== 'done').length;
-  const activeAgents = agents.filter((a) => a.status === 'running').length;
-
-  return (
-    <div className="min-h-screen bg-mc-bg dark:bg-gray-950">
-      {/* ─── Header ─── */}
-      <header className="sticky top-0 z-30 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-mc-border dark:border-gray-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Activity size={20} className="text-mc-accent" />
-            <h1 className="text-base font-bold text-mc-text dark:text-gray-100">Mission Control</h1>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {/* Search */}
-            <button
-              onClick={() => setShowSearch(true)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-mc-border dark:border-gray-700 bg-white dark:bg-gray-800 text-mc-muted dark:text-gray-400 hover:border-mc-accent/40 transition-all text-sm cursor-pointer"
-            >
-              <Search size={14} />
-              <span className="hidden sm:inline">Search</span>
-              <kbd className="hidden sm:inline text-[10px] bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded font-mono">
-                {typeof navigator !== 'undefined' && /Mac/.test(navigator.userAgent) ? '\u2318' : 'Ctrl+'}K
-              </kbd>
-            </button>
-
-            {/* Notifications */}
-            <button
-              onClick={() => setShowNotifications(true)}
-              className="relative w-9 h-9 rounded-lg border border-mc-border dark:border-gray-700 bg-white dark:bg-gray-800 text-mc-muted dark:text-gray-400 hover:border-mc-accent/40 transition-all flex items-center justify-center cursor-pointer"
-            >
-              <Bell size={16} />
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-mc-red text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </span>
-              )}
-            </button>
-
-            {/* Theme toggle */}
-            <button
-              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-              className="w-9 h-9 rounded-lg border border-mc-border dark:border-gray-700 bg-white dark:bg-gray-800 text-mc-muted dark:text-gray-400 hover:border-mc-accent/40 transition-all flex items-center justify-center cursor-pointer"
-            >
-              {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
-            </button>
-          </div>
+    <>
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-8 pt-8 pb-2 flex items-end justify-between gap-4">
+        <div>
+          <p className="text-xs text-mc-muted">{today}</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-mc-text mt-0.5">{greeting()}</h1>
         </div>
-      </header>
-
-      {/* ─── Stats bar ─── */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
-        <div className="flex flex-wrap gap-4 text-sm">
-          <div className="flex items-center gap-2 text-mc-muted dark:text-gray-400">
-            <ListTodo size={14} />
-            <span><strong className="text-mc-text dark:text-gray-200">{openTaskCount}</strong> open tasks</span>
-          </div>
-          <div className="flex items-center gap-2 text-mc-muted dark:text-gray-400">
-            <FolderOpen size={14} />
-            <span><strong className="text-mc-text dark:text-gray-200">{projects.filter(p => p.status === 'active').length}</strong> active projects</span>
-          </div>
-          <div className="flex items-center gap-2 text-mc-muted dark:text-gray-400">
-            <Bot size={14} />
-            <span><strong className="text-mc-text dark:text-gray-200">{activeAgents}</strong> agents running</span>
-          </div>
-          <div className="flex items-center gap-2 text-mc-muted dark:text-gray-400">
-            <Megaphone size={14} />
-            <span><strong className="text-mc-text dark:text-gray-200">{content.filter(c => c.status === 'draft').length}</strong> content drafts</span>
-          </div>
-        </div>
+        <Button variant="primary" icon={Plus} onClick={openCommandMenu}>New task</Button>
       </div>
 
-      {/* ─── Main Grid ─── */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 pb-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <ReviewSection approvals={pendingApprovals} onRefresh={fetchAll} />
-          <TasksSection tasks={tasks} onRefresh={fetchAll} onOpen={setOpenTaskId} />
-          <AgentsSection agents={agents} onRefresh={fetchAll} />
-          <ProjectsSection projects={projects} onRefresh={fetchAll} onOpen={setEditingProject} />
-          <NotesSection notes={notesList} onRefresh={fetchAll} />
-          <div className="lg:col-span-2">
-            <ContentSection content={content} onRefresh={fetchAll} />
+      {!loaded ? (
+        <div className="py-24 flex justify-center"><Spinner size={20} /></div>
+      ) : (
+        <main className="max-w-[1400px] mx-auto px-4 sm:px-8 py-6 space-y-8 animate-fade-up">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <Kpi label="Waiting on you" value={waiting} tone="rose" icon={Inbox} />
+            <Kpi label="Agents working" value={working} tone="emerald" icon={Bot} />
+            <Kpi label="Open tasks" value={open} icon={CircleCheck} />
+            <Kpi label="Drafts to review" value={drafts} tone="accent" icon={Megaphone} />
           </div>
-        </div>
-      </main>
 
-      {/* ─── Dialogs ─── */}
-      <NotificationPanel open={showNotifications} onClose={() => { setShowNotifications(false); api.notifications.count().then(nc => setUnreadCount(nc.unread)).catch(() => {}); }} />
-      <SearchDialog open={showSearch} onClose={() => setShowSearch(false)} />
-      <ProjectDialog project={editingProject} onClose={() => setEditingProject(null)} onSaved={fetchAll} />
-      <TaskDialog
-        taskId={openTaskId}
-        agents={agents}
-        projects={projects}
-        refreshTick={eventTick}
-        onClose={() => setOpenTaskId(null)}
-        onChanged={fetchAll}
-      />
-    </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 space-y-8">
+              <NeedsYou />
+              <WithAgents />
+              <YourTasks />
+            </div>
+            <div className="space-y-8">
+              <Activity />
+              <AgentsGlance />
+            </div>
+          </div>
+        </main>
+      )}
+    </>
   );
 }

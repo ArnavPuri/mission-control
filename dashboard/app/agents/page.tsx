@@ -1,17 +1,16 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import * as api from '../lib/api';
-import * as Progress from '@radix-ui/react-progress';
-import * as Tooltip from '@radix-ui/react-tooltip';
-import {
-  Zap, Play, Square, Clock, DollarSign, Activity,
-  BarChart3, Loader2, TrendingUp, AlertTriangle, Plus, Pencil,
-  ChevronDown, ChevronRight, CheckCircle, XCircle,
-} from 'lucide-react';
-import { clsx } from 'clsx';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Card, Badge, StatusIndicator, EmptyState } from '../components/shared';
+import * as Tooltip from '@radix-ui/react-tooltip';
+import { clsx } from 'clsx';
+import { Bot, CheckCircle, ChevronRight, Pencil, Play, Plus, Square, XCircle } from 'lucide-react';
+import * as api from '../lib/api';
+import { useWorkspace } from '../components/workspace';
+import { Markdown } from '../components/markdown';
+import {
+  Avatar, Badge, Button, Card, EmptyState, PageHeader, Spinner, StatusIndicator, agentDisplay, timeAgo,
+} from '../components/shared';
 
 interface RunDetail {
   id: string;
@@ -26,85 +25,60 @@ interface RunDetail {
   transcript: { role: string; content: string }[] | null;
 }
 
+function scheduleLabel(a: api.Agent): string {
+  if (!a.schedule_type || a.schedule_type === 'manual') return 'On demand';
+  if (a.schedule_type === 'interval') return `Every ${a.schedule_value}`;
+  return `Cron ${a.schedule_value}`;
+}
+
 function Toast({ message, type, onDone }: { message: string; type: 'success' | 'error'; onDone: () => void }) {
   useEffect(() => { const t = setTimeout(onDone, 3000); return () => clearTimeout(t); }, [onDone]);
   return (
-    <div className={clsx(
-      'fixed top-4 right-4 z-50 px-4 py-2.5 rounded-lg shadow-lg text-sm font-medium flex items-center gap-2 animate-in slide-in-from-top-2',
-      type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
-    )}>
-      {type === 'success' ? <CheckCircle size={16} /> : <XCircle size={16} />}
+    <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 px-3.5 h-10 rounded-lg bg-mc-text text-mc-panel text-sm shadow-dropdown animate-fade-up">
+      {type === 'success' ? <CheckCircle size={15} className="text-emerald-400" /> : <XCircle size={15} className="text-red-400" />}
       {message}
     </div>
   );
 }
 
 function RunRow({ run, isExpanded, onToggle }: { run: RunDetail; isExpanded: boolean; onToggle: () => void }) {
-  const summary = run.output_data && typeof run.output_data === 'object'
-    ? (run.output_data as Record<string, unknown>).summary as string || null
+  const out = (run.output_data ?? {}) as Record<string, unknown>;
+  const summary = (out.reply as string) || (out.summary as string) || null;
+  const actions = (out.actions as unknown[]) || [];
+  const duration = run.completed_at
+    ? Math.round((new Date(run.completed_at).getTime() - new Date(run.started_at).getTime()) / 1000)
     : null;
-  const actions = run.output_data && typeof run.output_data === 'object'
-    ? (run.output_data as Record<string, unknown>).actions as unknown[] || []
-    : [];
 
   return (
-    <div className="border-b border-mc-border/50 dark:border-gray-800/50 last:border-0">
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center gap-3 py-2.5 text-left cursor-pointer bg-transparent"
-      >
-        <span className={clsx('w-2 h-2 rounded-full shrink-0',
-          run.status === 'completed' ? 'bg-emerald-500' :
-          run.status === 'failed' ? 'bg-red-500' :
-          run.status === 'running' ? 'bg-amber-400 animate-pulse' : 'bg-gray-300'
-        )} />
-        <span className="text-xs text-mc-text dark:text-gray-300 flex-1">
+    <div className="border-b border-mc-line last:border-0">
+      <button onClick={onToggle} className="w-full flex items-center gap-3 h-10 px-4 text-left hover:bg-mc-hover/50 cursor-pointer">
+        <ChevronRight size={13} className={clsx('text-mc-dim transition-transform', isExpanded && 'rotate-90')} />
+        <span className={clsx('w-1.5 h-1.5 rounded-full flex-shrink-0',
+          run.status === 'completed' ? 'bg-emerald-500' : run.status === 'failed' ? 'bg-red-500'
+            : run.status === 'running' ? 'bg-amber-400 animate-pulse' : 'bg-mc-line-strong')} />
+        <span className="text-sm text-mc-text w-36 flex-shrink-0">
           {new Date(run.started_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
         </span>
-        <Badge variant={run.status === 'completed' ? 'success' : run.status === 'failed' ? 'error' : 'warning'}>{run.status}</Badge>
-        <span className="text-xs font-mono text-mc-dim">${run.cost_usd.toFixed(4)}</span>
-        {(summary || run.error) ? (
-          isExpanded ? <ChevronDown size={12} className="text-mc-dim" /> : <ChevronRight size={12} className="text-mc-dim" />
-        ) : <span className="w-3" />}
+        <span className="text-xs text-mc-muted flex-1 truncate">{run.trigger}</span>
+        <span className="text-xs text-mc-dim tabular-nums w-12 text-right">{duration !== null ? `${duration}s` : '—'}</span>
+        <span className="text-xs text-mc-muted font-mono tabular-nums w-16 text-right">${run.cost_usd.toFixed(3)}</span>
       </button>
-      {isExpanded && (summary || run.error) && (
-        <div className="pl-5 pb-3 space-y-2">
-          {run.error && (
-            <div className="text-xs text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-950/50 rounded-lg px-3 py-2">
-              {run.error}
-            </div>
-          )}
-          {summary && (
-            <div className="text-xs text-mc-muted dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded-lg px-3 py-2 whitespace-pre-wrap">
-              {summary}
-            </div>
-          )}
-          {actions.length > 0 && (
-            <div className="text-[11px] text-mc-dim">
-              {actions.length} action{actions.length > 1 ? 's' : ''} executed
-            </div>
-          )}
-          {run.completed_at && (
-            <div className="text-[11px] text-mc-dim">
-              Duration: {Math.round((new Date(run.completed_at).getTime() - new Date(run.started_at).getTime()) / 1000)}s
-              {run.tokens_used > 0 && ` · ${run.tokens_used.toLocaleString()} tokens`}
-            </div>
-          )}
+      {isExpanded && (
+        <div className="px-11 pb-4 space-y-3">
+          {run.error && <div className="text-xs text-red-600 dark:text-red-400 bg-red-500/5 ring-1 ring-red-500/20 rounded-lg px-3 py-2">{run.error}</div>}
+          {summary && <Markdown className="text-sm text-mc-secondary">{summary}</Markdown>}
+          <div className="text-2xs text-mc-dim">
+            {actions.length} action{actions.length === 1 ? '' : 's'}
+            {run.tokens_used > 0 && ` · ${run.tokens_used.toLocaleString()} tokens`}
+          </div>
           {run.transcript && run.transcript.length > 0 && (
-            <details className="mt-2">
-              <summary className="text-[11px] text-mc-accent cursor-pointer hover:underline">
-                Show transcript ({run.transcript.length} messages)
-              </summary>
-              <div className="mt-2 space-y-1.5 max-h-64 overflow-y-auto">
+            <details>
+              <summary className="text-xs text-mc-accent cursor-pointer hover:underline">Transcript ({run.transcript.length} messages)</summary>
+              <div className="mt-2 space-y-1.5 max-h-72 overflow-y-auto">
                 {run.transcript.map((msg, i) => (
-                  <div key={i} className={clsx(
-                    'text-xs px-2.5 py-1.5 rounded',
-                    msg.role === 'assistant' ? 'bg-blue-50 dark:bg-blue-950/30 text-mc-text dark:text-gray-300' :
-                    msg.role === 'result' ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400' :
-                    'bg-gray-50 dark:bg-gray-800/50 text-mc-muted dark:text-gray-400'
-                  )}>
-                    <span className="font-medium text-[10px] uppercase text-mc-dim mr-1.5">{msg.role}</span>
-                    <span className="whitespace-pre-wrap">{msg.content}</span>
+                  <div key={i} className="text-xs px-3 py-2 rounded-lg bg-mc-subtle ring-1 ring-mc-line">
+                    <span className="font-medium text-2xs uppercase text-mc-dim mr-1.5">{msg.role}</span>
+                    <span className="whitespace-pre-wrap text-mc-secondary">{msg.content}</span>
                   </div>
                 ))}
               </div>
@@ -116,318 +90,186 @@ function RunRow({ run, isExpanded, onToggle }: { run: RunDetail; isExpanded: boo
   );
 }
 
+function Stat({ label, value, tone }: { label: string; value: React.ReactNode; tone?: 'good' | 'warn' }) {
+  return (
+    <div>
+      <div className="text-2xs text-mc-muted uppercase tracking-wider">{label}</div>
+      <div className={clsx('text-sm font-medium mt-0.5 tabular-nums',
+        tone === 'good' ? 'text-emerald-600 dark:text-emerald-400' : tone === 'warn' ? 'text-amber-600 dark:text-amber-400' : 'text-mc-text')}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
 export default function AgentsPage() {
-  const [agents, setAgents] = useState<api.Agent[]>([]);
+  const { agents, loaded, refresh, tick } = useWorkspace();
   const [analytics, setAnalytics] = useState<api.AgentAnalytics | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
-  const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const [detailedRuns, setDetailedRuns] = useState<RunDetail[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [runs, setRuns] = useState<RunDetail[]>([]);
   const [expandedRun, setExpandedRun] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [starting, setStarting] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
+  useEffect(() => { api.agents.analytics().then(setAnalytics).catch(() => {}); }, [tick]);
+
+  useEffect(() => {
+    if (!selectedId && agents.length) setSelectedId((agents.find((a) => a.status !== 'disabled') ?? agents[0]).id);
+  }, [agents, selectedId]);
+
+  const loadRuns = useCallback(() => {
+    if (!selectedId) return;
+    api.agents.runs(selectedId, 20).then((r) => setRuns(r as RunDetail[])).catch(() => {});
+  }, [selectedId]);
+
+  useEffect(() => { loadRuns(); }, [loadRuns, tick]);
+
+  const selected = agents.find((a) => a.id === selectedId) ?? null;
+  const stats = analytics?.agents.find((a) => a.agent_id === selectedId);
+  const totals = analytics?.totals;
+  const running = agents.filter((a) => a.status === 'running').length;
+
+  const trigger = async (a: api.Agent) => {
+    setStarting(a.id);
     try {
-      const [a, an] = await Promise.all([api.agents.list(), api.agents.analytics().catch(() => null)]);
-      setAgents(a);
-      setAnalytics(an);
-      // Clear running IDs for agents that are no longer running
-      setRunningIds((prev) => {
-        const stillRunning = new Set<string>();
-        for (const agent of a) {
-          if (agent.status === 'running' && prev.has(agent.id)) {
-            stillRunning.add(agent.id);
-          }
-        }
-        return stillRunning;
-      });
-    } catch {} finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { loadData(); }, [loadData]);
-
-  // Poll faster (5s) when agents are running, otherwise 15s
-  useEffect(() => {
-    const hasRunning = agents.some((a) => a.status === 'running') || runningIds.size > 0;
-    const interval = hasRunning ? 5000 : 15000;
-    const i = setInterval(loadData, interval);
-    return () => clearInterval(i);
-  }, [loadData, agents, runningIds]);
-
-  // Load detailed runs when agent is selected
-  useEffect(() => {
-    if (!selectedAgent) { setDetailedRuns([]); return; }
-    api.agents.runs(selectedAgent, 20).then((runs) => setDetailedRuns(runs as RunDetail[])).catch(() => {});
-  }, [selectedAgent, agents]);
-
-  // WebSocket for live agent status updates
-  useEffect(() => {
-    const ws = api.connectWebSocket((event) => {
-      if (event.type === 'agent.started' || event.type === 'agent.completed' || event.type === 'agent.failed') {
-        loadData();
-        // Reload runs if this is the selected agent
-        if (selectedAgent && event.data?.agent_id === selectedAgent) {
-          api.agents.runs(selectedAgent, 20).then((runs) => setDetailedRuns(runs as RunDetail[])).catch(() => {});
-        }
-      }
-    });
-    return () => { ws?.close(); };
-  }, [loadData, selectedAgent]);
-
-  const triggerAgent = async (id: string) => {
-    const agent = agents.find((a) => a.id === id);
-    if (!agent) return;
-
-    // Optimistic: show running state immediately
-    setRunningIds((prev) => new Set(prev).add(id));
-    setAgents((prev) => prev.map((a) => a.id === id ? { ...a, status: 'running' as const } : a));
-
-    try {
-      await api.agents.run(id);
-      setToast({ message: `${agent.name} started`, type: 'success' });
+      await api.agents.run(a.id);
+      setToast({ message: `${agentDisplay(a.name).name} started`, type: 'success' });
     } catch (err) {
-      // Rollback
-      setRunningIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
-      setAgents((prev) => prev.map((a) => a.id === id ? { ...a, status: 'idle' as const } : a));
-      setToast({ message: `Failed to start ${agent.name}: ${err instanceof Error ? err.message : 'Unknown error'}`, type: 'error' });
+      setToast({ message: err instanceof Error ? err.message : 'Could not start', type: 'error' });
+    } finally {
+      setStarting(null);
+      refresh();
     }
   };
 
-  const stopAgent = async (id: string) => {
-    try {
-      await api.agents.stop(id);
-      setRunningIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
-      loadData();
-    } catch {}
+  const stop = async (a: api.Agent) => {
+    await api.agents.stop(a.id).catch(() => {});
+    refresh();
   };
 
-  const handleExpandRun = async (run: RunDetail) => {
-    if (expandedRun === run.id) {
-      setExpandedRun(null);
-      return;
-    }
+  const expandRun = async (run: RunDetail) => {
+    if (expandedRun === run.id) { setExpandedRun(null); return; }
     setExpandedRun(run.id);
-    // Lazy-load transcript if not yet fetched
-    if (!run.transcript && selectedAgent) {
+    if (!run.transcript && selectedId) {
       try {
-        const detail = await api.agents.runDetail(selectedAgent, run.id);
-        setDetailedRuns((prev) => prev.map((r) =>
-          r.id === run.id ? { ...r, transcript: (detail as unknown as RunDetail).transcript } : r
-        ));
+        const detail = await api.agents.runDetail(selectedId, run.id);
+        setRuns((prev) => prev.map((r) => (r.id === run.id ? { ...r, transcript: detail.transcript } : r)));
       } catch {}
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-mc-bg dark:bg-gray-950 flex items-center justify-center">
-        <Loader2 size={24} className="text-mc-accent animate-spin" />
-      </div>
-    );
-  }
-
-  const totals = analytics?.totals;
-  const selected = selectedAgent ? agents.find((a) => a.id === selectedAgent) : null;
-  const selectedAnalytics = analytics?.agents.find((a: { agent_id: string }) => a.agent_id === selectedAgent);
+  const dailyCosts = stats ? Object.entries(stats.daily_costs).slice(-14) : [];
+  const maxCost = Math.max(...dailyCosts.map(([, c]) => c), 0.01);
 
   return (
-    <Tooltip.Provider delayDuration={200}>
-      <div className="min-h-screen bg-mc-bg dark:bg-gray-950 transition-colors">
-        {toast && <Toast message={toast.message} type={toast.type} onDone={() => setToast(null)} />}
+    <Tooltip.Provider delayDuration={150}>
+      {toast && <Toast message={toast.message} type={toast.type} onDone={() => setToast(null)} />}
+      <PageHeader
+        title="Agents"
+        subtitle={`${agents.length} agents · ${running} running${totals ? ` · $${totals.total_cost_usd.toFixed(2)} in the last ${analytics?.days} days` : ''}`}
+        actions={<Link href="/agents/new"><Button variant="primary" icon={Plus}>New agent</Button></Link>}
+      />
 
-        <header className="px-4 sm:px-6 lg:px-8 py-3 bg-white dark:bg-gray-900 border-b border-mc-border dark:border-gray-800 sticky top-0 z-30">
-          <div className="max-w-[1600px] mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Zap size={18} className="text-mc-accent" />
-              <h1 className="text-base font-bold text-mc-text dark:text-gray-100">Agents</h1>
-              <span className="text-xs text-mc-dim">{agents.length} configured</span>
-            </div>
-            <Link href="/agents/new" className="flex items-center gap-1.5 px-3 py-1.5 bg-mc-accent text-white text-sm rounded-lg hover:bg-blue-700 transition-colors">
-              <Plus size={14} /> Create Agent
-            </Link>
+      {!loaded ? (
+        <div className="py-24 flex justify-center"><Spinner size={20} /></div>
+      ) : agents.length === 0 ? (
+        <EmptyState icon={Bot} message="No agents yet. Add a YAML file to backend/skills/ or create one here." />
+      ) : (
+        <main className="max-w-[1400px] mx-auto px-4 sm:px-8 py-6 grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6">
+          {/* List */}
+          <div className="flex flex-col gap-0.5">
+            {agents.map((a) => {
+              const d = agentDisplay(a.name);
+              return (
+                <button
+                  key={a.id}
+                  onClick={() => { setSelectedId(a.id); setExpandedRun(null); }}
+                  className={clsx(
+                    'flex items-center gap-3 px-3 h-14 rounded-lg text-left transition-colors cursor-pointer',
+                    a.id === selectedId ? 'bg-mc-panel ring-1 ring-mc-line shadow-card' : 'hover:bg-mc-hover/60',
+                    a.status === 'disabled' && 'opacity-50',
+                  )}
+                >
+                  <Avatar name={a.name} size={30} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-mc-text truncate">{d.name}</p>
+                    <p className="text-xs text-mc-muted truncate">{d.role || a.agent_type}</p>
+                  </div>
+                  <StatusIndicator status={a.status} />
+                </button>
+              );
+            })}
           </div>
-        </header>
 
-        <main className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          {/* Overview stats */}
-          {totals && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-              <Card className="p-4 text-center">
-                <div className="text-xl font-bold text-mc-text dark:text-gray-100">{totals.total_runs}</div>
-                <div className="text-[11px] text-mc-dim">Total Runs</div>
-              </Card>
-              <Card className="p-4 text-center">
-                <div className={clsx('text-xl font-bold', totals.overall_success_rate >= 80 ? 'text-emerald-600' : 'text-amber-600')}>
-                  {Math.round(totals.overall_success_rate)}%
+          {/* Detail */}
+          {selected && (
+            <div className="space-y-5 min-w-0 animate-fade-up" key={selected.id}>
+              <Card className="p-5">
+                <div className="flex items-start gap-4">
+                  <Avatar name={selected.name} size={44} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="text-lg font-semibold text-mc-text">{agentDisplay(selected.name).name}</h2>
+                      <span className="text-sm text-mc-muted">{agentDisplay(selected.name).role}</span>
+                      <Badge variant={selected.status === 'running' ? 'success' : selected.status === 'error' ? 'error' : 'default'}>
+                        {selected.status === 'error' ? 'last run failed' : selected.status}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-mc-muted mt-1">{selected.description}</p>
+                  </div>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <Link href={`/agents/${selected.id}/edit`}><Button icon={Pencil}>Edit</Button></Link>
+                    {selected.status === 'running'
+                      ? <Button variant="danger" icon={Square} onClick={() => stop(selected)}>Stop</Button>
+                      : <Button variant="primary" icon={Play} loading={starting === selected.id} disabled={selected.status === 'disabled'} onClick={() => trigger(selected)}>Run now</Button>}
+                  </div>
                 </div>
-                <div className="text-[11px] text-mc-dim">Success Rate</div>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mt-5 pt-4 border-t border-mc-line">
+                  <Stat label="Schedule" value={scheduleLabel(selected)} />
+                  <Stat label="Model" value={<span className="font-mono text-xs">{selected.model.replace('claude-', '')}</span>} />
+                  <Stat label="Last run" value={timeAgo(selected.last_run_at)} />
+                  <Stat label={`Runs · ${analytics?.days ?? 30}d`} value={
+                    stats ? <>{stats.total_runs} <span className={clsx('text-xs', stats.success_rate >= 80 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600')}>({Math.round(stats.success_rate)}% ok)</span></> : '0'
+                  } />
+                  <Stat label={`Cost · ${analytics?.days ?? 30}d`} value={`$${(stats?.total_cost_usd ?? 0).toFixed(3)}`} />
+                </div>
               </Card>
-              <Card className="p-4 text-center">
-                <div className="text-xl font-bold text-mc-text dark:text-gray-100 font-mono">${totals.total_cost_usd.toFixed(2)}</div>
-                <div className="text-[11px] text-mc-dim">Total Cost</div>
-              </Card>
-              <Card className="p-4 text-center">
-                <div className="text-xl font-bold text-mc-accent">{agents.filter((a) => a.status === 'running').length}</div>
-                <div className="text-[11px] text-mc-dim">Running Now</div>
+
+              {dailyCosts.length > 0 && (
+                <Card className="p-5">
+                  <div className="flex items-baseline justify-between mb-3">
+                    <h3 className="text-sm font-medium text-mc-text">Daily cost</h3>
+                    <span className="text-2xs text-mc-dim">as reported by the Agent SDK</span>
+                  </div>
+                  <div className="flex items-end gap-1.5 h-24">
+                    {dailyCosts.map(([day, cost]) => (
+                      <Tooltip.Root key={day}>
+                        <Tooltip.Trigger asChild>
+                          <div className="flex-1 max-w-10 rounded-t bg-mc-accent/70 hover:bg-mc-accent transition-colors" style={{ height: `${Math.max(4, (cost / maxCost) * 96)}px` }} />
+                        </Tooltip.Trigger>
+                        <Tooltip.Content className="bg-mc-text text-mc-panel text-xs px-2 py-1 rounded-md" sideOffset={4}>
+                          {day} · ${cost.toFixed(4)}
+                        </Tooltip.Content>
+                      </Tooltip.Root>
+                    ))}
+                  </div>
+                </Card>
+              )}
+
+              <Card className="overflow-hidden">
+                <div className="flex items-center justify-between px-4 h-11 border-b border-mc-line">
+                  <h3 className="text-sm font-medium text-mc-text">Recent runs</h3>
+                  <span className="text-2xs text-mc-dim">click a run for its output and transcript</span>
+                </div>
+                {runs.slice(0, 15).map((r) => (
+                  <RunRow key={r.id} run={r} isExpanded={expandedRun === r.id} onToggle={() => expandRun(r)} />
+                ))}
+                {runs.length === 0 && <EmptyState icon={Play} message="No runs yet" small />}
               </Card>
             </div>
           )}
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Agent List */}
-            <div className="flex flex-col gap-2">
-              <h2 className="text-xs font-semibold text-mc-dim uppercase tracking-wide mb-1">All Agents</h2>
-              {agents.map((a) => {
-                const isSelected = selectedAgent === a.id;
-                const agentAnalytics = analytics?.agents.find((an: { agent_id: string }) => an.agent_id === a.id);
-                const isStarting = runningIds.has(a.id) && a.status !== 'running';
-                return (
-                  <button
-                    key={a.id}
-                    onClick={() => setSelectedAgent(isSelected ? null : a.id)}
-                    className={clsx(
-                      'w-full text-left p-3.5 rounded-xl border transition-all cursor-pointer bg-white dark:bg-gray-900',
-                      isSelected
-                        ? 'border-mc-accent shadow-md ring-2 ring-mc-accent/10'
-                        : 'border-mc-border dark:border-gray-800 hover:shadow-card-hover'
-                    )}
-                  >
-                    <div className="flex items-center gap-2.5 mb-1.5">
-                      <StatusIndicator status={a.status} />
-                      <span className="text-sm font-semibold text-mc-text dark:text-gray-100 truncate flex-1">{a.name}</span>
-                      <Link
-                        href={`/agents/${a.id}/edit`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-mc-muted hover:text-mc-text dark:hover:text-gray-300 transition-colors"
-                      >
-                        <Pencil size={14} />
-                      </Link>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); a.status === 'running' ? stopAgent(a.id) : triggerAgent(a.id); }}
-                        disabled={isStarting}
-                        className={clsx(
-                          'w-7 h-7 rounded-lg flex items-center justify-center transition-all cursor-pointer border',
-                          a.status === 'running'
-                            ? 'bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800 text-red-600 hover:bg-red-100'
-                            : 'bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-800 text-emerald-600 hover:bg-emerald-100',
-                          isStarting && 'opacity-60'
-                        )}
-                      >
-                        {isStarting ? <Loader2 size={12} className="animate-spin" /> :
-                         a.status === 'running' ? <Square size={12} /> : <Play size={12} />}
-                      </button>
-                    </div>
-                    {a.status === 'running' && (
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="flex-1 h-1 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                          <div className="h-full bg-mc-accent rounded-full animate-pulse" style={{ width: '60%' }} />
-                        </div>
-                        <span className="text-[10px] text-mc-accent font-medium">Running</span>
-                      </div>
-                    )}
-                    <p className="text-xs text-mc-muted dark:text-gray-500 truncate mb-2">{a.description}</p>
-                    <div className="flex items-center gap-2 text-[11px] text-mc-dim">
-                      <Badge variant={a.agent_type === 'research' ? 'purple' : a.agent_type === 'ops' ? 'blue' : 'default'}>{a.agent_type}</Badge>
-                      <span className="font-mono">{a.model}</span>
-                      {agentAnalytics && <span className="ml-auto font-mono">${agentAnalytics.total_cost_usd.toFixed(3)}</span>}
-                    </div>
-                  </button>
-                );
-              })}
-              {agents.length === 0 && <EmptyState icon={Zap} message="No agents configured" />}
-            </div>
-
-            {/* Agent Detail */}
-            <div className="lg:col-span-2">
-              {selected ? (
-                <div className="flex flex-col gap-4">
-                  <div className="flex items-center gap-3 mb-2">
-                    <StatusIndicator status={selected.status} />
-                    <h2 className="text-lg font-bold text-mc-text dark:text-gray-100">{selected.name}</h2>
-                    <Badge>{selected.agent_type}</Badge>
-                    <span className="text-xs text-mc-dim font-mono ml-auto">{selected.model}</span>
-                  </div>
-                  <p className="text-sm text-mc-muted dark:text-gray-400">{selected.description}</p>
-
-                  {/* Schedule info */}
-                  <Card className="p-4">
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
-                      <div>
-                        <Clock size={16} className="text-mc-muted mx-auto mb-1" />
-                        <div className="text-sm font-semibold text-mc-text dark:text-gray-100">{selected.schedule_type || 'manual'}</div>
-                        <div className="text-[11px] text-mc-dim">{selected.schedule_value || 'On demand'}</div>
-                      </div>
-                      <div>
-                        <Activity size={16} className="text-mc-muted mx-auto mb-1" />
-                        <div className="text-sm font-semibold text-mc-text dark:text-gray-100">{selectedAnalytics?.total_runs || 0}</div>
-                        <div className="text-[11px] text-mc-dim">Total Runs</div>
-                      </div>
-                      <div>
-                        <TrendingUp size={16} className="text-mc-muted mx-auto mb-1" />
-                        <div className={clsx('text-sm font-semibold', (selectedAnalytics?.success_rate ?? 100) >= 80 ? 'text-emerald-600' : 'text-amber-600')}>
-                          {Math.round(selectedAnalytics?.success_rate ?? 100)}%
-                        </div>
-                        <div className="text-[11px] text-mc-dim">Success Rate</div>
-                      </div>
-                      <div>
-                        <DollarSign size={16} className="text-mc-muted mx-auto mb-1" />
-                        <div className="text-sm font-semibold text-mc-text dark:text-gray-100 font-mono">
-                          ${(selectedAnalytics?.total_cost_usd ?? 0).toFixed(3)}
-                        </div>
-                        <div className="text-[11px] text-mc-dim">Total Cost</div>
-                      </div>
-                    </div>
-                  </Card>
-
-                  {/* Daily cost chart */}
-                  {selectedAnalytics && Object.keys(selectedAnalytics.daily_costs).length > 0 && (
-                    <Card className="p-4">
-                      <h3 className="text-sm font-semibold text-mc-text dark:text-gray-100 mb-3">Daily Cost (14d)</h3>
-                      <div className="flex items-end gap-1 h-24">
-                        {Object.entries(selectedAnalytics.daily_costs).slice(-14).map(([day, cost]) => {
-                          const costNum = cost as number;
-                          const maxCost = Math.max(...(Object.values(selectedAnalytics.daily_costs) as number[]), 0.01);
-                          const h = Math.max(4, (costNum / maxCost) * 96);
-                          return (
-                            <Tooltip.Root key={day}>
-                              <Tooltip.Trigger asChild>
-                                <div className="flex-1 rounded-t bg-mc-accent/60 dark:bg-blue-500/40 hover:bg-mc-accent transition-colors cursor-default" style={{ height: `${h}px` }} />
-                              </Tooltip.Trigger>
-                              <Tooltip.Content className="bg-mc-text text-white text-xs px-2 py-1 rounded-md" sideOffset={5}>
-                                {day}: ${costNum.toFixed(4)}
-                              </Tooltip.Content>
-                            </Tooltip.Root>
-                          );
-                        })}
-                      </div>
-                    </Card>
-                  )}
-
-                  {/* Recent runs with expandable details */}
-                  <Card className="p-4">
-                    <h3 className="text-sm font-semibold text-mc-text dark:text-gray-100 mb-3">Recent Runs</h3>
-                    <div className="flex flex-col">
-                      {detailedRuns.slice(0, 15).map((r) => (
-                        <RunRow
-                          key={r.id}
-                          run={r}
-                          isExpanded={expandedRun === r.id}
-                          onToggle={() => handleExpandRun(r)}
-                        />
-                      ))}
-                      {detailedRuns.length === 0 && <span className="text-xs text-mc-dim py-2">No runs yet</span>}
-                    </div>
-                  </Card>
-                </div>
-              ) : (
-                <div className="flex items-center justify-center h-64">
-                  <EmptyState icon={Zap} message="Select an agent to see details" />
-                </div>
-              )}
-            </div>
-          </div>
         </main>
-      </div>
+      )}
     </Tooltip.Provider>
   );
 }

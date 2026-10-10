@@ -193,14 +193,16 @@ Agents answer in JSON with a `summary` and a list of `actions`. Each agent works
 
 ## Dashboard
 
-The dashboard is a small Next.js app for overview and management:
+The dashboard is a Next.js app for overview and management, in light and dark mode. The sidebar lists your projects; **⌘K** opens a command menu that searches everything and turns what you type into a task, optionally handed straight to an agent.
 
 | Page | What's there |
 |------|--------------|
-| **Overview** (`/`) | Tasks, Needs your review, projects, agents, notes, and content drafts. Clicking a task opens its thread, where you can assign an agent, reply, set the project, or **Send to Claude Code**. You can add and edit projects here, including their GitHub repo |
-| **Agents** (`/agents`) | Agent list, run/stop, recent runs with cost and transcripts, and the agent builder (create/edit) |
-| **Notes** (`/notes`) | Markdown notes |
-| **Settings** (`/settings`) | Brand profile and Telegram notification preferences |
+| **Home** (`/`) | Today view: what needs you (approvals, questions from agents, drafts), work delegated to agents, your own tasks, and an activity feed of agent replies |
+| **Tasks** (`/tasks`) | Board by status (To do · In progress · Waiting on you · Done) with drag and drop, filters (mine, delegated, leads) and per-project views |
+| **Task sheet** | Opens from anywhere: status, priority, assignee, project, **Send to Claude Code**, and the thread with the agent (rendered markdown) |
+| **Agents** (`/agents`) | Agents with run/stop, 30-day runs, success rate and cost, run output and transcripts, and the agent builder |
+| **Notes** (`/notes`) | Two-pane markdown notes with autosave |
+| **Settings** (`/settings`) | Connection status, brand profile, Telegram notification preferences |
 
 ---
 

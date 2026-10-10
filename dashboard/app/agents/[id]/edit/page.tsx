@@ -42,9 +42,9 @@ function DryRunPanel({ agentId }: { agentId: string }) {
   };
 
   return (
-    <div className="border-t border-mc-border dark:border-gray-800 pt-6 mt-2">
+    <div className="border-t border-mc-border pt-6 mt-2">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-bold text-mc-text dark:text-gray-100 flex items-center gap-2">
+        <h2 className="text-sm font-bold text-mc-text flex items-center gap-2">
           <Play size={14} className="text-mc-accent" />
           Test Run
         </h2>
@@ -52,8 +52,8 @@ function DryRunPanel({ agentId }: { agentId: string }) {
           onClick={handleDryRun}
           disabled={running}
           className={clsx(
-            'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white rounded-lg transition-colors cursor-pointer',
-            running ? 'bg-mc-accent/60 cursor-not-allowed' : 'bg-mc-accent hover:bg-blue-700',
+            'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-mc-accent-fg rounded-lg transition-colors cursor-pointer',
+            running ? 'bg-mc-accent/60 cursor-not-allowed' : 'bg-mc-accent hover:bg-mc-accent-hover',
           )}
         >
           {running ? (
@@ -74,19 +74,19 @@ function DryRunPanel({ agentId }: { agentId: string }) {
         <Card className="overflow-hidden">
           <button
             onClick={() => setExpanded(!expanded)}
-            className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-mc-text dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors cursor-pointer"
+            className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-mc-text hover:bg-mc-hover transition-colors cursor-pointer"
           >
             <span>Dry Run Result</span>
             {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </button>
 
           {expanded && (
-            <div className="px-4 pb-4 space-y-4 border-t border-mc-border dark:border-gray-800">
+            <div className="px-4 pb-4 space-y-4 border-t border-mc-border">
               {/* Model */}
               {result.model && (
                 <div className="pt-3">
                   <div className="text-[11px] font-semibold text-mc-dim uppercase tracking-wide mb-1">Model</div>
-                  <div className="text-sm text-mc-text dark:text-gray-200 font-mono">{result.model}</div>
+                  <div className="text-sm text-mc-text font-mono">{result.model}</div>
                 </div>
               )}
 
@@ -94,7 +94,7 @@ function DryRunPanel({ agentId }: { agentId: string }) {
               {result.prompt_length !== undefined && (
                 <div>
                   <div className="text-[11px] font-semibold text-mc-dim uppercase tracking-wide mb-1">Prompt Length</div>
-                  <div className="text-sm text-mc-text dark:text-gray-200 font-mono">
+                  <div className="text-sm text-mc-text font-mono">
                     {result.prompt_length.toLocaleString()} chars
                   </div>
                 </div>
@@ -108,7 +108,7 @@ function DryRunPanel({ agentId }: { agentId: string }) {
                     {result.context_keys.map((key) => (
                       <span
                         key={key}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 bg-mc-accent/5 dark:bg-blue-950/50 border border-mc-accent/20 dark:border-blue-800 rounded text-[11px] font-mono text-mc-accent dark:text-blue-400"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 bg-mc-accent/5 border border-mc-accent/20 rounded text-[11px] font-mono text-mc-accent"
                       >
                         {key}
                         {result.context_sizes?.[key] !== undefined && (
@@ -130,7 +130,7 @@ function DryRunPanel({ agentId }: { agentId: string }) {
                     {result.tools.map((tool) => (
                       <span
                         key={tool}
-                        className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 border border-mc-border dark:border-gray-700 rounded text-[11px] font-mono text-mc-muted dark:text-gray-400"
+                        className="px-2 py-0.5 bg-mc-subtle border border-mc-border rounded text-[11px] font-mono text-mc-muted"
                       >
                         {tool}
                       </span>
@@ -143,7 +143,7 @@ function DryRunPanel({ agentId }: { agentId: string }) {
               {result.prompt_preview && (
                 <div>
                   <div className="text-[11px] font-semibold text-mc-dim uppercase tracking-wide mb-2">Prompt Preview</div>
-                  <pre className="text-xs text-mc-text dark:text-gray-300 bg-gray-50 dark:bg-gray-900 border border-mc-border dark:border-gray-700 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap font-mono leading-relaxed max-h-64">
+                  <pre className="text-xs text-mc-text bg-mc-subtle border border-mc-border rounded-lg p-3 overflow-x-auto whitespace-pre-wrap font-mono leading-relaxed max-h-64">
                     <code>{result.prompt_preview}</code>
                   </pre>
                 </div>
@@ -178,11 +178,11 @@ export default function EditAgentPage() {
   }, [id]);
 
   return (
-    <div className="min-h-screen bg-mc-bg dark:bg-gray-950 transition-colors">
-      <header className="px-4 sm:px-6 lg:px-8 py-3 bg-white dark:bg-gray-900 border-b border-mc-border dark:border-gray-800 sticky top-0 z-30">
+    <div className="min-h-screen bg-mc-bg transition-colors">
+      <header className="px-4 sm:px-6 lg:px-8 py-3 bg-mc-panel border-b border-mc-border sticky top-0 z-30">
         <div className="max-w-[1600px] mx-auto flex items-center gap-3">
           <Zap size={18} className="text-mc-accent" />
-          <h1 className="text-base font-bold text-mc-text dark:text-gray-100">
+          <h1 className="text-base font-bold text-mc-text">
             {loading ? 'Edit Agent' : agent ? `Edit: ${agent.name}` : 'Edit Agent'}
           </h1>
         </div>
@@ -190,7 +190,7 @@ export default function EditAgentPage() {
 
       <main className="max-w-[900px] mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24">
         {loading && (
-          <div className="flex items-center justify-center py-24 text-mc-muted dark:text-gray-400">
+          <div className="flex items-center justify-center py-24 text-mc-muted">
             <Loader2 size={20} className="animate-spin mr-2" />
             <span className="text-sm">Loading agent…</span>
           </div>
