@@ -2,183 +2,205 @@
   <img src="assets/banner.png" alt="Mission Control — Your AI-Powered Command Center" width="100%" />
 </p>
 
-<h3 align="center">Your personal AI-powered command center</h3>
-<p align="center">One PostgreSQL database. Many AI agents. One dashboard.<br/>Organize life, work, learning, and side projects from a single pane of glass.</p>
+<h3 align="center">A Telegram-first personal AI assistant</h3>
+<p align="center">Tasks, notes and a small team of AI agents, all in one database.<br/>You talk to it on Telegram. A dashboard gives you the overview.</p>
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> ·
-  <a href="docs/cost-and-requirements.md">Cost & Requirements</a> ·
-  <a href="ROADMAP.md">Roadmap</a> ·
-  <a href="CONTRIBUTING.md">Contributing</a> ·
-  <a href="#creating-agents">Agents</a>
+  <a href="#telegram">Telegram</a> ·
+  <a href="#agents">Agents</a> ·
+  <a href="docs/architecture.md">Architecture</a> ·
+  <a href="docs/creating-agents.md">Creating Agents</a> ·
+  <a href="docs/cost-and-requirements.md">Cost & Requirements</a>
 </p>
 
 ---
 
-## What is Mission Control?
+## What it does
 
-Mission Control is an open-source personal productivity system powered by AI agents. Define agents as simple YAML files, and they read from and write to your database on a schedule — triaging tasks, validating ideas, reviewing your week, scouting opportunities, and more.
+- **Captures** tasks and notes from Telegram: slash commands, plain messages, or voice notes.
+- **Delegates** work to agents. Hand any task to an agent and it works on it in the background, then replies in the task's thread and on Telegram. Reply to keep the conversation going.
+- **Hands coding work to Claude Code.** `/dev` opens a GitHub issue that mentions `@claude`, and Mission Control reports the pull request back to you.
+- **Runs agents on a schedule**, for example a Reddit scout every 12 hours or a weekly review on Sunday mornings.
+- **Helps with your personal brand.** Marketing agents find leads and draft posts for X, LinkedIn, Instagram, YouTube and your blog. You approve, post, or discard each draft.
+- **Sends a morning briefing** on Telegram at 8:00 in your timezone.
 
-**Built with:** Python/FastAPI · Next.js · PostgreSQL + pgvector · Claude Agent SDK
+It runs on your **Claude Pro/Max subscription** through the Claude Agent SDK. You don't need an Anthropic API key.
 
-### What's included (v0.6 — 99/145 features)
-
-- **10 AI agents** — Daily Standup, Reddit Scout, Idea Validator, Weekly Prioritizer, Weekly Review, Web Researcher, Code Reviewer, Opportunity Scout, Content Drafter, Competitor Monitor
-- **5-page dashboard** — Dashboard, Projects, Agents, Notes, Settings with Kanban board, calendar, timeline/Gantt, drag-and-drop, bulk actions, keyboard shortcuts
-- **4 input channels** — Telegram bot, Discord bot, MCP server (17 tools), REST API + push notifications
-- **Multi-auth** — Anthropic API, OAuth, OpenRouter, Ollama (fully local)
-- **Agent intelligence** — Memory, chaining, workflow DAGs, self-evaluation, time-aware context, conditional triggers, approval queue, auto-tagging, smart prioritization, analytics, versioning, A/B testing
-- **Agent marketplace** — Gallery with 8 categories, search, one-click install, ratings, pipeline builder
-- **Budget management** — Per-agent limits (daily/weekly/monthly), spending history, pre-run checks, alerts
-- **Productivity suite** — Notes (markdown), routines builder, calendar view, timeline/Gantt, quick capture, deduplication
-- **Platform** — Rate limiting, webhook templates, user pattern learning, detailed health diagnostics, backup/restore
-- **Full test suites** — 14 backend (pytest) + 21 frontend (Vitest) tests
+**Stack:** Python/FastAPI · Next.js · PostgreSQL or SQLite · Claude Agent SDK · python-telegram-bot
 
 ```
-┌──────────────────┐     ┌──────────────┐     ┌──────────────┐
-│  Telegram         │────▶│  Orchestrator │────▶│  Agent Pool   │
-│  Discord          │     │  (scheduler)  │     │  (10 agents)  │
-│  MCP / Claude Code│     │  + Workflows  │     │  + DAGs       │
-│  REST API         │     └──────┬───────┘     └──────┬───────┘
-│  Push Notifs      │            │                     │
-└──────────────────┘      ┌─────▼─────────────────────▼──────┐
-                          │       PostgreSQL + pgvector       │
-                          │  25 tables · event log · vectors  │
-                          └──────────────┬──────────────────┘
-                                         │
-                                  ┌──────▼──────┐
-                                  │  Dashboard   │
-                                  │  (Next.js)   │
-                                  └─────────────┘
+ Telegram ──┐                                    ┌──▶ Claude Agent SDK
+            │      ┌────────────────────────┐    │    (agents + chat)
+ Dashboard ─┼────▶ │  FastAPI backend       │────┤
+            │      │  scheduler · runner    │    └──▶ GitHub issues
+ REST API ──┘      │  Telegram bot          │         (Claude Code)
+                   └───────────┬────────────┘
+                               │
+                    PostgreSQL / SQLite
+                  (single source of truth)
 ```
 
 ---
 
 ## Quick Start
 
+You need Docker, a Claude Pro or Max subscription, and a Telegram bot token from [@BotFather](https://t.me/BotFather).
+
 ```bash
-# 1. Clone and configure
-git clone https://github.com/yourname/mission-control.git
+git clone https://github.com/ArnavPuri/mission-control.git
 cd mission-control
 cp .env.example .env
-# Edit .env with your API key
-
-# 2. Start everything
-docker compose up -d
-
-# 3. Open the dashboard
-open http://localhost:3000
 ```
 
-### Seed data for new installations
+Fill in three values in `.env`:
+
+| Variable | How to get it |
+|----------|---------------|
+| `CLAUDE_CODE_OAUTH_TOKEN` | Run `claude setup-token` (or `claude auth login`) with the Claude Code CLI |
+| `TELEGRAM_BOT_TOKEN` | Create a bot with @BotFather |
+| `TELEGRAM_ALLOWED_USERS` | Your numeric Telegram user ID. Message the bot once and it replies with your ID, or ask @userinfobot |
+
+Then start it:
 
 ```bash
-cd backend && python -m app.db.seed
+docker compose up -d                                 # PostgreSQL
+# or
+docker compose -f docker-compose.sqlite.yml up -d    # SQLite, no database container
 ```
 
-This creates example projects, tasks, habits, goals, journal entries, and notes so you can explore immediately.
+- Dashboard: http://localhost:3000
+- API: http://localhost:8000 (interactive docs at `/docs`, health check at `/health`)
+
+Prefer a guided setup? Run `./setup.sh`. It asks for the database type, token and integrations, writes `.env`, and starts the containers.
+
+The database schema is created and migrated automatically on startup. A database from an older version of Mission Control is converted once, automatically.
+
+> The dashboard and API have no login. Keep them on localhost or a private network. Telegram is protected by `TELEGRAM_ALLOWED_USERS`.
+
+### Configuration
+
+All settings live in `.env` (see `.env.example`).
+
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `CLAUDE_CODE_OAUTH_TOKEN` | yes | Claude Pro/Max subscription token used for agents and chat |
+| `TELEGRAM_BOT_TOKEN` | yes | Your Telegram bot |
+| `TELEGRAM_ALLOWED_USERS` | yes | Comma-separated Telegram user IDs. The bot rejects everyone else and tells them their ID |
+| `TELEGRAM_NOTIFICATION_CHAT_ID` | no | Where notifications go. Defaults to the first allowed user |
+| `NOTIFICATION_TIMEZONE` | no | Timezone for the 8:00 morning briefing and agent cron schedules, e.g. `Europe/Berlin` (default `UTC`) |
+| `USE_SQLITE` / `SQLITE_PATH` | no | Use SQLite instead of PostgreSQL |
+| `GITHUB_TOKEN` | no | Enables `/dev`. Needs Issues read/write on your repos |
+| `GITHUB_MENTION_CLAUDE` | no | Mention `@claude` in dev issues (default `true`) |
+| `OPENAI_API_KEY` | no | Transcribes Telegram voice messages with Whisper |
+| `DEFAULT_MODEL` / `SMART_MODEL` / `CHAT_MODEL` | no | Model defaults (Haiku for cheap agents, Sonnet for chat and smart agents) |
+| `MAX_AGENT_BUDGET_USD` | no | Default per-run budget cap for agents that don't set their own |
+| `IDENTITY_FILE` | no | Markdown file about you, injected into every agent and chat (default `workspace/identity.md`) |
 
 ---
 
-## Authentication
+## Telegram
 
-Requires a **Claude Pro/Max subscription**. No API key needed.
+Telegram is the main interface. Send a plain message and an LLM chat handles it. It can create and update tasks, create notes, delegate a task to an agent, open a dev task, or draft content. You can also use commands:
 
-```bash
-# Authenticate with Claude Code
-claude auth login
+| Command | What it does |
+|---------|--------------|
+| `/task <text>` | Add a task |
+| `/note <title>` | Create a note |
+| `/ask <agent> <request>` | Hand a task to an agent. It replies in a thread |
+| `/run <agent>` | Run an agent's scheduled job now, in the background. You get a message when it finishes |
+| `/dev <project> <request>` | Hand coding work to Claude Code via a GitHub issue |
+| `/repo <project> <owner/repo>` | Link a project to its GitHub repo |
+| `/approve` | Review pending agent actions (Approve / Reject buttons) |
+| `/drafts` | Review the latest content drafts (Approve / Posted / Discard buttons) |
+| `/leads` | Open leads found by marketing agents |
+| `/status` | Counts of projects, tasks, notes, running agents |
+| `/projects` | List projects |
+| `/agents` | Agent status, last run and its cost |
+| `/brand` | Your brand profile |
+| `/morning` | Get the morning briefing now |
+| `/help` | List commands |
 
-# Copy the token to your .env file
-# CLAUDE_CODE_OAUTH_TOKEN=<your-token>
-```
+Agents are matched by slug or by part of their name, so `/ask navigator compare Plausible and Fathom pricing` works.
 
----
-
-## Creating Agents
-
-Agents are YAML skill files in `backend/skills/`. Copy `_template.yaml` to get started:
-
-```bash
-cp backend/skills/_template.yaml backend/skills/my-agent.yaml
-```
-
-Each skill file defines:
-- **What the agent does** (prompt template with `{{context}}` variables)
-- **What data it reads** (projects, tasks, ideas, reading, habits, goals, journal)
-- **What data it writes** (create tasks, ideas, reading items, journal entries, goals)
-- **When it runs** (interval, cron, or manual trigger)
-- **Which model to use** (haiku for cheap/fast, sonnet for smart)
-- **Budget cap** per run
-- **Timeout** per execution (default 300s)
-
-See `backend/skills/` for examples: `reddit-scout.yaml`, `idea-validator.yaml`, `weekly-prioritizer.yaml`, `feedback-collector.yaml`, `daily-checkin.yaml`, `goal-decomposer.yaml`, `evening-reflection.yaml`, `weekly-review.yaml`.
+**Voice messages** are transcribed with OpenAI Whisper and handled like text. This only works when `OPENAI_API_KEY` is set.
 
 ---
 
-## Input Channels
+## Delegating work to agents
 
-### Telegram Bot
+You can assign any task to an agent with `/ask`, by asking in chat ("have the researcher look into X"), or from the task dialog in the dashboard.
 
-Set `TELEGRAM_BOT_TOKEN` in `.env`:
+1. The agent works on the task in the background, using the tools it has been granted.
+2. It posts its answer in the task's **thread** and sends it to you on Telegram.
+3. **Reply to that Telegram message**, or comment in the dashboard, to continue. Each time, the agent gets the whole thread.
+4. When the agent finishes, the task is marked done. If it needs something from you, it asks a question and the task is marked blocked ("waiting on you").
 
-```
-/task Fix the login bug
-/idea AI-powered meal planner #saas #ai
-/read Tauri 2.0 Guide https://tauri.app/guide
-/note Meeting Notes — discussed Q2 roadmap
-/status
-/run reddit-scout
-```
+If the agent is busy with another run, the task waits and the scheduler starts it as soon as the agent is free.
 
-### Discord Bot
+## Coding work with Claude Code
 
-Set `DISCORD_BOT_TOKEN` in `.env`:
+Mission Control doesn't write code itself. Instead, it hands coding work to [Claude Code on GitHub](https://github.com/apps/claude):
 
-```
-!task Deploy v2 to production
-!idea Voice-controlled dashboard
-!status
-!run weekly-prioritizer
-```
+1. Link a project to its repo with `/repo MyApp owner/myapp`, or in the dashboard project dialog.
+2. Send `/dev MyApp add a dark mode toggle`, or click **Send to Claude Code** on a task in the dashboard.
+3. Mission Control opens an issue in that repo that mentions `@claude`, and the Claude GitHub app implements it.
+4. Every 10 minutes, Mission Control checks the issue. It posts linked pull requests and the issue closing to the task thread and to Telegram.
+5. When you reply to those messages, your reply is posted as a comment on the issue.
 
-### MCP Server (Claude Code)
+This needs `GITHUB_TOKEN`, and the Claude GitHub app has to be installed on the repo.
 
-```json
-{
-  "mcpServers": {
-    "mission-control": {
-      "command": "python",
-      "args": ["-m", "app.integrations.mcp_server"],
-      "cwd": "/path/to/mission-control/backend"
-    }
-  }
-}
-```
+## Reviewing agent output
 
-### REST API
+- **Approvals.** An agent with `requires_approval: true` doesn't act on its own. It sends you a Telegram message listing what it wants to do, with **Approve** and **Reject** buttons. Pending approvals expire after 24 hours. `/approve` lists the ones that are open.
+- **Content drafts.** `/drafts` shows the latest drafts with **Approve**, **Posted** and **Discard** buttons.
+- The dashboard shows the same items in a **Needs your review** card and in the content list.
 
-API key authentication with scoped access (read/write/admin):
+## Leads and content
 
-```bash
-# Create an API key via the dashboard Settings page, then:
-curl -H "X-API-Key: mc_..." http://localhost:8000/api/tasks
-```
+Marketing agents record what they find with the `create_lead` action. A lead is a task tagged `lead`, with a link and a description. `/leads` lists the open ones. Content drafts (for X, LinkedIn, Instagram, YouTube and your blog) can reference the lead they respond to. Drafts use your **brand profile** for tone, topics and things to avoid. You set the brand profile in the dashboard settings.
+
+---
+
+## Agents
+
+Agents are YAML files in `backend/skills/`. They're loaded into the database when the backend starts. You can also create and edit agents in the dashboard's agent builder.
+
+| Agent | Model | Schedule | What it does |
+|-------|-------|----------|--------------|
+| **Ace** (Assistant) | Sonnet | manual | General-purpose assistant for delegated tasks |
+| **Navigator** (Web Researcher) | Sonnet | manual | Researches a topic and writes up findings as notes |
+| **Pulse** (Reddit Scout) | Sonnet | every 12h | Finds Reddit threads worth engaging with, and drafts replies |
+| **Radar** (Feedback Monitor) | Haiku | daily | Finds public mentions and user feedback about your projects |
+| **Scout** (Opportunity Finder) | Sonnet | every 24h | Finds freelance gigs, speaking slots and collaborations |
+| **Echo** (Content Drafts) | Sonnet | manual | Turns leads into platform-native content drafts |
+| **Atlas** (Weekly Review) | Sonnet | Sundays 10:00 | Reviews the week, re-prioritizes tasks, and writes a plan note |
+
+Any agent can be given a task with `/ask`, including the scheduled ones.
+
+To add your own agent, copy `backend/skills/_template.yaml` and restart the backend. See [docs/creating-agents.md](docs/creating-agents.md).
+
+In short, a skill file declares:
+
+- what data the agent reads (`projects`, `tasks`, `notes`, `leads`, `marketing_content`)
+- what it may write (`tasks`, `notes`, `marketing_content`)
+- which tools it gets (`web_search`, `bash`, `write`)
+- its model, budget, schedule, and prompt
+
+Agents answer in JSON with a `summary` and a list of `actions`. Each agent works in its own directory. It has per-agent memory and can see its last five runs. Run cost is recorded from what the SDK reports.
 
 ---
 
 ## Dashboard
 
-The Next.js dashboard includes 5 pages:
+The dashboard is a small Next.js app for overview and management:
 
-| Page | Features |
-|------|----------|
-| **Dashboard** | Tasks (drag-and-drop + Kanban), ideas, notes (markdown), routines, calendar, timeline/Gantt, activity heatmap, agent analytics |
-| **Projects** | Project list with health scores, per-project dashboards (tasks, goals, agents, notes) |
-| **Agents** | Agent overview, per-agent detail with schedule, cost charts, recent runs, workflow DAGs |
-| **Journal** | Timeline grouped by date, mood tracking, wins/challenges/gratitude, semantic search |
-| **Settings** | System status, API key management, GitHub repos, RSS feeds, push notifications |
-
-**Power user features:** Vim-style keyboard shortcuts (`g+d/p/a/j/s` nav, `n+t/i/o` create), command palette (`Cmd+K`), quick capture (`c`), bulk task actions, drag-and-drop reordering, dark/light mode.
+| Page | What's there |
+|------|--------------|
+| **Overview** (`/`) | Tasks, Needs your review, projects, agents, notes, and content drafts. Clicking a task opens its thread, where you can assign an agent, reply, set the project, or **Send to Claude Code**. You can add and edit projects here, including their GitHub repo |
+| **Agents** (`/agents`) | Agent list, run/stop, recent runs with cost and transcripts, and the agent builder (create/edit) |
+| **Notes** (`/notes`) | Markdown notes |
+| **Settings** (`/settings`) | Brand profile and Telegram notification preferences |
 
 ---
 
@@ -194,91 +216,45 @@ uvicorn app.main:app --reload
 cd dashboard
 npm install && npm run dev
 
-# Run tests
-cd backend && pytest          # 14 async tests
-cd dashboard && npx vitest    # 21 component + API tests
+# Tests
+cd backend && pytest
+cd dashboard && npx vitest run
 
-# Database migrations
+# Migrations (run automatically on startup)
 cd backend && alembic upgrade head
 cd backend && alembic revision --autogenerate -m "description"
 ```
 
----
+When the backend runs outside Docker, it reads `.env` from the repo root. Set `USE_SQLITE=true` for local work without PostgreSQL.
 
-## Project Structure
+## Project structure
 
 ```
 mission-control/
-├── docker-compose.yml
-├── .env.example
-├── ROADMAP.md                   # Full roadmap (65/145 features, 45%)
-├── CONTRIBUTING.md              # How to contribute
+├── docker-compose.yml          # PostgreSQL + backend + dashboard
+├── docker-compose.sqlite.yml   # backend + dashboard on SQLite
+├── setup.sh                    # interactive setup
+├── workspace/identity.md       # about you, injected into agents and chat
 ├── backend/
-│   ├── pyproject.toml
-│   ├── alembic.ini
 │   ├── app/
-│   │   ├── main.py              # FastAPI application (39 routers)
-│   │   ├── config.py            # Settings + multi-auth
-│   │   ├── db/
-│   │   │   ├── models.py        # 25 SQLAlchemy models
-│   │   │   ├── session.py       # DB connection
-│   │   │   ├── seed.py          # Example data for new installs
-│   │   │   └── migrations/      # Alembic migrations (6 versions)
-│   │   ├── api/                 # REST endpoints (39 routers)
-│   │   ├── orchestrator/        # Agent execution + scheduling + workflows + self-eval + A/B + budget
-│   │   ├── agents/              # YAML skill loader
-│   │   └── integrations/        # Telegram, Discord, MCP
-│   ├── skills/                  # Agent YAML definitions
-│   └── tests/                   # pytest async test suite
-├── dashboard/
-│   ├── app/                     # Next.js App Router (5 pages)
-│   │   ├── page.tsx             # Main dashboard
-│   │   ├── projects/page.tsx
-│   │   ├── agents/page.tsx
-│   │   ├── journal/page.tsx
-│   │   ├── settings/page.tsx
-│   │   ├── components/          # Shared components + nav
-│   │   └── lib/api.ts           # API client
-│   └── tests/                   # Vitest test suite
-└── assets/
-    └── banner.svg
+│   │   ├── main.py             # FastAPI app; starts scheduler, Telegram bot, notifier
+│   │   ├── config.py           # settings from .env
+│   │   ├── api/                # REST endpoints under /api
+│   │   ├── db/                 # models, Alembic migrations, startup migration
+│   │   ├── orchestrator/       # runner, scheduler, task threads, approvals/drafts
+│   │   ├── integrations/       # Telegram bot, chat, commands, GitHub
+│   │   ├── notifications/      # Telegram delivery + morning briefing
+│   │   └── agents/             # YAML skill loader
+│   ├── skills/                 # agent YAML files
+│   └── tests/
+└── dashboard/
+    ├── app/                    # Next.js App Router pages + components
+    └── tests/
 ```
-
----
-
-## Roadmap
-
-See [ROADMAP.md](ROADMAP.md) for the full roadmap. Current progress: **99/145 features (68%)**.
-
-| Phase | Progress |
-|-------|----------|
-| Foundation Hardening | 87% |
-| Intelligence Layer | **100%** |
-| Personal Productivity | 65% |
-| Dashboard 2.0 | **100%** |
-| Integrations | 50% |
-| Multi-Agent Intelligence | **100%** |
-| Privacy & Scale | 0% |
-| Mobile & Desktop | 0% |
-| Community | 0% |
-
----
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. The easiest way to contribute is creating new YAML agent skill files — no backend code needed.
-
----
-
-## Design Principles
-
-1. **Database is truth** — All state lives in PostgreSQL. No hidden state.
-2. **Agents are config** — YAML files, not code. Anyone can create one.
-3. **Human in the loop** — AI suggests, humans decide. No irreversible action without approval.
-4. **Local first** — Works fully offline with Ollama. Cloud is optional.
-5. **Simple over clever** — Ship it, then improve.
-6. **Open by default** — Open source, open APIs, open formats. No lock-in.
-7. **Privacy by design** — No telemetry, no analytics, no tracking.
+See [CONTRIBUTING.md](CONTRIBUTING.md). The easiest contribution is a new agent YAML file, which needs no backend code.
 
 ## License
 
