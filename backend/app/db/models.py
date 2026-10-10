@@ -15,7 +15,7 @@ from sqlalchemy import (
     BigInteger, Column, String, Text, Boolean, Float, Integer, Uuid,
     DateTime, ForeignKey, Enum, JSON, Index,
 )
-from sqlalchemy.orm import DeclarativeBase, relationship
+from sqlalchemy.orm import DeclarativeBase, relationship, validates
 
 
 class Base(DeclarativeBase):
@@ -123,6 +123,11 @@ class Task(Base):
     source = Column(String(50), default="manual")
     tags = Column(JSON, default=list)
     due_date = Column(DateTime(timezone=True), nullable=True)
+    # When to ping you on Telegram; reminded_at is when it was last sent
+    remind_at = Column(DateTime(timezone=True), nullable=True)
+    reminded_at = Column(DateTime(timezone=True), nullable=True)
+    # "daily" | "weekdays" | "weekly" | "monthly": completing the task creates the next one
+    recurrence = Column(String(20), nullable=True)
     sort_order = Column(Integer, default=0)
     completed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=_now)
@@ -135,7 +140,15 @@ class Task(Base):
         Index("idx_tasks_status", "status"),
         Index("idx_tasks_priority", "priority"),
         Index("idx_tasks_project", "project_id"),
+        Index("idx_tasks_remind_at", "remind_at"),
     )
+
+    @validates("due_date", "remind_at", "reminded_at", "completed_at")
+    def _to_utc(self, key, value):
+        # SQLite keeps the wall-clock time and drops the offset, so store UTC
+        if isinstance(value, datetime) and value.tzinfo:
+            return value.astimezone(timezone.utc)
+        return value
 
 
 class TaskComment(Base):

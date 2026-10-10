@@ -29,6 +29,7 @@ from app.api.brand import get_notification_prefs_dict
 from app.api.ws import broadcast
 from app.api.notifications import create_notification
 from app.orchestrator.schemas import validate_agent_output
+from app.orchestrator.reminders import complete_task
 
 logger = logging.getLogger(__name__)
 
@@ -530,8 +531,12 @@ class AgentRunner:
             if not task:
                 raise ValueError(f"task {action.get('task_id')} not found")
             if action.get("status"):
-                task.status = _enum(TaskStatus, action["status"])
-                task.completed_at = datetime.now(timezone.utc) if task.status == TaskStatus.DONE else None
+                status = _enum(TaskStatus, action["status"])
+                if status == TaskStatus.DONE and task.status != TaskStatus.DONE:
+                    await complete_task(db, task, source=f"agent:{agent.slug}")
+                elif status != TaskStatus.DONE:
+                    task.status = status
+                    task.completed_at = None
             if action.get("priority"):
                 task.priority = _enum(TaskPriority, action["priority"])
 

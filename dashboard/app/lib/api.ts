@@ -63,6 +63,8 @@ export const projects = {
 
 // --- Tasks ---
 
+export type Recurrence = 'daily' | 'weekdays' | 'weekly' | 'monthly';
+
 export interface Task {
   id: string;
   text: string;
@@ -79,7 +81,13 @@ export interface Task {
   assigned_agent_name?: string | null;
   source: string;
   tags: string[];
-  due_date?: string;
+  /** End of the day it's due (overdue once that day is over) */
+  due_date?: string | null;
+  /** When to send a Telegram reminder; reminded_at is when one was last sent */
+  remind_at?: string | null;
+  reminded_at?: string | null;
+  /** Completing a repeating task creates the next one */
+  recurrence?: Recurrence | null;
   completed_at?: string | null;
   created_at: string;
 }
@@ -104,7 +112,7 @@ export const tasks = {
     return request<Task[]>(`/api/tasks${qs ? '?' + qs : ''}`);
   },
   create: (data: Partial<Task>) => request<{ id: string }>('/api/tasks', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: string, data: Partial<Task>) => request<{ updated: boolean }>(`/api/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<Task>) => request<{ updated: boolean; next_id: string | null }>(`/api/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (id: string) => request<{ deleted: boolean }>(`/api/tasks/${id}`, { method: 'DELETE' }),
   get: (id: string) => request<TaskDetail>(`/api/tasks/${id}`),
   /** Assign to an agent (it starts working right away), or pass null to unassign. */

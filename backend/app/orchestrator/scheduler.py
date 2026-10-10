@@ -20,7 +20,9 @@ from app.config import settings
 from app.db.session import async_session
 from app.db.models import AgentConfig, AgentStatus
 from app.orchestrator.runner import start_background_run
+from app.orchestrator.reminders import send_due_reminders
 from app.orchestrator.threads import pending_assignments
+from app.api.ws import broadcast
 from app.integrations import github
 from app.db import backup
 
@@ -125,6 +127,10 @@ class Scheduler:
                 await self._check_schedules()
             except Exception as e:
                 logger.error(f"Scheduler error: {e}")
+            try:
+                await self._send_reminders()
+            except Exception as e:
+                logger.error(f"Reminder error: {e}")
             self._ticks += 1
             if github.configured() and self._ticks % self.github_sync_every == 0:
                 try:
@@ -134,6 +140,14 @@ class Scheduler:
                     logger.error(f"GitHub sync error: {e}")
             await self._maybe_backup()
             await asyncio.sleep(self.check_interval)
+
+    async def _send_reminders(self):
+        async with async_session() as db:
+            sent = await send_due_reminders(db)
+            await db.commit()
+        if sent:
+            logger.info(f"Sent {sent} reminder{'s' if sent != 1 else ''}")
+            await broadcast("task.updated", {"reminders": sent})
 
     async def _maybe_backup(self):
         if self._last_backup_day is None:

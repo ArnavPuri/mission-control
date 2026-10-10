@@ -4,17 +4,22 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
-  ArrowUp, Check, ChevronDown, ExternalLink, FolderOpen, GitPullRequest, Link2, MoreHorizontal, Trash2, X,
+  ArrowUp, Check, ChevronDown, ExternalLink, FolderOpen, GitPullRequest, Link2, MoreHorizontal, Repeat, Trash2, X,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import * as api from '../lib/api';
 import { Markdown } from './markdown';
+import { DuePicker, ReminderPicker, reminderPending } from './schedule';
 import {
   Avatar, Badge, Button, PriorityIcon, Spinner, TaskStatusIcon, agentDisplay, taskStatusLabel, textareaClass, timeAgo,
 } from './shared';
 
 const STATUSES: api.Task['status'][] = ['todo', 'in_progress', 'blocked', 'done'];
 const PRIORITIES: api.Task['priority'][] = ['critical', 'high', 'medium', 'low'];
+const RECURRENCES: api.Recurrence[] = ['daily', 'weekdays', 'weekly', 'monthly'];
+const REPEAT_LABELS: Record<api.Recurrence, string> = {
+  daily: 'Every day', weekdays: 'Every weekday', weekly: 'Every week', monthly: 'Every month',
+};
 
 function authorName(author: string, agents: api.Agent[]): string {
   if (author === 'user') return 'You';
@@ -48,8 +53,8 @@ function PropertyTrigger({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * A task as a side sheet: properties (status, priority, assignee, project,
- * GitHub), and its thread with the agent working on it. `refreshTick` changes
+ * A task as a side sheet: properties (status, priority, due date, reminder,
+ * repeat, assignee, project, GitHub), and its thread with the agent working on it. `refreshTick` changes
  * whenever the backend broadcasts an event, so agent replies appear live.
  */
 export function TaskDialog({ taskId, agents, projects, refreshTick, onClose, onChanged }: {
@@ -213,6 +218,36 @@ export function TaskDialog({ taskId, agents, projects, refreshTick, onClose, onC
                                 {p === task.priority && <Check size={13} className="ml-auto text-mc-muted" />}
                               </DropdownMenu.Item>
                             ))}
+                          </DropdownMenu.Content>
+                        </DropdownMenu.Portal>
+                      </DropdownMenu.Root>
+                    </Property>
+
+                    <Property label="Due">
+                      <DuePicker value={task.due_date} done={task.status === 'done'}
+                        onChange={(due_date) => run(() => api.tasks.update(task.id, { due_date }), 'Could not set the due date')} />
+                    </Property>
+
+                    <Property label="Reminder">
+                      <ReminderPicker value={task.remind_at} sent={!!task.remind_at && !reminderPending(task)}
+                        onChange={(remind_at) => run(() => api.tasks.update(task.id, { remind_at }), 'Could not set the reminder')} />
+                    </Property>
+
+                    <Property label="Repeat">
+                      <DropdownMenu.Root>
+                        <PropertyTrigger>
+                          <Repeat size={13} className="text-mc-muted" />
+                          {task.recurrence ? <span>{REPEAT_LABELS[task.recurrence]}</span> : <span className="text-mc-muted">Never</span>}
+                        </PropertyTrigger>
+                        <DropdownMenu.Portal>
+                          <DropdownMenu.Content align="start" sideOffset={4} className={menuContent}>
+                            {([null, ...RECURRENCES] as (api.Recurrence | null)[]).map((r) => (
+                              <DropdownMenu.Item key={r ?? 'never'} className={menuItem} onSelect={() => run(() => api.tasks.update(task.id, { recurrence: r }), 'Could not update')}>
+                                {r ? REPEAT_LABELS[r] : 'Never'}
+                                {r === (task.recurrence ?? null) && <Check size={13} className="ml-auto text-mc-muted" />}
+                              </DropdownMenu.Item>
+                            ))}
+                            <p className="px-2 pt-1 pb-1.5 text-2xs text-mc-dim max-w-[220px]">Completing it creates the next one.</p>
                           </DropdownMenu.Content>
                         </DropdownMenu.Portal>
                       </DropdownMenu.Root>

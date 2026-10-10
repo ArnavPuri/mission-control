@@ -14,6 +14,7 @@ from app.db.models import (
     Project, ProjectStatus, LEAD_TAG,
 )
 from app.notifications.dispatcher import send_telegram
+from app.timeutil import aware, describe, end_of_day, local_tz
 
 logger = logging.getLogger(__name__)
 
@@ -53,14 +54,16 @@ async def generate_morning_briefing() -> str:
         )
         high_task_count = high_tasks_result.scalar() or 0
 
-        overdue_result = await db.execute(
+        due_result = await db.execute(
             select(Task).where(
                 Task.status != TaskStatus.DONE,
-                Task.due_date < now,
                 Task.due_date.isnot(None),
-            ).limit(3)
+                Task.due_date <= end_of_day(now),
+            ).order_by(Task.due_date)
         )
-        overdue_tasks = overdue_result.scalars().all()
+        due_tasks = due_result.scalars().all()
+        overdue_tasks = [t for t in due_tasks if aware(t.due_date) < now]
+        due_today = [t for t in due_tasks if aware(t.due_date) >= now]
 
         # --- Projects ---
         projects_result = await db.execute(
@@ -91,18 +94,23 @@ async def generate_morning_briefing() -> str:
         ) or 0
 
     # --- Format ---
-    today = datetime.now(timezone.utc).strftime("%b %d")
+    today = now.astimezone(local_tz()).strftime("%b %d")
     lines = [f"*Morning Briefing — {today}*", ""]
 
-    # Priorities
-    lines.append("*Priorities*")
+    # Today
+    lines.append("*Today*")
+    for t in due_today[:5]:
+        lines.append(f"• {t.text[:60]}" + (" 🔁" if t.recurrence else ""))
+    if len(due_today) > 5:
+        lines.append(f"• …and {len(due_today) - 5} more due today")
+    if overdue_tasks:
+        lines.append(f"• ⚠️ {len(overdue_tasks)} overdue:")
+        for t in overdue_tasks[:3]:
+            lines.append(f"   – {t.text[:50]} (due {describe(t.due_date)})")
     if high_task_count:
         lines.append(f"• {high_task_count} critical/high tasks open")
-    if overdue_tasks:
-        for t in overdue_tasks[:2]:
-            lines.append(f"• Overdue: {t.text[:50]}")
-    if not high_task_count and not overdue_tasks:
-        lines.append("• All clear — no urgent tasks")
+    if not due_tasks and not high_task_count:
+        lines.append("• All clear — nothing due")
     lines.append("")
 
     # Agents
@@ -147,7 +155,7 @@ async def generate_morning_briefing() -> str:
         lines.append("• No content activity")
     lines.append("")
 
-    lines.append("Use /leads, /drafts, or /approve for details.")
+    lines.append("Use /today, /leads, /drafts, or /approve for details.")
 
     return "\n".join(lines)
 

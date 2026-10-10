@@ -19,11 +19,12 @@
 ## What it does
 
 - **Captures** tasks and notes from Telegram: slash commands, plain messages, or voice notes.
+- **Reminds you.** "Remind me tomorrow at 9 to call Sam" becomes a task that pings you on Telegram with Done / Snooze buttons. Tasks can have due dates and repeat daily, on weekdays, weekly or monthly.
 - **Delegates** work to agents. Hand any task to an agent and it works on it in the background, then replies in the task's thread and on Telegram. Reply to keep the conversation going.
 - **Hands coding work to Claude Code.** `/dev` opens a GitHub issue that mentions `@claude`, and Mission Control reports the pull request back to you.
 - **Runs agents on a schedule**, for example a Reddit scout every 12 hours or a weekly review on Sunday mornings.
 - **Helps with your personal brand.** Marketing agents find leads and draft posts for X, LinkedIn, Instagram, YouTube and your blog. You approve, post, or discard each draft.
-- **Sends a morning briefing** on Telegram at 8:00 in your timezone.
+- **Sends a morning briefing** on Telegram at 8:00 in your timezone, with what's due today and what's overdue.
 
 It runs on your **Claude Pro/Max subscription** through the Claude Agent SDK. You don't need an Anthropic API key.
 
@@ -112,7 +113,7 @@ All settings live in `.env` (see `.env.example`).
 | `API_TOKEN` | no | Bearer token for scripts calling the API |
 | `BACKUP_HOUR` / `BACKUP_KEEP` | no | Nightly backup time and how many to keep (3, 14) |
 | `TELEGRAM_NOTIFICATION_CHAT_ID` | no | Where notifications go. Defaults to the first allowed user |
-| `NOTIFICATION_TIMEZONE` | no | Timezone for the 8:00 morning briefing and agent cron schedules, e.g. `Europe/Berlin` (default `UTC`) |
+| `NOTIFICATION_TIMEZONE` | no | Your timezone, e.g. `Europe/Berlin` (default `UTC`). Used for the 8:00 morning briefing, reminders ("tomorrow at 9") and agent cron schedules |
 | `USE_SQLITE` / `SQLITE_PATH` | no | Use SQLite instead of PostgreSQL |
 | `GITHUB_TOKEN` | no | Enables `/dev`. Needs Issues read/write on your repos |
 | `GITHUB_MENTION_CLAUDE` | no | Mention `@claude` in dev issues (default `true`) |
@@ -131,6 +132,8 @@ Telegram is the main interface. Send a plain message and an LLM chat handles it.
 |---------|--------------|
 | `/task <text>` | Add a task |
 | `/note <title>` | Create a note |
+| `/remind <when> <what>` | Add a task with a reminder, e.g. `/remind tomorrow 9am call Sam`. On its own it lists upcoming reminders |
+| `/today` | What's overdue, due today, and today's reminders |
 | `/ask <agent> <request>` | Hand a task to an agent. It replies in a thread |
 | `/run <agent>` | Run an agent's scheduled job now, in the background. You get a message when it finishes |
 | `/dev <project> <request>` | Hand coding work to Claude Code via a GitHub issue |
@@ -146,6 +149,8 @@ Telegram is the main interface. Send a plain message and an LLM chat handles it.
 | `/help` | List commands |
 
 Agents are matched by slug or by part of their name, so `/ask navigator compare Plausible and Fathom pricing` works.
+
+**Reminders.** `/remind` understands times like `in 2h`, `at 5`, `tonight`, `tomorrow 9am`, `friday 10:30`, `next monday`, `oct 12` or `2026-12-01 15:00`, before or after the text. Adding `every day`, `every weekday`, `every monday`, `weekly` or `monthly` makes the task repeat. In chat you can just say it ("remind me to send the invoice on the 1st of every month"). Times are in `NOTIFICATION_TIMEZONE`. The reminder message has **Done**, **1 hour** and **Tomorrow** buttons. Replying to it adds a note to the task. Completing a repeating task creates the next one, with its due date and reminder moved forward.
 
 **Voice messages** are transcribed with OpenAI Whisper and handled like text. This only works when `OPENAI_API_KEY` is set.
 
@@ -223,7 +228,7 @@ The dashboard is a Next.js app for overview and management, in light and dark mo
 |------|--------------|
 | **Home** (`/`) | Today view: what needs you (approvals, questions from agents, drafts), work delegated to agents, your own tasks, and an activity feed of agent replies |
 | **Tasks** (`/tasks`) | Board by status (To do · In progress · Waiting on you · Done) with drag and drop, filters (mine, delegated, leads) and per-project views |
-| **Task sheet** | Opens from anywhere: status, priority, assignee, project, **Send to Claude Code**, and the thread with the agent (rendered markdown) |
+| **Task sheet** | Opens from anywhere: status, priority, due date, reminder, repeat, assignee, project, **Send to Claude Code**, and the thread with the agent (rendered markdown) |
 | **Agents** (`/agents`) | Agents with run/stop, 30-day runs, success rate and cost, run output and transcripts, and the agent builder |
 | **Notes** (`/notes`) | Two-pane markdown notes with autosave |
 | **Settings** (`/settings`) | Connection status, brand profile, Telegram notification preferences |

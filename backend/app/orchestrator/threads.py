@@ -13,7 +13,6 @@ as soon as the agent is free (see pending_assignments).
 
 import json
 import logging
-from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import select
@@ -24,6 +23,7 @@ from app.db.models import (
 )
 from app.api.ws import broadcast
 from app.notifications.dispatcher import send_telegram
+from app.orchestrator.reminders import complete_task
 
 logger = logging.getLogger(__name__)
 
@@ -154,9 +154,8 @@ async def post_agent_reply(db: AsyncSession, task: Task, agent: AgentConfig, res
     needs_input = str(result.get("status", "")).lower() in ("needs_input", "blocked", "question")
     if needs_input:
         task.status = TaskStatus.BLOCKED
-    elif str(result.get("status", "done")).lower() == "done":
-        task.status = TaskStatus.DONE
-        task.completed_at = datetime.now(timezone.utc)
+    elif str(result.get("status", "done")).lower() == "done" and task.status != TaskStatus.DONE:
+        await complete_task(db, task, source=agent_author(agent))
 
     comment = TaskComment(task_id=task.id, author=agent_author(agent), body=reply, run_id=run.id)
     db.add(comment)

@@ -12,6 +12,7 @@ import {
   Avatar, Badge, Button, Card, EmptyState, IconButton, InlineInput, PriorityIcon, SectionHeader, Spinner,
   StatusIndicator, TaskStatusIcon, agentDisplay, timeAgo,
 } from './components/shared';
+import { DueBadge, dueInfo } from './components/schedule';
 
 const PRIORITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
@@ -188,13 +189,20 @@ function WithAgents() {
 
 // ─── Your tasks ──────────────────────────────────────────
 
+/** Overdue first, then due today, then everything else. */
+function urgency(t: api.Task): number {
+  if (!t.due_date) return 2;
+  const tone = dueInfo(t.due_date).tone;
+  return tone === 'overdue' ? 0 : tone === 'today' ? 1 : 2;
+}
+
 function YourTasks() {
   const { tasks, projects, refresh, openTask } = useWorkspace();
   const [adding, setAdding] = useState(false);
 
   const mine = tasks
     .filter((t) => !t.assigned_agent_id && (t.status === 'todo' || t.status === 'in_progress') && !t.tags.includes('lead'))
-    .sort((a, b) => (PRIORITY_ORDER[a.priority] ?? 9) - (PRIORITY_ORDER[b.priority] ?? 9));
+    .sort((a, b) => urgency(a) - urgency(b) || (PRIORITY_ORDER[a.priority] ?? 9) - (PRIORITY_ORDER[b.priority] ?? 9));
 
   const complete = async (id: string) => {
     await api.tasks.update(id, { status: 'done' });
@@ -236,7 +244,7 @@ function YourTasks() {
                   <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: project.color }} />{project.name}
                 </span>
               )}
-              {t.due_date && <span className="text-xs text-mc-dim flex-shrink-0">{new Date(t.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}
+              <DueBadge task={t} className="flex-shrink-0" />
             </div>
           );
         })}

@@ -36,6 +36,8 @@ A simple dashboard provides an overview and lets you manage agents and scheduled
 - `backend/app/orchestrator/scheduler.py` — Interval/cron scheduler; picks up waiting assigned tasks; GitHub sync
 - `backend/app/orchestrator/threads.py` — Task threads: assigning tasks to agents and replies
 - `backend/app/orchestrator/review.py` — Approvals and content drafts (shared by API, commands, Telegram buttons)
+- `backend/app/orchestrator/reminders.py` — Telegram reminders (Done/Snooze buttons) and recurring tasks; complete tasks via `complete_task`
+- `backend/app/timeutil.py` — Parsing "tomorrow at 9" / "every monday", recurrence steps, UTC helpers
 - `backend/app/agents/skill_loader.py` — YAML → DB sync
 - `backend/app/integrations/telegram.py` — Telegram bot
 - `backend/app/integrations/chat.py` — LLM chat that can take actions (tasks, notes, delegation, dev tasks, drafts)
@@ -53,7 +55,7 @@ A simple dashboard provides an overview and lets you manage agents and scheduled
 ## Database Tables
 
 - **projects** — What you're building. `github_repo` ("owner/repo") is where `/dev` opens issues
-- **tasks** — Things to do (status, priority, due dates, assigned agent). Leads found by marketing agents are tasks tagged `lead`
+- **tasks** — Things to do (status, priority, due date, reminder, recurrence, assigned agent). Leads found by marketing agents are tasks tagged `lead`
 - **task_comments** — A task's thread (user, agent and system messages; Telegram message ids for replies)
 - **notes** — Ideas, reading notes, reflections (markdown)
 - **agent_configs** — Agent definitions (from YAML skills)
@@ -97,6 +99,8 @@ cd dashboard && npx vitest run
 - Agent output must be JSON with `summary` and `actions` fields; on an assigned task the agent also returns `reply` and `status` (`done` | `needs_input`)
 - The `event_log` table tracks all changes for audit
 - Model columns use portable types (`Uuid`, `JSON`) so PostgreSQL and SQLite both work; never use PostgreSQL-only types
+- Datetimes are stored and compared in UTC (SQLite drops offsets); user-facing times are in `NOTIFICATION_TIMEZONE`
+- Mark tasks done with `reminders.complete_task` so repeating tasks create their next occurrence
 - Use Haiku for cheap agents, Sonnet for smart ones
 - Content is generated for: X, LinkedIn, Instagram, YouTube, blog
 

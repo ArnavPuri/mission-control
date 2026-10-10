@@ -23,6 +23,8 @@ from app.api.ws import broadcast
 from app.integrations import github
 from app.orchestrator import review, threads
 from app.orchestrator.runner import start_background_run
+from app.orchestrator.reminders import upcoming_reminders
+from app.timeutil import aware, describe, end_of_day, local_tz, split_reminder
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +69,86 @@ async def cmd_note(args: str, source: str) -> CommandResult:
     await broadcast("note.created", {"title": args, "source": source})
 
     return CommandResult(f"Note created: {args}")
+
+
+REMIND_USAGE = (
+    "Usage: /remind <when> <what>, e.g.\n"
+    "/remind tomorrow at 9 call Sam\n"
+    "/remind in 2h check the deploy\n"
+    "/remind send invoice every monday 10am\n\n"
+    "/remind on its own lists upcoming reminders."
+)
+
+
+async def create_reminder(db: AsyncSession, text: str, source: str) -> tuple[Task | None, str]:
+    """Turn "tomorrow at 9 call Sam" into a task with a reminder. Returns the
+    task (None if no time was found) and a confirmation."""
+    when, what, recurrence = split_reminder(text)
+    if not when or not what:
+        return None, REMIND_USAGE
+    task = Task(text=what, source=source, remind_at=when, due_date=end_of_day(when), recurrence=recurrence)
+    db.add(task)
+    db.add(EventLog(
+        event_type="task.created", entity_type="task", source=source,
+        data={"text": what, "remind_at": when.isoformat(), "recurrence": recurrence},
+    ))
+    await db.flush()
+    repeat = f", then {recurrence}" if recurrence else ""
+    return task, f"⏰ I'll remind you {describe(when)}{repeat}: {what}"
+
+
+async def cmd_remind(args: str, source: str) -> CommandResult:
+    """Add a task with a reminder, or list upcoming reminders."""
+    async with async_session() as db:
+        if not args.strip():
+            upcoming = await upcoming_reminders(db)
+            if not upcoming:
+                return CommandResult(f"No reminders set.\n\n{REMIND_USAGE}")
+            lines = ["*Upcoming reminders*", ""]
+            lines += [f"• {describe(t.remind_at)} — {t.text[:80]}" + (" 🔁" if t.recurrence else "") for t in upcoming]
+            return CommandResult("\n".join(lines))
+        task, message = await create_reminder(db, args, source)
+        if task:
+            await db.commit()
+    if task:
+        await broadcast("task.created", {"id": str(task.id), "source": source})
+    return CommandResult(message)
+
+
+async def cmd_today(source: str) -> CommandResult:
+    """What's overdue, due today and coming up."""
+    now = datetime.now(timezone.utc)
+    today_end = end_of_day(now)
+    async with async_session() as db:
+        result = await db.execute(
+            select(Task).where(
+                Task.status != TaskStatus.DONE,
+                Task.due_date.isnot(None),
+                Task.due_date <= today_end,
+            ).order_by(Task.due_date)
+        )
+        due = result.scalars().all()
+        later = [t for t in await upcoming_reminders(db) if aware(t.remind_at) <= today_end]
+
+    overdue = [t for t in due if aware(t.due_date) < now]
+    today = [t for t in due if aware(t.due_date) >= now]
+    local_day = now.astimezone(local_tz()).strftime("%A %b %d").replace(" 0", " ")
+    lines = [f"*Today — {local_day}*", ""]
+    if overdue:
+        lines.append(f"*Overdue ({len(overdue)})*")
+        lines += [f"• {t.text[:80]} — was due {describe(t.due_date)}" for t in overdue[:10]]
+        lines.append("")
+    if today:
+        lines.append(f"*Due today ({len(today)})*")
+        lines += [f"• {t.text[:80]}" + (" 🔁" if t.recurrence else "") for t in today[:10]]
+        lines.append("")
+    if later:
+        lines.append("*Reminders later today*")
+        lines += [f"• {describe(t.remind_at)} — {t.text[:80]}" for t in later[:10]]
+        lines.append("")
+    if len(lines) == 2:
+        lines.append("Nothing due today. 🎉")
+    return CommandResult("\n".join(lines).strip())
 
 
 async def cmd_status(source: str) -> CommandResult:
@@ -391,6 +473,8 @@ async def cmd_help(source: str) -> CommandResult:
     return CommandResult(
         f"{bot_name} Commands\n\n"
         "/task <text> - Add a task\n"
+        "/remind <when> <what> - Set a reminder (e.g. /remind tomorrow 9am call Sam)\n"
+        "/today - Overdue, due today, and today's reminders\n"
         "/note <title> - Create a note\n"
         "/approve - Review pending agent actions\n"
         "/drafts - Review content drafts\n"

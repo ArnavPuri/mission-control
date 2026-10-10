@@ -13,7 +13,7 @@ from telegram.ext import (
 
 from app.config import settings
 from app.integrations.commands import (
-    cmd_task, cmd_note, cmd_status, cmd_run, cmd_ask,
+    cmd_task, cmd_note, cmd_remind, cmd_today, cmd_status, cmd_run, cmd_ask,
     cmd_projects, cmd_approve, cmd_help,
     cmd_brand, cmd_leads, cmd_agents_list, cmd_morning, cmd_drafts, cmd_dev, cmd_repo,
 )
@@ -110,7 +110,7 @@ def _markup(data: dict | None) -> InlineKeyboardMarkup | None:
 
 
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Inline button presses: approve/reject actions, approve/post/discard drafts."""
+    """Inline button presses: approvals, drafts, and reminders (done/snooze)."""
     query = update.callback_query
     if not is_allowed(query.from_user.id):
         await query.answer("Not authorized", show_alert=True)
@@ -223,6 +223,8 @@ async def start_telegram_bot():
     # Register commands
     app.add_handler(CommandHandler("task", _make_handler(cmd_task)))
     app.add_handler(CommandHandler("note", _make_handler(cmd_note)))
+    app.add_handler(CommandHandler("remind", _make_handler(cmd_remind)))
+    app.add_handler(CommandHandler("today", _make_handler(cmd_today, needs_args=False)))
     app.add_handler(CommandHandler("approve", _make_handler(cmd_approve)))
     app.add_handler(CommandHandler("drafts", _make_handler(cmd_drafts, needs_args=False)))
     app.add_handler(CallbackQueryHandler(handle_button))
@@ -245,6 +247,8 @@ async def start_telegram_bot():
     await app.bot.set_my_commands([
         BotCommand("task", "Add a task"),
         BotCommand("note", "Create a note"),
+        BotCommand("remind", "Set a reminder (or list them)"),
+        BotCommand("today", "Overdue, due today, today's reminders"),
         BotCommand("approve", "Review pending agent actions"),
         BotCommand("drafts", "Review content drafts"),
         BotCommand("status", "Dashboard stats"),

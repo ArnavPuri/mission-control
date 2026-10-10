@@ -11,6 +11,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.orchestrator import reminders
 from app.db.models import (
     AgentApproval, AgentConfig, ApprovalStatus, ContentStatus, MarketingContent,
 )
@@ -138,6 +139,8 @@ async def handle_callback(db: AsyncSession, data: str) -> str:
         item_id = UUID(raw_id)
     except ValueError:
         return "Unknown button."
+    if kind == reminders.REMINDER_CB:
+        return await reminders.handle_callback(db, verb, item_id)
     if kind == APPROVAL_CB and verb in ("y", "n"):
         return await resolve_approval(db, item_id, approve=verb == "y")
     if kind == CONTENT_CB:

@@ -10,6 +10,7 @@ import {
   Avatar, Badge, Button, IconButton, InlineInput, PageHeader, PriorityIcon, Spinner, TaskStatusIcon,
   taskStatusLabel,
 } from '../components/shared';
+import { DueBadge } from '../components/schedule';
 
 type Filter = 'all' | 'mine' | 'agents' | 'leads';
 
@@ -39,6 +40,7 @@ function TaskCard({ task, project, onOpen, onDragStart }: {
         )}
         {lead && <Badge variant="purple">lead</Badge>}
         {task.github_issue && <GitPullRequest size={12} className="text-mc-dim" aria-label="GitHub issue" />}
+        <DueBadge task={task} />
         <span className="flex-1" />
         {task.assigned_agent_name && (
           <span title={task.assigned_agent_name}><Avatar name={task.assigned_agent_name} size={18} /></span>

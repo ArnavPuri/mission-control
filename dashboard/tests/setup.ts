@@ -21,3 +21,10 @@ class MockWebSocket {
   close() {}
 }
 (global as any).WebSocket = MockWebSocket;
+
+// Radix popovers measure their trigger
+(global as any).ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};

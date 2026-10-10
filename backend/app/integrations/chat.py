@@ -9,7 +9,6 @@ import json
 import shutil
 import time
 import logging
-from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,8 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.db.models import (
     Task, Project, Note,
-    AgentStatus, TaskStatus, EventLog, MarketingContent,
+    AgentStatus, TaskPriority, TaskStatus, EventLog, MarketingContent,
 )
+from app.orchestrator.reminders import complete_task, set_reminder
+from app.timeutil import RECURRENCES, describe, end_of_day, now_local, parse_datetime
 from app.db.context import build_db_context
 from app.orchestrator.runner import sdk_env, start_background_run
 from app.integrations import github
@@ -47,6 +48,9 @@ CHAT_TOOLS = [
                     "type": "string",
                     "description": "Project name to assign to (optional, matched by name)",
                 },
+                "due": {"type": "string", "description": "Due date, YYYY-MM-DD (optional)"},
+                "remind_at": {"type": "string", "description": "When to send a reminder, YYYY-MM-DDTHH:MM local time (optional)"},
+                "recurrence": {"type": "string", "enum": ["daily", "weekdays", "weekly", "monthly"]},
             },
             "required": ["text"],
         },
@@ -81,6 +85,9 @@ CHAT_TOOLS = [
                     "enum": ["critical", "high", "medium", "low"],
                     "description": "New priority",
                 },
+                "due": {"type": "string", "description": "New due date, YYYY-MM-DD, or \"none\" to clear"},
+                "remind_at": {"type": "string", "description": "New reminder, YYYY-MM-DDTHH:MM local time, or \"none\" to clear"},
+                "recurrence": {"type": "string", "enum": ["daily", "weekdays", "weekly", "monthly", "none"]},
             },
             "required": ["task_text"],
         },
@@ -271,9 +278,12 @@ def build_system_prompt(db_context: dict) -> str:
     if style:
         tone_section += f"\nStyle: {style}"
 
+    now = now_local()
     return f"""You are {bot_name}, a personal AI command center assistant.
 You help manage projects, tasks, notes, agents, and content creation for social media.{tone_section}
 {identity_section}
+Now: {now.strftime("%A %Y-%m-%d %H:%M")} ({settings.notification_timezone})
+
 ## Current Data
 
 ### Projects
@@ -300,6 +310,9 @@ You help manage projects, tasks, notes, agents, and content creation for social 
   use delegate_task. Pick the agent whose description fits; the agent answers in Telegram itself.
 - trigger_agent only runs an agent's regular scheduled job; it can't be given instructions
 - Coding work on a project (features, bugs) goes to create_dev_task, not to an agent
+- "Remind me ..." is a create_task with remind_at (and due set to that day). Give times as local
+  YYYY-MM-DDTHH:MM, worked out from "Now" above. Repeating things ("every Monday") get a recurrence;
+  completing a repeating task creates the next one
 
 ## Actions
 When you need to take an action (create task, update task, create note, trigger agent, create content),
@@ -310,8 +323,10 @@ include a JSON block in your response like this:
 ```
 
 Available action types:
-- create_task: text (required), priority (critical/high/medium/low), project_name
-- update_task: task_text (required, fuzzy match), status (todo/in_progress/blocked/done), priority
+- create_task: text (required), priority (critical/high/medium/low), project_name, due (YYYY-MM-DD),
+  remind_at (YYYY-MM-DDTHH:MM), recurrence (daily/weekdays/weekly/monthly)
+- update_task: task_text (required, fuzzy match), status (todo/in_progress/blocked/done), priority,
+  due, remind_at, recurrence ("none" clears any of the three)
 - create_note: title (required), content, tags
 - trigger_agent: agent_slug (required)
 - delegate_task: agent_slug (required), request (required), project_name
@@ -389,20 +404,24 @@ async def execute_tool_call(
 
         task = Task(
             text=input_data["text"],
-            priority=input_data.get("priority", "medium"),
+            priority=_enum(TaskPriority, input_data.get("priority"), TaskPriority.MEDIUM),
             project_id=project_id,
             source="telegram:chat",
         )
+        _apply_schedule(task, input_data)
+        if task.remind_at and not task.due_date:
+            task.due_date = end_of_day(task.remind_at)
         db.add(task)
         db.add(EventLog(
             event_type="task.created",
             entity_type="task",
             source="telegram:chat",
-            data={"text": task.text, "priority": task.priority},
+            data={"text": task.text, "priority": task.priority.value},
         ))
         await db.flush()
         await broadcast("task.created", {"text": task.text, "source": "telegram:chat"})
-        return f"Task created: {task.text} (priority: {task.priority})"
+        when = f", reminder {describe(task.remind_at)}" if task.remind_at else ""
+        return f"Task created: {task.text} (priority: {task.priority.value}{when})"
 
     elif name == "create_note":
         note = Note(
@@ -434,14 +453,17 @@ async def execute_tool_call(
 
         task = matches[0]
         changes = []
-        if "status" in input_data:
-            task.status = input_data["status"]
-            changes.append(f"status→{input_data['status']}")
-            if input_data["status"] == "done":
-                task.completed_at = datetime.now(timezone.utc)
-        if "priority" in input_data:
-            task.priority = input_data["priority"]
-            changes.append(f"priority→{input_data['priority']}")
+        if input_data.get("status"):
+            status = _enum(TaskStatus, input_data["status"], task.status)
+            if status == TaskStatus.DONE:
+                await complete_task(db, task, source="telegram:chat")
+            else:
+                task.status = status
+            changes.append(f"status→{status.value}")
+        if input_data.get("priority"):
+            task.priority = _enum(TaskPriority, input_data["priority"], task.priority)
+            changes.append(f"priority→{task.priority.value}")
+        changes += _apply_schedule(task, input_data)
 
         db.add(EventLog(
             event_type="task.updated",
@@ -503,6 +525,38 @@ async def execute_tool_call(
         return f"Content draft created for {input_data['channel']}: {input_data['title']}"
 
     return f"Unknown tool: {name}"
+
+
+def _enum(enum_cls, value, default):
+    try:
+        return enum_cls(str(value).lower()) if value else default
+    except ValueError:
+        return default
+
+
+def _apply_schedule(task: Task, data: dict) -> list[str]:
+    """Apply due / remind_at / recurrence from a chat action. Returns what changed."""
+    changes = []
+    if data.get("due"):
+        value = str(data["due"]).strip()
+        due = None if value.lower() == "none" else parse_datetime(value)
+        if due and len(value) == 10:  # a date: due by the end of that day
+            due = end_of_day(due)
+        if due or value.lower() == "none":
+            task.due_date = due
+            changes.append(f"due→{describe(due) if due else 'none'}")
+    if data.get("remind_at"):
+        value = str(data["remind_at"]).strip()
+        when = None if value.lower() == "none" else parse_datetime(value)
+        if when or value.lower() == "none":
+            set_reminder(task, when)
+            changes.append(f"reminder→{describe(when) if when else 'none'}")
+    if data.get("recurrence"):
+        value = str(data["recurrence"]).lower()
+        if value in RECURRENCES or value == "none":
+            task.recurrence = None if value == "none" else value
+            changes.append(f"repeats→{value}")
+    return changes
 
 
 # --- Message Splitting ---

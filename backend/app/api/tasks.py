@@ -1,5 +1,6 @@
 from uuid import UUID
-from datetime import datetime, timezone
+from datetime import datetime
+from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,11 +9,14 @@ from pydantic import BaseModel
 from app.db.session import get_db
 from app.db.models import AgentConfig, AgentStatus, Task, TaskComment, TaskStatus, TaskPriority
 from app.integrations import github
-from app.orchestrator import threads
+from app.orchestrator import reminders, threads
+from app.timeutil import iso
 from app.orchestrator.runner import is_running
 from app.api.ws import broadcast, commit_and_broadcast
 
 router = APIRouter()
+
+Recurrence = Literal["daily", "weekdays", "weekly", "monthly"]
 
 
 class TaskCreate(BaseModel):
@@ -24,6 +28,8 @@ class TaskCreate(BaseModel):
     source: str = "manual"
     tags: list[str] = []
     due_date: datetime | None = None
+    remind_at: datetime | None = None
+    recurrence: Recurrence | None = None
 
 
 class TaskUpdate(BaseModel):
@@ -35,6 +41,8 @@ class TaskUpdate(BaseModel):
     project_id: UUID | None = None
     tags: list[str] | None = None
     due_date: datetime | None = None
+    remind_at: datetime | None = None
+    recurrence: Recurrence | None = None
 
 
 @router.get("")
@@ -73,9 +81,12 @@ def _serialize(t: Task) -> dict:
         "assigned_agent_name": t.assigned_agent.name if t.assigned_agent else None,
         "source": t.source,
         "tags": t.tags or [],
-        "due_date": t.due_date.isoformat() if t.due_date else None,
-        "completed_at": t.completed_at.isoformat() if t.completed_at else None,
-        "created_at": t.created_at.isoformat(),
+        "due_date": iso(t.due_date),
+        "remind_at": iso(t.remind_at),
+        "reminded_at": iso(t.reminded_at),
+        "recurrence": t.recurrence,
+        "completed_at": iso(t.completed_at),
+        "created_at": iso(t.created_at),
     }
 
 
@@ -85,7 +96,7 @@ def _serialize_comment(c: TaskComment) -> dict:
         "author": c.author,
         "body": c.body,
         "run_id": str(c.run_id) if c.run_id else None,
-        "created_at": c.created_at.isoformat(),
+        "created_at": iso(c.created_at),
     }
 
 
@@ -177,12 +188,19 @@ async def update_task(task_id: UUID, data: TaskUpdate, db: AsyncSession = Depend
     task = await db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    for key, val in data.model_dump(exclude_unset=True).items():
+    changes = data.model_dump(exclude_unset=True)
+    completing = changes.pop("status", None) == TaskStatus.DONE and task.status != TaskStatus.DONE
+    if data.status is not None and not completing:
+        task.status = data.status
+        if data.status != TaskStatus.DONE:
+            task.completed_at = None
+    for key, val in changes.items():
         setattr(task, key, val)
-    if data.status == TaskStatus.DONE and not task.completed_at:
-        task.completed_at = datetime.now(timezone.utc)
+    if "remind_at" in changes:
+        reminders.set_reminder(task, data.remind_at)
+    next_task = await reminders.complete_task(db, task) if completing else None
     await commit_and_broadcast(db, "task.updated", {"id": str(task.id)})
-    return {"id": str(task.id), "updated": True}
+    return {"id": str(task.id), "updated": True, "next_id": str(next_task.id) if next_task else None}
 
 
 @router.delete("/{task_id}")

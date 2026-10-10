@@ -7,6 +7,7 @@ Builds a JSON-serializable dict of current Mission Control state.
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.timeutil import iso
 from app.db.models import (
     Project, Task, AgentConfig, Note, TaskStatus,
 )
@@ -47,6 +48,9 @@ async def build_db_context(db: AsyncSession) -> dict:
             "id_prefix": str(t.id)[:8],
             "source": t.source or "manual",
             "assigned_to": t.assigned_agent.slug if t.assigned_agent else None,
+            **({"due": iso(t.due_date)} if t.due_date else {}),
+            **({"remind_at": iso(t.remind_at)} if t.remind_at else {}),
+            **({"repeats": t.recurrence} if t.recurrence else {}),
         }
         for t in result.scalars().all()
     ]

@@ -10,7 +10,6 @@ thread and on Telegram, and forwards your replies as issue comments.
 
 import logging
 import re
-from datetime import datetime, timezone
 
 import httpx
 from sqlalchemy import select
@@ -19,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.db.models import Project, Task, TaskComment, TaskStatus
 from app.notifications.dispatcher import send_telegram
+from app.orchestrator.reminders import complete_task
 
 logger = logging.getLogger(__name__)
 
@@ -144,8 +144,7 @@ async def sync_dev_tasks(db: AsyncSession):
             )
 
         if issue.get("state") == "closed":
-            task.status = TaskStatus.DONE
-            task.completed_at = task.completed_at or datetime.now(timezone.utc)
+            await complete_task(db, task, source="github")
             text = f"Issue #{number} was closed on GitHub."
             db.add(TaskComment(task_id=task.id, author=SYSTEM, body=text))
             await send_telegram(f"✅ {task.text[:80]}\n{text}")
