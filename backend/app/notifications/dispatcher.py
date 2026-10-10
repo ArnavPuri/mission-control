@@ -1,11 +1,11 @@
-"""Telegram notification dispatcher — sends urgent notifications immediately, routine ones as a morning digest."""
+"""Telegram notification dispatcher — sends urgent notifications immediately; routine activity goes into the morning briefing."""
 
 import asyncio
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.config import settings
 from app.db.session import async_session
@@ -64,60 +64,23 @@ async def dispatch_urgent():
         await db.commit()
 
 
-async def dispatch_digest():
-    """Send daily digest of unsent routine notifications."""
+async def mark_routine_sent():
+    """Mark routine notifications as delivered.
+
+    Routine notifications are not sent one by one: the morning briefing
+    summarises the same activity from live data, so after it goes out the
+    pending routine notifications are considered delivered.
+    """
     async with async_session() as db:
-        result = await db.execute(
-            select(Notification).where(
+        await db.execute(
+            update(Notification)
+            .where(
                 Notification.priority == NotificationPriority.ROUTINE,
                 Notification.telegram_sent == False,
-            ).order_by(Notification.created_at.asc())
+            )
+            .values(telegram_sent=True)
         )
-        notifications = result.scalars().all()
-
-        if not notifications:
-            return
-
-        lines = ["*Morning Briefing*", ""]
-
-        agent_notifs = [n for n in notifications if n.source.startswith("agent:")]
-        completed = sum(1 for n in agent_notifs if n.category == "success")
-        failed = sum(1 for n in agent_notifs if n.category == "error")
-        if agent_notifs:
-            lines.append(f"Agents: {completed} completed, {failed} failed")
-
-        signal_notifs = [n for n in notifications if "signal" in (n.category or "")]
-        if signal_notifs:
-            lines.append(f"Signals: {len(signal_notifs)} new")
-
-        content_notifs = [n for n in notifications if "content" in (n.category or "")]
-        if content_notifs:
-            lines.append(f"Content: {len(content_notifs)} drafts ready")
-
-        task_notifs = [n for n in notifications if "task" in (n.source or "")]
-        if task_notifs:
-            lines.append(f"Tasks: {len(task_notifs)} created by agents")
-
-        top_signal = None
-        for n in signal_notifs:
-            score = (n.data or {}).get("relevance_score", 0)
-            if top_signal is None or score > (top_signal.data or {}).get("relevance_score", 0):
-                top_signal = n
-        if top_signal:
-            score_pct = int((top_signal.data or {}).get("relevance_score", 0) * 100)
-            lines.append(f"\nTop signal: {top_signal.title} ({score_pct}%)")
-
-        approval_count = sum(1 for n in notifications if n.category == "approval")
-        if approval_count:
-            lines.append(f"\n{approval_count} pending approvals — use /approve")
-
-        text = "\n".join(lines)
-        sent = await _send_telegram(text)
-
-        if sent:
-            for n in notifications:
-                n.telegram_sent = True
-            await db.commit()
+        await db.commit()
 
 
 async def urgent_dispatch_loop():
@@ -132,7 +95,7 @@ async def urgent_dispatch_loop():
 
 
 async def digest_loop():
-    """Daily digest loop — sends at 8:00 AM in configured timezone."""
+    """Daily loop — sends the morning briefing at 8:00 AM in the configured timezone."""
     import zoneinfo
     logger.info(f"Telegram digest loop started (8:00 AM {settings.notification_timezone})")
 
@@ -146,12 +109,9 @@ async def digest_loop():
             wait_seconds = (target - now).total_seconds()
             await asyncio.sleep(wait_seconds)
 
-            # Send morning briefing (replaces plain digest — it's a superset)
             from app.notifications.morning import send_morning_briefing
-            await send_morning_briefing()
-
-            # Also flush any unsent routine notifications
-            await dispatch_digest()
+            if await send_morning_briefing():
+                await mark_routine_sent()
         except Exception as e:
             logger.error(f"Digest loop error: {e}")
             await asyncio.sleep(3600)

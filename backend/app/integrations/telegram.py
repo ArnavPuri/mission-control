@@ -14,7 +14,7 @@ from app.config import settings
 from app.integrations.commands import (
     cmd_task, cmd_note, cmd_status, cmd_run,
     cmd_projects, cmd_approve, cmd_help,
-    cmd_brand, cmd_signals, cmd_agents_list, cmd_morning,
+    cmd_brand, cmd_leads, cmd_agents_list, cmd_morning,
 )
 from app.db.session import async_session
 from app.integrations.chat import handle_chat
@@ -152,7 +152,7 @@ async def start_telegram_bot():
     app.add_handler(CommandHandler("run", _make_handler(cmd_run)))
     app.add_handler(CommandHandler("projects", _make_handler(cmd_projects, needs_args=False)))
     app.add_handler(CommandHandler("brand", _make_handler(cmd_brand, needs_args=False)))
-    app.add_handler(CommandHandler("signals", _make_handler(cmd_signals)))
+    app.add_handler(CommandHandler("leads", _make_handler(cmd_leads)))
     app.add_handler(CommandHandler("agents", _make_handler(cmd_agents_list, needs_args=False)))
     app.add_handler(CommandHandler("morning", _make_handler(cmd_morning, needs_args=False)))
     app.add_handler(CommandHandler("help", _make_handler(cmd_help, needs_args=False)))
@@ -169,7 +169,7 @@ async def start_telegram_bot():
         BotCommand("run", "Trigger an agent"),
         BotCommand("projects", "List projects"),
         BotCommand("brand", "View brand profile"),
-        BotCommand("signals", "View marketing signals"),
+        BotCommand("leads", "View open marketing leads"),
         BotCommand("agents", "View agent status"),
         BotCommand("morning", "Morning briefing"),
         BotCommand("help", "Show commands"),

@@ -7,16 +7,15 @@ performs the action, and returns a CommandResult.
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import async_session
 from app.db.models import (
-    Task, Project, AgentConfig, AgentRun, Note,
+    Task, Project, AgentConfig, Note,
     TaskStatus, AgentStatus, EventLog, AgentApproval, ApprovalStatus,
-    BrandProfile,
+    BrandProfile, LEAD_TAG,
 )
 from app.orchestrator.runner import AgentRunner
 
@@ -201,38 +200,36 @@ async def cmd_brand(source: str) -> CommandResult:
     return CommandResult("\n".join(lines))
 
 
-async def cmd_signals(args: str, source: str) -> CommandResult:
-    """View recent marketing signals."""
-    from app.db.models import MarketingSignal, SignalStatus
+def _time_ago(dt: datetime) -> str:
+    seconds = (datetime.now(timezone.utc) - dt).total_seconds()
+    if seconds < 3600:
+        return f"{int(seconds / 60)}m ago"
+    if seconds < 86400:
+        return f"{int(seconds / 3600)}h ago"
+    return f"{int(seconds / 86400)}d ago"
 
+
+async def cmd_leads(args: str, source: str) -> CommandResult:
+    """View open leads found by marketing agents (tasks tagged "lead")."""
     async with async_session() as db:
-        query = select(MarketingSignal).order_by(MarketingSignal.created_at.desc()).limit(5)
+        result = await db.execute(
+            select(Task)
+            .where(Task.status != TaskStatus.DONE)
+            .order_by(Task.created_at.desc())
+            .limit(200)
+        )
+        leads = [t for t in result.scalars().all() if LEAD_TAG in (t.tags or [])][:5]
 
-        status_filter = args.strip().lower() if args.strip() else "new"
-        if status_filter != "all":
-            status_map = {"new": "new", "reviewed": "reviewed", "dismissed": "dismissed", "acted_on": "acted_on"}
-            if status_filter in status_map:
-                query = query.where(MarketingSignal.status == SignalStatus(status_map[status_filter]))
+    if not leads:
+        return CommandResult("No open leads.")
 
-        result = await db.execute(query)
-        signals = result.scalars().all()
-
-    if not signals:
-        return CommandResult(f"No {status_filter} signals found.")
-
-    lines = [f"*Recent Signals* ({status_filter})", ""]
-    for i, s in enumerate(signals, 1):
-        score = int((s.relevance_score or 0) * 100)
-        ago = datetime.now(timezone.utc) - s.created_at
-        if ago.total_seconds() < 3600:
-            time_str = f"{int(ago.total_seconds() / 60)}m ago"
-        elif ago.total_seconds() < 86400:
-            time_str = f"{int(ago.total_seconds() / 3600)}h ago"
-        else:
-            time_str = f"{int(ago.total_seconds() / 86400)}d ago"
-
-        lines.append(f"{i}. {s.title} ({score}%)")
-        lines.append(f"   {s.source_type} · {s.signal_type} · {time_str}")
+    lines = ["*Open Leads*", ""]
+    for i, t in enumerate(leads, 1):
+        lines.append(f"{i}. {t.text} ({t.priority.value})")
+        meta = " · ".join(tag for tag in (t.tags or []) if tag != LEAD_TAG)
+        lines.append(f"   {meta + ' · ' if meta else ''}{_time_ago(t.created_at)}")
+        if t.url:
+            lines.append(f"   {t.url}")
         lines.append("")
 
     return CommandResult("\n".join(lines))
@@ -256,13 +253,7 @@ async def cmd_agents_list(source: str) -> CommandResult:
         lines.append(line)
 
         if a.last_run_at:
-            ago = datetime.now(timezone.utc) - a.last_run_at
-            if ago.total_seconds() < 3600:
-                time_str = f"{int(ago.total_seconds() / 60)}m ago"
-            elif ago.total_seconds() < 86400:
-                time_str = f"{int(ago.total_seconds() / 3600)}h ago"
-            else:
-                time_str = f"{int(ago.total_seconds() / 86400)}d ago"
+            time_str = _time_ago(a.last_run_at)
 
             latest_run = a.runs[0] if a.runs else None
             if latest_run:
@@ -294,7 +285,7 @@ async def cmd_help(source: str) -> CommandResult:
         "/status - Dashboard stats\n"
         "/run <agent> - Trigger an agent\n"
         "/projects - List projects\n"
-        "/signals [status] — View marketing signals\n"
+        "/leads — View open marketing leads\n"
         "/agents — View agent status\n"
         "/brand — View your brand profile\n"
         "/morning — Get your morning briefing\n"

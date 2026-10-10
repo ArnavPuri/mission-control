@@ -14,7 +14,7 @@ tools:
 
 data:
   reads: [projects]
-  writes: [marketing_signals]
+  writes: [tasks]
 
 schedule:
   type: interval
@@ -33,21 +33,19 @@ prompt_template: |
   4. GitHub issues (if applicable)
   5. Product Hunt comments (if applicable)
 
-  For each piece of feedback found, create a signal categorized by type.
+  For each piece of feedback found, create a lead tagged with the kind of feedback.
 
   Respond with JSON:
   {
     "summary": "Found N mentions. Key themes: ...",
     "actions": [
       {
-        "type": "create_signal",
+        "type": "create_lead",
         "title": "User feedback: [source] - [short summary]",
         "body": "Full context of the feedback...",
         "source_type": "reddit",
-        "source_url": "https://...",
+        "url": "https://...",
         "relevance_score": 0.7,
-        "signal_type": "feedback",
-        "channel_metadata": {"subreddit": "startups"},
         "tags": ["feedback", "feature-request"]
       }
     ]

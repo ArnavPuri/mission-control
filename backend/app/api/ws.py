@@ -3,7 +3,6 @@ WebSocket endpoint for real-time dashboard updates.
 Dashboard connects here to get live agent status, new tasks, etc.
 """
 
-import asyncio
 import json
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from typing import Set

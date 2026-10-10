@@ -8,10 +8,10 @@ from sqlalchemy.orm import selectinload
 
 from app.db.session import async_session
 from app.db.models import (
-    AgentRun, AgentRunStatus, AgentConfig,
-    MarketingSignal, MarketingContent,
+    AgentRun, AgentRunStatus,
+    MarketingContent, ContentStatus,
     Task, TaskStatus, TaskPriority,
-    Project, ProjectStatus,
+    Project, ProjectStatus, LEAD_TAG,
 )
 from app.notifications.dispatcher import _send_telegram
 
@@ -37,14 +37,12 @@ async def generate_morning_briefing() -> str:
         failed_runs = [r for r in recent_runs if r.status == AgentRunStatus.FAILED]
         failed_count = len(failed_runs)
 
-        # --- Signals (last 24h) ---
-        signals_result = await db.execute(
-            select(MarketingSignal)
-            .where(MarketingSignal.created_at >= h24_ago)
-            .order_by(MarketingSignal.relevance_score.desc())
+        # --- Leads (last 24h) ---
+        recent_tasks_result = await db.execute(
+            select(Task).where(Task.created_at >= h24_ago)
         )
-        signals = signals_result.scalars().all()
-        high_signals = [s for s in signals if (s.relevance_score or 0) > 0.8]
+        leads = [t for t in recent_tasks_result.scalars().all() if LEAD_TAG in (t.tags or [])]
+        high_leads = [t for t in leads if t.priority in (TaskPriority.CRITICAL, TaskPriority.HIGH)]
 
         # --- Tasks ---
         high_tasks_result = await db.execute(
@@ -78,21 +76,16 @@ async def generate_morning_briefing() -> str:
                     Task.project_id == p.id, Task.status != TaskStatus.DONE
                 )
             ) or 0
-            signal_count = await db.scalar(
-                select(func.count(MarketingSignal.id)).where(
-                    MarketingSignal.project_id == p.id,
-                    MarketingSignal.created_at >= h24_ago,
-                )
-            ) or 0
-            project_stats.append((p.name, task_count, signal_count))
+            lead_count = sum(1 for t in leads if t.project_id == p.id)
+            project_stats.append((p.name, task_count, lead_count))
 
         # --- Content pipeline ---
         draft_count = await db.scalar(
-            select(func.count(MarketingContent.id)).where(MarketingContent.status == "draft")
+            select(func.count(MarketingContent.id)).where(MarketingContent.status == ContentStatus.DRAFT)
         ) or 0
         posted_count = await db.scalar(
             select(func.count(MarketingContent.id)).where(
-                MarketingContent.status == "posted",
+                MarketingContent.status == ContentStatus.POSTED,
                 MarketingContent.posted_at >= d7_ago,
             )
         ) or 0
@@ -124,22 +117,21 @@ async def generate_morning_briefing() -> str:
         lines.append("• No runs in last 12h")
     lines.append("")
 
-    # Signals
-    lines.append("*Signals (24h)*")
-    if signals:
-        lines.append(f"• {len(signals)} new leads, {len(high_signals)} high relevance")
-        for s in signals[:3]:
-            score = int((s.relevance_score or 0) * 100)
-            lines.append(f"• {s.title[:50]} ({score}%)")
+    # Leads
+    lines.append("*Leads (24h)*")
+    if leads:
+        lines.append(f"• {len(leads)} new leads, {len(high_leads)} high priority")
+        for t in (high_leads or leads)[:3]:
+            lines.append(f"• {t.text[:50]}")
     else:
-        lines.append("• No new signals")
+        lines.append("• No new leads")
     lines.append("")
 
     # Products
     if project_stats:
         lines.append("*Products*")
-        for name, tasks, sigs in project_stats:
-            lines.append(f"• {name}: {tasks} open tasks, {sigs} signals")
+        for name, tasks, project_leads in project_stats:
+            lines.append(f"• {name}: {tasks} open tasks, {project_leads} new leads")
         lines.append("")
 
     # Content
@@ -155,13 +147,13 @@ async def generate_morning_briefing() -> str:
         lines.append("• No content activity")
     lines.append("")
 
-    lines.append("Use /signals, /tasks, or /approve for details.")
+    lines.append("Use /leads, /status, or /approve for details.")
 
     return "\n".join(lines)
 
 
-async def send_morning_briefing():
-    """Generate and send the morning briefing to Telegram."""
+async def send_morning_briefing() -> bool:
+    """Generate and send the morning briefing to Telegram. Returns True if sent."""
     try:
         text = await generate_morning_briefing()
         sent = await _send_telegram(text)
@@ -169,5 +161,7 @@ async def send_morning_briefing():
             logger.info("Morning briefing sent")
         else:
             logger.warning("Morning briefing could not be sent (Telegram not configured)")
+        return sent
     except Exception as e:
         logger.error(f"Morning briefing failed: {e}")
+        return False

@@ -1,5 +1,5 @@
 name: Echo (Content Drafts)
-description: Your copywriter — turns marketing signals into authentic, platform-native drafts
+description: Your copywriter — turns marketing leads into authentic, platform-native drafts
 version: "1.2"
 type: marketing
 
@@ -12,40 +12,40 @@ max_budget_usd: 0.20
 tools: []
 
 data:
-  reads: [projects, marketing_signals]
+  reads: [projects, leads]
   writes: [marketing_content]
 
 schedule:
   type: manual
 
 prompt_template: |
-  Turn marketing signals into draft content for Reddit comments,
+  Turn marketing leads into draft content for Reddit comments,
   tweets, and community posts.
 
   PROJECTS:
   {{projects}}
 
-  NEW SIGNALS TO ACT ON:
-  {{marketing_signals}}
+  OPEN LEADS TO ACT ON:
+  {{leads}}
 
   Instructions:
-  1. Review each signal and decide if it warrants a content draft.
-  2. For each signal worth acting on, generate a draft that is:
+  1. Review each lead and decide if it warrants a content draft.
+  2. For each lead worth acting on, generate a draft that is:
      - Authentic and helpful (NOT spammy or salesy)
      - Tailored to the platform (casual for Reddit, concise for Twitter)
      - Genuinely useful to the reader while naturally mentioning the product
-  3. Match the channel to the signal source
+  3. Match the channel to where the lead was found
 
   Respond with JSON:
   {
-    "summary": "Created N drafts from M signals",
+    "summary": "Created N drafts from M leads",
     "actions": [
       {
         "type": "create_content",
         "title": "Reply to [thread topic]",
         "body": "The actual draft content...",
         "channel": "reddit_comment",
-        "signal_id": "<uuid of the source signal>",
+        "task_id": "<id of the source lead>",
         "tags": ["reddit"]
       }
     ]
@@ -54,9 +54,3 @@ prompt_template: |
 requires_approval: false
 max_actions_per_run: 5
 
-# Auto-run when a high-relevance marketing signal is created
-triggers:
-  - entity_type: signal
-    event: created
-    condition: {field: relevance_score, op: gt, value: "0.7"}
-    description: Auto-draft content when Pulse finds a strong signal

@@ -15,13 +15,15 @@ A simple dashboard provides an overview and lets you manage agents and scheduled
 - **Backend**: Python/FastAPI at `backend/app/`
 - **Dashboard**: Next.js/TypeScript at `dashboard/` — simple overview UI
 - **Agent Skills**: YAML files at `backend/skills/`
-- **Database**: PostgreSQL with pgvector (or SQLite for dev)
+- **Database**: PostgreSQL (or SQLite for dev). Schema is managed by Alembic and migrated on startup
 - **Agent Runtime**: Claude Agent SDK (supports API key + OAuth)
 
 ## Key Files
 
 - `backend/app/main.py` — FastAPI app entry point
 - `backend/app/db/models.py` — All database models (SQLAlchemy)
+- `backend/app/db/migrate.py` — Runs Alembic on startup (+ one-time conversion of pre-0.8 databases)
+- `backend/app/db/migrations/versions/` — Alembic migrations
 - `backend/app/config.py` — Settings
 - `backend/app/orchestrator/runner.py` — Agent execution engine (retry, timeout, chaining)
 - `backend/app/orchestrator/scheduler.py` — Interval/cron-based scheduler
@@ -37,15 +39,14 @@ A simple dashboard provides an overview and lets you manage agents and scheduled
 ## Database Tables
 
 - **projects** — What you're building
-- **tasks** — Things to do (status, priority, due dates)
+- **tasks** — Things to do (status, priority, due dates). Leads found by marketing agents are tasks tagged `lead`
 - **notes** — Ideas, reading notes, reflections (markdown)
 - **agent_configs** — Agent definitions (from YAML skills)
 - **agent_runs** — Execution log for every agent run
-- **agent_memories** — Persistent memory (per-agent + shared scratchpad)
+- **agent_memories** — Persistent per-agent memory
 - **agent_approvals** — Actions queued for human approval
 - **chat_sessions** — Telegram conversation history
 - **brand_profile** — Personal brand (tone, topics, social handles)
-- **marketing_signals** — Leads/opportunities found by agents
 - **marketing_content** — Content drafts for social platforms
 - **notifications** — Sent via Telegram
 - **event_log** — Audit trail
@@ -62,8 +63,15 @@ cd backend && uvicorn app.main:app --reload
 # Dashboard (dev)
 cd dashboard && npm run dev
 
-# Run migrations
+# Run migrations (also runs automatically on startup)
 cd backend && alembic upgrade head
+
+# New migration after changing models.py
+cd backend && alembic revision --autogenerate -m "description"
+
+# Tests
+cd backend && pytest
+cd dashboard && npx vitest run
 ```
 
 ## Conventions
@@ -73,6 +81,7 @@ cd backend && alembic upgrade head
 - Agent skill files are YAML in `backend/skills/`
 - Agent output must be JSON with `summary` and `actions` fields
 - The `event_log` table tracks all changes for audit
+- Model columns use portable types (`Uuid`, `JSON`) so PostgreSQL and SQLite both work; never use PostgreSQL-only types
 - Use Haiku for cheap agents, Sonnet for smart ones
 - Content is generated for: X, LinkedIn, Instagram, YouTube, blog
 

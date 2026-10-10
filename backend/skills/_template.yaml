@@ -26,12 +26,14 @@ model: claude-haiku-4-5  # claude-haiku-4-5 (cheap/fast) or claude-sonnet-4-6 (s
 max_budget_usd: 0.10     # max cost per run
 
 # --- Tools this agent can use ---
-# Available: web_search, bash, write, db_read, db_write
+# Available: web_search, bash, write
 tools:
   - web_search
 
 # --- Data Access ---
-# What DB tables this agent can read from and write to
+# What data this agent can read and write.
+#   reads:  projects, tasks, notes, leads, marketing_content
+#   writes: tasks (also covers leads), notes, marketing_content
 data:
   reads: [projects, tasks]
   writes: [tasks]
@@ -45,11 +47,12 @@ schedule:
 
 # --- Prompt Template ---
 # Use {{variable}} for data injection. Available variables match data.reads:
-#   {{projects}} - JSON array of projects
-#   {{tasks}}    - JSON array of open tasks
-#   {{ideas}}    - JSON array of ideas
-#   {{reading}}  - JSON array of unread items
-#   {{project}}  - JSON object of bound project (if project_id is set)
+#   {{projects}}          - JSON array of projects
+#   {{tasks}}             - JSON array of open tasks (leads excluded)
+#   {{notes}}             - JSON array of recent notes
+#   {{leads}}             - JSON array of open leads
+#   {{marketing_content}} - JSON array of content drafts
+#   {{project}}           - JSON object of bound project (if project_id is set)
 #
 # NOTE: The agent's persona, user identity, and output format are
 # injected automatically by the runner. Your prompt_template should
@@ -68,9 +71,11 @@ prompt_template: |
     "summary": "What you found and recommend",
     "actions": [
       {"type": "create_task", "text": "...", "priority": "medium", "tags": ["tag"]},
-      {"type": "create_idea", "text": "...", "tags": ["tag"]},
-      {"type": "add_reading", "title": "...", "url": "https://..."},
-      {"type": "update_task", "task_id": "...", "status": "done"}
+      {"type": "update_task", "task_id": "...", "status": "done"},
+      {"type": "create_note", "title": "...", "content": "markdown", "tags": ["tag"]},
+      {"type": "create_lead", "title": "...", "body": "...", "url": "https://...", "source_type": "reddit", "relevance_score": 0.8},
+      {"type": "create_content", "title": "...", "body": "...", "channel": "x", "task_id": "<lead id>"},
+      {"type": "save_memory", "key": "...", "value": "..."}
     ]
   }
 

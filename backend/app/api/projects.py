@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from app.db.session import get_db
 from app.db.models import (
     Project, ProjectStatus, Task, TaskStatus,
-    EventLog, MarketingSignal, MarketingContent,
+    MarketingContent,
 )
 
 router = APIRouter()

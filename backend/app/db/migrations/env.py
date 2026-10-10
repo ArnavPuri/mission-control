@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 from logging.config import fileConfig
 
-# Ensure the backend root is on sys.path (needed when alembic runs from a subdirectory)
+# Ensure the backend root is on sys.path so `app` is importable
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from sqlalchemy import pool
@@ -17,13 +17,19 @@ from app.config import settings
 
 config = context.config
 
+# Only configure logging when run from the alembic CLI (alembic.ini present);
+# when the app runs migrations on startup it keeps its own logging setup.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Override URL from settings
-config.set_main_option("sqlalchemy.url", settings.database_url)
+if not config.get_main_option("sqlalchemy.url") or config.config_file_name is not None:
+    config.set_main_option("sqlalchemy.url", settings.effective_database_url)
 
 target_metadata = Base.metadata
+
+
+def _is_sqlite(url: str) -> bool:
+    return url.startswith("sqlite")
 
 
 def run_migrations_offline() -> None:
@@ -33,13 +39,18 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        render_as_batch=_is_sqlite(url),
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        render_as_batch=connection.dialect.name == "sqlite",
+    )
     with context.begin_transaction():
         context.run_migrations()
 
@@ -56,7 +67,12 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
-    asyncio.run(run_async_migrations())
+    # A caller may pass an open connection (used by tests and app startup)
+    connection = config.attributes.get("connection")
+    if connection is not None:
+        do_run_migrations(connection)
+    else:
+        asyncio.run(run_async_migrations())
 
 
 if context.is_offline_mode():

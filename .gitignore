@@ -36,3 +36,6 @@ workdir/
 
 # SQLite test artifacts
 file::memory:
+
+# Local tool scratch
+.superpowers/

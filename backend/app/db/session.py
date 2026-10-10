@@ -1,10 +1,8 @@
 """Database session and engine setup."""
 
-import os
 from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from app.config import settings
-from app.db.models import Base
 
 db_url = settings.effective_database_url
 
@@ -36,6 +34,8 @@ async def get_db() -> AsyncSession:
 
 
 async def init_db():
-    """Create all tables. Use Alembic for production migrations."""
+    """Run Alembic migrations so the database matches the models."""
+    from app.db.migrate import run_migrations
+
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(run_migrations)

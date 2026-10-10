@@ -1,7 +1,10 @@
 """
-Mission Control - Database Models (Simplified)
+Mission Control - Database Models
 
 Telegram-first personal AI assistant with agents, memory, and scheduling.
+
+Column types are portable (sa.Uuid, JSON) so the same models work on
+PostgreSQL and SQLite. Schema changes go through Alembic migrations.
 """
 
 import uuid
@@ -9,22 +12,18 @@ from datetime import datetime, timezone
 from enum import Enum as PyEnum
 
 from sqlalchemy import (
-    Column, String, Text, Boolean, Float, Integer,
+    Column, String, Text, Boolean, Float, Integer, Uuid,
     DateTime, ForeignKey, Enum, JSON, Index,
 )
-from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.orm import DeclarativeBase, relationship
-
-try:
-    from pgvector.sqlalchemy import Vector
-    HAS_PGVECTOR = True
-except ImportError:
-    HAS_PGVECTOR = False
-    Vector = None
 
 
 class Base(DeclarativeBase):
     pass
+
+
+def _now():
+    return datetime.now(timezone.utc)
 
 
 # ---------- Enums ----------
@@ -85,11 +84,8 @@ class ContentStatus(str, PyEnum):
     ARCHIVED = "archived"
 
 
-class SignalStatus(str, PyEnum):
-    NEW = "new"
-    REVIEWED = "reviewed"
-    ACTED_ON = "acted_on"
-    DISMISSED = "dismissed"
+# Tag that marks a task as a marketing lead found by an agent
+LEAD_TAG = "lead"
 
 
 # ---------- Models ----------
@@ -97,37 +93,39 @@ class SignalStatus(str, PyEnum):
 class Project(Base):
     __tablename__ = "projects"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False)
     description = Column(Text, default="")
     status = Column(Enum(ProjectStatus), default=ProjectStatus.PLANNING, nullable=False)
     color = Column(String(7), default="#00ffc8")
     url = Column(String(512))
     metadata_ = Column("metadata", JSON, default=dict)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=_now)
+    updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 
     tasks = relationship("Task", back_populates="project", lazy="selectin")
     agents = relationship("AgentConfig", back_populates="project", lazy="selectin")
-    marketing_content = relationship("MarketingContent", foreign_keys="[MarketingContent.project_id]", back_populates="project", lazy="noload")
 
 
 class Task(Base):
+    """A unit of work. Leads found by marketing agents are tasks tagged "lead"."""
     __tablename__ = "tasks"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     text = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
+    url = Column(String(2048), nullable=True)
     status = Column(Enum(TaskStatus), default=TaskStatus.TODO, nullable=False)
     priority = Column(Enum(TaskPriority), default=TaskPriority.MEDIUM, nullable=False)
-    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=True)
-    assigned_agent_id = Column(UUID(as_uuid=True), ForeignKey("agent_configs.id"), nullable=True)
+    project_id = Column(Uuid, ForeignKey("projects.id"), nullable=True)
+    assigned_agent_id = Column(Uuid, ForeignKey("agent_configs.id"), nullable=True)
     source = Column(String(50), default="manual")
-    tags = Column(ARRAY(String), default=list)
+    tags = Column(JSON, default=list)
     due_date = Column(DateTime(timezone=True), nullable=True)
     sort_order = Column(Integer, default=0)
     completed_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=_now)
+    updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 
     project = relationship("Project", back_populates="tasks")
     assigned_agent = relationship("AgentConfig", foreign_keys=[assigned_agent_id])
@@ -143,15 +141,15 @@ class Note(Base):
     """Markdown notes for knowledge, ideas, reading notes, reflections."""
     __tablename__ = "notes"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     title = Column(String(500), nullable=False)
     content = Column(Text, nullable=False, default="")
-    tags = Column(ARRAY(String), default=list)
+    tags = Column(JSON, default=list)
     is_pinned = Column(Boolean, default=False)
-    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=True)
+    project_id = Column(Uuid, ForeignKey("projects.id"), nullable=True)
     source = Column(String(50), default="manual")
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=_now)
+    updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 
     __table_args__ = (
         Index("idx_notes_project", "project_id"),
@@ -162,7 +160,7 @@ class AgentConfig(Base):
     """Agent definition - loaded from skill YAML files and stored in DB."""
     __tablename__ = "agent_configs"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False, unique=True)
     slug = Column(String(255), nullable=False, unique=True)
     description = Column(Text, default="")
@@ -171,23 +169,17 @@ class AgentConfig(Base):
     model = Column(String(100), default="claude-haiku-4-5")
     max_budget_usd = Column(Float, default=0.10)
     prompt_template = Column(Text, nullable=False)
-    tools = Column(ARRAY(String), default=list)
+    tools = Column(JSON, default=list)
     schedule_type = Column(String(20), nullable=True)  # interval, cron, manual
     schedule_value = Column(String(100), nullable=True)  # "4h", "0 9 * * *"
-    data_reads = Column(ARRAY(String), default=list)
-    data_writes = Column(ARRAY(String), default=list)
-    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=True)
+    data_reads = Column(JSON, default=list)
+    data_writes = Column(JSON, default=list)
+    project_id = Column(Uuid, ForeignKey("projects.id"), nullable=True)
     config = Column(JSON, default=dict)
     skill_file = Column(String(255), nullable=True)
     last_run_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-
-    # Session persistence
-    session_id = Column(String(255), nullable=True)
-    last_message_uuid = Column(String(255), nullable=True)
-    session_expires_at = Column(DateTime(timezone=True), nullable=True)
-    session_window_days = Column(Integer, default=7)
+    created_at = Column(DateTime(timezone=True), default=_now)
+    updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 
     project = relationship("Project", back_populates="agents")
     runs = relationship("AgentRun", back_populates="agent", lazy="selectin", order_by="AgentRun.started_at.desc()")
@@ -197,8 +189,8 @@ class AgentRun(Base):
     """Log of every agent execution."""
     __tablename__ = "agent_runs"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    agent_id = Column(UUID(as_uuid=True), ForeignKey("agent_configs.id"), nullable=False)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    agent_id = Column(Uuid, ForeignKey("agent_configs.id"), nullable=False)
     status = Column(Enum(AgentRunStatus), default=AgentRunStatus.PENDING, nullable=False)
     trigger = Column(String(50), default="manual")
     input_data = Column(JSON, default=dict)
@@ -207,7 +199,7 @@ class AgentRun(Base):
     tokens_used = Column(Integer, default=0)
     cost_usd = Column(Float, default=0.0)
     transcript = Column(JSON, nullable=True)
-    started_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    started_at = Column(DateTime(timezone=True), default=_now)
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
     agent = relationship("AgentConfig", back_populates="runs")
@@ -222,13 +214,13 @@ class EventLog(Base):
     """Central event log for audit trail."""
     __tablename__ = "event_log"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     event_type = Column(String(100), nullable=False)
     entity_type = Column(String(50), nullable=False)
-    entity_id = Column(UUID(as_uuid=True), nullable=True)
+    entity_id = Column(Uuid, nullable=True)
     source = Column(String(50), default="system")
     data = Column(JSON, default=dict)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=_now)
 
     __table_args__ = (
         Index("idx_events_type", "event_type"),
@@ -240,17 +232,17 @@ class AgentApproval(Base):
     """Pending agent actions that require human approval."""
     __tablename__ = "agent_approvals"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    run_id = Column(UUID(as_uuid=True), ForeignKey("agent_runs.id"), nullable=False)
-    agent_id = Column(UUID(as_uuid=True), ForeignKey("agent_configs.id"), nullable=False)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    run_id = Column(Uuid, ForeignKey("agent_runs.id"), nullable=False)
+    agent_id = Column(Uuid, ForeignKey("agent_configs.id"), nullable=False)
     status = Column(Enum(ApprovalStatus), default=ApprovalStatus.PENDING, nullable=False)
     actions = Column(JSON, nullable=False)
     summary = Column(Text, default="")
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
     expires_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=_now)
 
-    agent = relationship("AgentConfig", foreign_keys=[agent_id])
+    agent = relationship("AgentConfig", foreign_keys=[agent_id], lazy="selectin")
     run = relationship("AgentRun", foreign_keys=[run_id])
 
     __table_args__ = (
@@ -260,16 +252,16 @@ class AgentApproval(Base):
 
 
 class AgentMemory(Base):
-    """Persistent memory for agents. agent_id=NULL = shared scratchpad."""
+    """Persistent key/value memory for an agent, kept across runs."""
     __tablename__ = "agent_memories"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    agent_id = Column(UUID(as_uuid=True), ForeignKey("agent_configs.id", ondelete="CASCADE"), nullable=True)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    agent_id = Column(Uuid, ForeignKey("agent_configs.id", ondelete="CASCADE"), nullable=False)
     key = Column(String(255), nullable=False)
     value = Column(Text, nullable=False)
     memory_type = Column(String(50), default="general")
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=_now)
+    updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 
     agent = relationship("AgentConfig", foreign_keys=[agent_id])
 
@@ -283,7 +275,7 @@ class BrandProfile(Base):
     """Personal brand profile for content generation."""
     __tablename__ = "brand_profile"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False, default="")
     bio = Column(Text, default="")
     tone = Column(String(255), default="")
@@ -298,15 +290,15 @@ class BrandProfile(Base):
         "signal_summary": True,
         "content_drafts": True,
     })
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=_now)
+    updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 
 class Notification(Base):
     """Notifications sent via Telegram."""
     __tablename__ = "notifications"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     title = Column(String(500), nullable=False)
     body = Column(Text, default="")
     category = Column(String(50), default="info")
@@ -316,7 +308,7 @@ class Notification(Base):
     data = Column(JSON, default=dict)
     priority = Column(Enum(NotificationPriority, values_callable=lambda x: [e.value for e in x]), default=NotificationPriority.ROUTINE, nullable=False)
     telegram_sent = Column(Boolean, default=False)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=_now)
 
     __table_args__ = (
         Index("idx_notifications_read", "is_read"),
@@ -324,58 +316,28 @@ class Notification(Base):
     )
 
 
-class MarketingSignal(Base):
-    """Market intelligence discovered by agents."""
-    __tablename__ = "marketing_signals"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    title = Column(String(500), nullable=False)
-    body = Column(Text, default="")
-    source = Column(String(50), default="manual")
-    source_type = Column(String(50), nullable=False)
-    source_url = Column(String(2048), nullable=True)
-    relevance_score = Column(Float, default=0.5)
-    signal_type = Column(String(50), nullable=False)
-    status = Column(Enum(SignalStatus), default=SignalStatus.NEW, nullable=False)
-    channel_metadata = Column(JSON, default=dict)
-    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=True)
-    agent_id = Column(UUID(as_uuid=True), ForeignKey("agent_configs.id"), nullable=True)
-    tags = Column(ARRAY(String), default=list)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-
-    project = relationship("Project", foreign_keys=[project_id])
-    agent = relationship("AgentConfig", foreign_keys=[agent_id])
-
-    __table_args__ = (
-        Index("idx_mkt_signals_status", "status"),
-        Index("idx_mkt_signals_project", "project_id"),
-        Index("idx_mkt_signals_created", "created_at"),
-    )
-
-
 class MarketingContent(Base):
     """Content drafts for X, LinkedIn, Instagram, YouTube, etc."""
     __tablename__ = "marketing_content"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     title = Column(String(500), nullable=False)
     body = Column(Text, nullable=False)
     channel = Column(String(50), nullable=False)  # x, linkedin, instagram, youtube, blog
     status = Column(Enum(ContentStatus), default=ContentStatus.DRAFT, nullable=False)
     source = Column(String(50), default="manual")
-    signal_id = Column(UUID(as_uuid=True), ForeignKey("marketing_signals.id"), nullable=True)
-    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=True)
-    agent_id = Column(UUID(as_uuid=True), ForeignKey("agent_configs.id"), nullable=True)
+    task_id = Column(Uuid, ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True)
+    project_id = Column(Uuid, ForeignKey("projects.id"), nullable=True)
+    agent_id = Column(Uuid, ForeignKey("agent_configs.id"), nullable=True)
     posted_url = Column(String(2048), nullable=True)
     posted_at = Column(DateTime(timezone=True), nullable=True)
     notes = Column(Text, nullable=True)
-    tags = Column(ARRAY(String), default=list)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    tags = Column(JSON, default=list)
+    created_at = Column(DateTime(timezone=True), default=_now)
+    updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 
-    signal = relationship("MarketingSignal", foreign_keys=[signal_id])
-    project = relationship("Project", foreign_keys=[project_id], back_populates="marketing_content")
+    task = relationship("Task", foreign_keys=[task_id])
+    project = relationship("Project", foreign_keys=[project_id])
     agent = relationship("AgentConfig", foreign_keys=[agent_id])
 
     __table_args__ = (
@@ -390,19 +352,14 @@ class ChatSession(Base):
     """Persistent chat session for Telegram conversations."""
     __tablename__ = "chat_sessions"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     user_id = Column(String(100), nullable=False)
     platform = Column(String(50), nullable=False, default="telegram")
     messages = Column(JSON, default=list)
-    last_active = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    last_active = Column(DateTime(timezone=True), default=_now)
+    created_at = Column(DateTime(timezone=True), default=_now)
 
     __table_args__ = (
         Index("idx_chat_sessions_user", "user_id", "platform", unique=True),
         Index("idx_chat_sessions_active", "last_active"),
     )
-
-
-# Optional: pgvector embedding support
-if HAS_PGVECTOR and Vector is not None:
-    Task.embedding = Column(Vector(1536), nullable=True)

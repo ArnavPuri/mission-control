@@ -13,7 +13,6 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://missionctl:missionctl@localhost:5432/missioncontrol"
     use_sqlite: bool = False
     sqlite_path: str = "data/mission_control.db"
-    redis_url: str = "redis://localhost:6379/0"
 
     # --- LLM Auth (Claude Code subscription) ---
     claude_code_oauth_token: str | None = None

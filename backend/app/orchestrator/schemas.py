@@ -2,7 +2,18 @@
 Agent Output Validation Schemas
 """
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+ALLOWED_ACTIONS = {
+    "create_task", "update_task",
+    "create_note",
+    "save_memory",
+    "create_lead", "create_content",
+}
+
+# Old action names still produced by agents created before leads became tasks
+LEGACY_ACTION_ALIASES = {"create_signal": "create_lead"}
 
 
 class AgentAction(BaseModel):
@@ -26,27 +37,31 @@ class AgentAction(BaseModel):
     value: str | None = None
     memory_type: str | None = None
 
-    # Marketing fields
+    # Lead / content fields
     body: str | None = None
+    url: str | None = None
     source_type: str | None = None
-    source_url: str | None = None
     relevance_score: float | None = None
-    signal_type: str | None = None
-    channel_metadata: dict | None = None
     channel: str | None = None
-    signal_id: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def upgrade_legacy_fields(cls, data):
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+        data["type"] = LEGACY_ACTION_ALIASES.get(data.get("type"), data.get("type"))
+        if "source_url" in data and not data.get("url"):
+            data["url"] = data.pop("source_url")
+        if "signal_id" in data and not data.get("task_id"):
+            data["task_id"] = data.pop("signal_id")
+        return data
 
     @field_validator("type")
     @classmethod
     def validate_action_type(cls, v: str) -> str:
-        allowed = {
-            "create_task", "update_task",
-            "create_note",
-            "save_memory", "save_shared_memory",
-            "create_signal", "create_content",
-        }
-        if v not in allowed:
-            raise ValueError(f"Unknown action type '{v}'. Allowed: {', '.join(sorted(allowed))}")
+        if v not in ALLOWED_ACTIONS:
+            raise ValueError(f"Unknown action type '{v}'. Allowed: {', '.join(sorted(ALLOWED_ACTIONS))}")
         return v
 
 

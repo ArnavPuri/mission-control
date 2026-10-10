@@ -131,7 +131,7 @@ export default function SettingsPage() {
             {([
               { key: 'agent_completions' as const, label: 'Agent completions', desc: 'When an agent finishes a run' },
               { key: 'agent_failures' as const, label: 'Agent failures', desc: 'When an agent run fails' },
-              { key: 'signal_summary' as const, label: 'New leads found', desc: 'Summary of new marketing signals' },
+              { key: 'signal_summary' as const, label: 'New leads found', desc: 'Summary of new leads found by marketing agents' },
               { key: 'content_drafts' as const, label: 'Content drafts ready', desc: 'When agents create content drafts' },
             ]).map((item) => (
               <div key={item.key} className="flex items-center justify-between py-2 border-b border-mc-border/40 dark:border-gray-800/40 last:border-0">

@@ -14,7 +14,7 @@ tools:
 
 data:
   reads: [projects, tasks]
-  writes: [marketing_signals, marketing_content]
+  writes: [tasks, marketing_content]
 
 schedule:
   type: interval
@@ -35,7 +35,7 @@ prompt_template: |
      threads would be relevant (people asking for recommendations,
      complaining about competitors, discussing the problem space).
   2. Search for recent threads that match.
-  3. For each opportunity found, create a signal AND optionally a draft reply.
+  3. For each opportunity found, create a lead AND optionally a draft reply.
   4. Draft replies should be genuinely helpful first, product mention second.
 
   Respond with JSON:
@@ -43,15 +43,13 @@ prompt_template: |
     "summary": "Found N opportunities across M subreddits",
     "actions": [
       {
-        "type": "create_signal",
+        "type": "create_lead",
         "title": "r/SaaS - Looking for SEO tool alternatives",
         "body": "User asking for affordable SEO tool recommendations. Thread has 23 upvotes and 12 comments.",
         "source_type": "reddit",
-        "source_url": "https://reddit.com/r/SaaS/...",
+        "url": "https://reddit.com/r/SaaS/...",
         "relevance_score": 0.85,
-        "signal_type": "opportunity",
-        "channel_metadata": {"subreddit": "SaaS", "upvotes": 23, "comment_count": 12},
-        "tags": ["reddit", "seo"]
+        "tags": ["seo"]
       },
       {
         "type": "create_content",

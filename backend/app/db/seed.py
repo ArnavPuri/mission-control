@@ -4,15 +4,12 @@ Seed data for new Mission Control installations.
 Creates example projects, tasks, and notes so new users have something to explore.
 """
 
-import asyncio
-import uuid
-from datetime import datetime, timezone, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from app.db.session import async_session
-from app.db.models import Project, Task, Note, TaskStatus
+from app.db.models import Project, Task, Note
 
 
 SEED_TAG = "seed-data"

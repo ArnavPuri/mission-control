@@ -49,6 +49,8 @@ export const projects = {
 export interface Task {
   id: string;
   text: string;
+  description?: string | null;
+  url?: string | null;
   status: 'todo' | 'in_progress' | 'blocked' | 'done';
   priority: 'critical' | 'high' | 'medium' | 'low';
   project_id?: string;
@@ -59,7 +61,7 @@ export interface Task {
 }
 
 export const tasks = {
-  list: (params?: { status?: string; project_id?: string }) => {
+  list: (params?: { status?: string; project_id?: string; tag?: string }) => {
     const qs = new URLSearchParams(params as Record<string, string>).toString();
     return request<Task[]>(`/api/tasks${qs ? '?' + qs : ''}`);
   },
@@ -218,40 +220,6 @@ export const search = {
     request<SearchResponse>(`/api/search?q=${encodeURIComponent(q)}&entity_types=${entityTypes}&limit=${limit}`),
 };
 
-// --- Marketing Signals ---
-
-export interface MarketingSignal {
-  id: string;
-  title: string;
-  body: string;
-  source: string;
-  source_type: string;
-  source_url: string | null;
-  relevance_score: number;
-  signal_type: string;
-  status: 'new' | 'reviewed' | 'acted_on' | 'dismissed';
-  channel_metadata: Record<string, unknown>;
-  project_id: string | null;
-  agent_id: string | null;
-  tags: string[];
-  created_at: string;
-  updated_at: string | null;
-}
-
-export const marketingSignals = {
-  list: (params?: { status?: string; source_type?: string; signal_type?: string; project_id?: string }) => {
-    const qs = new URLSearchParams();
-    if (params?.status) qs.set('status', params.status);
-    if (params?.source_type) qs.set('source_type', params.source_type);
-    if (params?.signal_type) qs.set('signal_type', params.signal_type);
-    if (params?.project_id) qs.set('project_id', params.project_id);
-    const query = qs.toString();
-    return request<MarketingSignal[]>(`/api/mkt-signals${query ? `?${query}` : ''}`);
-  },
-  update: (id: string, data: Partial<MarketingSignal>) =>
-    request<MarketingSignal>(`/api/mkt-signals/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-};
-
 // --- Marketing Content ---
 
 export interface MarketingContent {
@@ -261,7 +229,7 @@ export interface MarketingContent {
   channel: string;
   status: 'draft' | 'approved' | 'posted' | 'archived';
   source: string;
-  signal_id: string | null;
+  task_id: string | null;
   project_id: string | null;
   agent_id: string | null;
   posted_url: string | null;

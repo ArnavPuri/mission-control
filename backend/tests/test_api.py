@@ -15,7 +15,7 @@ from app.main import app
 from app.db.session import get_db
 
 
-TEST_DATABASE_URL = "sqlite+aiosqlite:///file::memory:?cache=shared"
+TEST_DATABASE_URL = "sqlite+aiosqlite://"
 
 engine = create_async_engine(
     TEST_DATABASE_URL,
@@ -146,40 +146,40 @@ async def test_notifications(client: AsyncClient):
     assert "unread" in r.json()
 
 
-# ─── Marketing Signals ───────────────────────────────────
+# ─── Leads (tasks tagged "lead") ─────────────────────────
 
 @pytest.mark.asyncio
-async def test_signal_crud(client: AsyncClient):
-    r = await client.post("/api/mkt-signals", json={
-        "title": "Reddit opportunity",
-        "source_type": "reddit",
-        "signal_type": "opportunity",
-        "relevance_score": 0.85,
+async def test_leads_are_tagged_tasks(client: AsyncClient):
+    await client.post("/api/tasks", json={
+        "text": "r/SaaS - looking for SEO tools",
+        "description": "Thread with 23 upvotes",
+        "url": "https://reddit.com/r/SaaS/x",
+        "tags": ["lead", "reddit"],
     })
-    assert r.status_code == 200
-    signal_id = r.json()["id"]
+    await client.post("/api/tasks", json={"text": "Regular task"})
 
-    r = await client.get("/api/mkt-signals")
+    r = await client.get("/api/tasks?tag=lead")
     assert r.status_code == 200
-
-    r = await client.patch(f"/api/mkt-signals/{signal_id}", json={"status": "reviewed"})
-    assert r.status_code == 200
-
-    r = await client.delete(f"/api/mkt-signals/{signal_id}")
-    assert r.status_code == 200
+    leads = r.json()
+    assert [t["text"] for t in leads] == ["r/SaaS - looking for SEO tools"]
+    assert leads[0]["url"] == "https://reddit.com/r/SaaS/x"
+    assert leads[0]["description"] == "Thread with 23 upvotes"
 
 
 # ─── Marketing Content ───────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_content_crud(client: AsyncClient):
+    lead = await client.post("/api/tasks", json={"text": "Lead", "tags": ["lead"]})
     r = await client.post("/api/mkt-content", json={
         "title": "Draft tweet",
         "body": "Check out our tool",
         "channel": "x",
+        "task_id": lead.json()["id"],
     })
     assert r.status_code == 200
     content_id = r.json()["id"]
+    assert r.json()["task_id"] == lead.json()["id"]
 
     r = await client.patch(f"/api/mkt-content/{content_id}", json={"status": "approved"})
     assert r.status_code == 200

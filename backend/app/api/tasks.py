@@ -1,6 +1,6 @@
 from uuid import UUID
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
@@ -13,6 +13,8 @@ router = APIRouter()
 
 class TaskCreate(BaseModel):
     text: str
+    description: str | None = None
+    url: str | None = None
     priority: TaskPriority = TaskPriority.MEDIUM
     project_id: UUID | None = None
     source: str = "manual"
@@ -22,6 +24,8 @@ class TaskCreate(BaseModel):
 
 class TaskUpdate(BaseModel):
     text: str | None = None
+    description: str | None = None
+    url: str | None = None
     status: TaskStatus | None = None
     priority: TaskPriority | None = None
     project_id: UUID | None = None
@@ -33,6 +37,7 @@ class TaskUpdate(BaseModel):
 async def list_tasks(
     status: TaskStatus | None = None,
     project_id: UUID | None = None,
+    tag: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     query = select(Task).order_by(Task.sort_order.asc(), Task.priority.asc(), Task.created_at.desc())
@@ -42,10 +47,15 @@ async def list_tasks(
         query = query.where(Task.project_id == project_id)
     result = await db.execute(query)
     tasks = result.scalars().all()
+    if tag:
+        # tags is a JSON list; filter here so it works on PostgreSQL and SQLite
+        tasks = [t for t in tasks if tag in (t.tags or [])]
     return [
         {
             "id": str(t.id),
             "text": t.text,
+            "description": t.description,
+            "url": t.url,
             "status": t.status.value,
             "priority": t.priority.value,
             "project_id": str(t.project_id) if t.project_id else None,
@@ -63,8 +73,6 @@ async def create_task(data: TaskCreate, db: AsyncSession = Depends(get_db)):
     task = Task(**data.model_dump())
     db.add(task)
     await db.flush()
-
-
     return {"id": str(task.id), "text": task.text}
 
 

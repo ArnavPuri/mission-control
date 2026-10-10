@@ -19,8 +19,7 @@ from app.config import settings
 from app.db.models import (
     AgentConfig, AgentRun, AgentStatus, AgentRunStatus,
     Project, Task, EventLog, TaskStatus,
-    AgentApproval, ApprovalStatus,
-    AgentMemory, Note,
+    AgentApproval, AgentMemory, Note, LEAD_TAG,
 )
 from app.api.ws import broadcast
 from app.api.notifications import create_notification
@@ -30,11 +29,9 @@ logger = logging.getLogger(__name__)
 
 
 class AgentRunner:
-    """Executes agent runs against the Claude Agent SDK or Anthropic API."""
+    """Executes agent runs against the Claude Agent SDK."""
 
     def __init__(self):
-        self._last_session_id = None
-        self._last_message_uuid = None
         self._last_transcript = None
 
     def _build_system_prompt(self, agent: AgentConfig) -> str:
@@ -59,23 +56,11 @@ class AgentRunner:
             parts.append(f"\n## About the User\n{identity}")
 
         parts.append(
-            "\n## Time Awareness\n"
-            'Your context includes "time_context" with the current UTC time and period. '
-            "Adapt your behavior accordingly:\n"
-            "- Morning: planning, prioritization, daily briefings\n"
-            "- Afternoon: execution, progress updates\n"
-            "- Evening: reflection, reviews, day summaries\n"
-            "- Night: quiet background tasks, prep for tomorrow"
-        )
-
-        parts.append(
-            "\n## Memory & Learning\n"
-            "You have persistent memory that survives between runs. Use it.\n"
+            "\n## Memory\n"
+            "You have persistent memory that survives between runs.\n"
             '- Your context includes "past_runs" showing your last 5 runs.\n'
             '- Your "memory" dict contains things you saved previously.\n'
-            '- Your "shared_memory" dict contains notes from other agents.\n'
-            "- To remember something, include a save_memory action.\n"
-            "- To share context, include a save_shared_memory action.\n"
+            '- To remember something, include a save_memory action with "key" and "value".\n'
             "- Avoid repeating the same actions from recent runs."
         )
 
@@ -105,6 +90,7 @@ class AgentRunner:
             context["tasks"] = [
                 {"id": str(t.id), "text": t.text, "priority": t.priority.value, "status": t.status.value}
                 for t in result.scalars().all()
+                if LEAD_TAG not in (t.tags or [])
             ]
 
         if "notes" in (agent.data_reads or []):
@@ -117,20 +103,19 @@ class AgentRunner:
                 for n in result.scalars().all()
             ]
 
-        if "marketing_signals" in (agent.data_reads or []):
-            from app.db.models import MarketingSignal, SignalStatus
+        if "leads" in (agent.data_reads or []):
             result = await db.execute(
-                select(MarketingSignal)
-                .where(MarketingSignal.status == SignalStatus.NEW)
-                .order_by(MarketingSignal.created_at.desc())
-                .limit(50)
+                select(Task)
+                .where(Task.status != TaskStatus.DONE)
+                .order_by(Task.created_at.desc())
+                .limit(200)
             )
-            context["marketing_signals"] = [
-                {"id": str(s.id), "title": s.title, "body": s.body[:200],
-                 "source_type": s.source_type, "source_url": s.source_url,
-                 "relevance_score": s.relevance_score, "signal_type": s.signal_type}
-                for s in result.scalars().all()
-            ]
+            context["leads"] = [
+                {"id": str(t.id), "title": t.text, "body": (t.description or "")[:200],
+                 "url": t.url, "priority": t.priority.value, "tags": t.tags or []}
+                for t in result.scalars().all()
+                if LEAD_TAG in (t.tags or [])
+            ][:50]
 
         if "marketing_content" in (agent.data_reads or []):
             from app.db.models import MarketingContent, ContentStatus
@@ -146,67 +131,6 @@ class AgentRunner:
                 for c in result.scalars().all()
             ]
 
-        # Standup context
-        if "standup" in (agent.data_reads or []):
-            cutoff = datetime.now(timezone.utc) - timedelta(hours=36)
-            all_agents_result = await db.execute(
-                select(AgentConfig).where(AgentConfig.status != AgentStatus.DISABLED)
-            )
-            all_agents = all_agents_result.scalars().all()
-
-            standup_roster = []
-            for a in all_agents:
-                if a.id == agent.id:
-                    continue
-
-                agent_info = {
-                    "name": a.name, "slug": a.slug, "description": a.description,
-                    "status": a.status.value, "model": a.model,
-                    "schedule": f"{a.schedule_type}:{a.schedule_value}" if a.schedule_type else "manual",
-                    "last_run_at": a.last_run_at.isoformat() if a.last_run_at else None,
-                }
-
-                last_run_result = await db.execute(
-                    select(AgentRun).where(
-                        AgentRun.agent_id == a.id,
-                        AgentRun.status == AgentRunStatus.COMPLETED,
-                        AgentRun.completed_at >= cutoff,
-                    ).order_by(AgentRun.completed_at.desc()).limit(1)
-                )
-                last_run = last_run_result.scalar_one_or_none()
-                if last_run:
-                    agent_info["last_run"] = {
-                        "completed_at": last_run.completed_at.isoformat() if last_run.completed_at else None,
-                        "summary": (last_run.output_data or {}).get("summary", "")[:300],
-                        "action_count": len((last_run.output_data or {}).get("actions", [])),
-                    }
-
-                standup_roster.append(agent_info)
-
-            context["standup"] = standup_roster
-
-        # Time context
-        now = datetime.now(timezone.utc)
-        hour = now.hour
-        if hour < 6:
-            time_period, time_guidance = "late_night", "Focus on background tasks."
-        elif hour < 12:
-            time_period, time_guidance = "morning", "Good time for planning and prioritization."
-        elif hour < 17:
-            time_period, time_guidance = "afternoon", "Focus on execution and progress."
-        elif hour < 21:
-            time_period, time_guidance = "evening", "Good time for reflection and reviews."
-        else:
-            time_period, time_guidance = "night", "Focus on quiet tasks and prep for tomorrow."
-
-        context["time_context"] = {
-            "utc_time": now.isoformat(),
-            "hour": hour,
-            "period": time_period,
-            "day_of_week": now.strftime("%A").lower(),
-            "guidance": time_guidance,
-        }
-
         # Agent memory
         mem_result = await db.execute(
             select(AgentMemory).where(AgentMemory.agent_id == agent.id).order_by(AgentMemory.updated_at.desc())
@@ -214,25 +138,6 @@ class AgentRunner:
         memories = mem_result.scalars().all()
         if memories:
             context["memory"] = {m.key: m.value for m in memories}
-
-        # Shared scratchpad
-        shared_result = await db.execute(
-            select(AgentMemory).where(AgentMemory.agent_id.is_(None)).order_by(AgentMemory.updated_at.desc())
-        )
-        shared_memories = shared_result.scalars().all()
-        if shared_memories:
-            context["shared_memory"] = {m.key: m.value for m in shared_memories}
-
-        # Lessons
-        lessons_result = await db.execute(
-            select(AgentMemory).where(
-                AgentMemory.agent_id.is_(None),
-                AgentMemory.key == "system:lessons",
-            )
-        )
-        lessons_mem = lessons_result.scalar_one_or_none()
-        if lessons_mem and lessons_mem.value.strip():
-            context["lessons"] = lessons_mem.value
 
         # Run history
         run_history = await db.execute(
@@ -263,7 +168,7 @@ class AgentRunner:
                 }
 
         # Brand profile for marketing agents
-        if any(r in (agent.data_reads or []) for r in ("marketing_signals", "marketing_content")):
+        if any(r in (agent.data_reads or []) for r in ("leads", "marketing_content")):
             from app.db.models import BrandProfile
             bp_result = await db.execute(select(BrandProfile).limit(1))
             bp = bp_result.scalar_one_or_none()
@@ -321,26 +226,12 @@ class AgentRunner:
         if cli_path:
             options_kwargs["cli_path"] = cli_path
 
-        # Session resumption
-        if agent.session_id and agent.session_expires_at and agent.session_expires_at > datetime.now(timezone.utc):
-            options_kwargs["resume"] = agent.session_id
-            if agent.last_message_uuid:
-                options_kwargs["resume_session_at"] = agent.last_message_uuid
-
         options = ClaudeAgentOptions(**options_kwargs)
 
         full_response = ""
-        new_session_id = None
-        last_assistant_uuid = None
         transcript = []
 
         async for message in query(prompt=prompt, options=options):
-            if hasattr(message, 'subtype') and message.subtype == 'init':
-                if hasattr(message, 'session_id'):
-                    new_session_id = message.session_id
-                elif hasattr(message, 'data') and isinstance(message.data, dict):
-                    new_session_id = message.data.get('session_id')
-
             if hasattr(message, "result") and message.result is not None:
                 full_response = message.result
                 if len(transcript) < 50:
@@ -354,14 +245,7 @@ class AgentRunner:
                 if text_parts and len(transcript) < 50:
                     role = getattr(message, 'role', 'assistant')
                     transcript.append({"role": role, "content": "".join(text_parts)[:2000]})
-                    if role == "assistant":
-                        for attr in ('uuid', 'id', 'message_id'):
-                            if hasattr(message, attr):
-                                last_assistant_uuid = getattr(message, attr)
-                                break
 
-        self._last_session_id = new_session_id
-        self._last_message_uuid = last_assistant_uuid
         self._last_transcript = transcript if transcript else None
 
         if not full_response:
@@ -431,14 +315,6 @@ class AgentRunner:
             agent.last_run_at = datetime.now(timezone.utc)
             run.transcript = self._last_transcript
 
-            # Session persistence
-            if agent.session_window_days and agent.session_window_days > 0:
-                if self._last_session_id:
-                    agent.session_id = self._last_session_id
-                if self._last_message_uuid:
-                    agent.last_message_uuid = self._last_message_uuid
-                agent.session_expires_at = datetime.now(timezone.utc) + timedelta(days=agent.session_window_days)
-
             # Process actions (approval or direct)
             requires_approval = agent.config.get("requires_approval", False) if agent.config else False
             actions = [a.model_dump(exclude_none=True) for a in validated.actions]
@@ -473,22 +349,6 @@ class AgentRunner:
             except Exception:
                 pass
 
-            # Post-run learning
-            await self._post_run_learn(agent, run, result, db)
-
-            # Agent chaining
-            chain_to = agent.config.get("chain_to") if agent.config else None
-            if chain_to:
-                try:
-                    chain_result = await db.execute(
-                        select(AgentConfig).where(AgentConfig.slug == chain_to)
-                    )
-                    next_agent = chain_result.scalar_one_or_none()
-                    if next_agent and next_agent.status != AgentStatus.RUNNING:
-                        asyncio.create_task(self._chain_run(next_agent.id, result, trigger))
-                except Exception as e:
-                    logger.warning(f"Agent chaining failed: {e}")
-
         except Exception as e:
             run.status = AgentRunStatus.FAILED
             run.error = str(e)
@@ -513,8 +373,6 @@ class AgentRunner:
 
         await db.flush()
 
-        self._last_session_id = None
-        self._last_message_uuid = None
         self._last_transcript = None
 
         db.add(EventLog(
@@ -527,82 +385,8 @@ class AgentRunner:
 
         return run
 
-    async def _chain_run(self, next_agent_id, previous_result: dict, trigger: str):
-        from app.db.session import async_session
-        async with async_session() as db:
-            next_agent = await db.get(AgentConfig, next_agent_id)
-            if not next_agent or next_agent.status == AgentStatus.RUNNING:
-                return
-            existing = await db.execute(
-                select(AgentMemory).where(
-                    AgentMemory.agent_id == next_agent.id,
-                    AgentMemory.key == "_chain_input",
-                )
-            )
-            mem = existing.scalar_one_or_none()
-            chain_data = json.dumps(previous_result)[:2000]
-            if mem:
-                mem.value = chain_data
-            else:
-                db.add(AgentMemory(
-                    agent_id=next_agent.id, key="_chain_input",
-                    value=chain_data, memory_type="chain",
-                ))
-            await self.start_run(next_agent, trigger=f"chain:{trigger}", db=db)
-            await db.commit()
-
-    async def _post_run_learn(self, agent: AgentConfig, run: AgentRun, result: dict, db: AsyncSession):
-        try:
-            actions = result.get("actions", [])
-            action_types = [a.get("type", "") for a in actions if isinstance(a, dict)]
-
-            # Run counter
-            counter_result = await db.execute(
-                select(AgentMemory).where(AgentMemory.agent_id == agent.id, AgentMemory.key == "_run_count")
-            )
-            counter = counter_result.scalar_one_or_none()
-            run_count = int(counter.value) + 1 if counter else 1
-            if counter:
-                counter.value = str(run_count)
-            else:
-                db.add(AgentMemory(agent_id=agent.id, key="_run_count", value=str(run_count), memory_type="system"))
-
-            # Last summary
-            last_summary = result.get("summary", "")[:500]
-            if last_summary:
-                existing = await db.execute(
-                    select(AgentMemory).where(AgentMemory.agent_id == agent.id, AgentMemory.key == "_last_run_summary")
-                )
-                mem = existing.scalar_one_or_none()
-                if mem:
-                    mem.value = last_summary
-                else:
-                    db.add(AgentMemory(agent_id=agent.id, key="_last_run_summary", value=last_summary, memory_type="system"))
-
-            await db.flush()
-        except Exception as e:
-            logger.debug(f"Post-run learning failed for {agent.name}: {e}")
-
-    async def _write_lesson(self, agent_name: str, lesson_text: str, db: AsyncSession):
-        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        new_lesson = f"[{date_str}] {agent_name}: {lesson_text}"
-
-        existing = await db.execute(
-            select(AgentMemory).where(AgentMemory.agent_id.is_(None), AgentMemory.key == "system:lessons")
-        )
-        mem = existing.scalar_one_or_none()
-
-        if mem:
-            lines = [l for l in mem.value.split("\n") if l.strip()]
-            lines.append(new_lesson)
-            if len(lines) > 20:
-                lines = lines[-20:]
-            mem.value = "\n".join(lines)
-        else:
-            db.add(AgentMemory(agent_id=None, key="system:lessons", value=new_lesson, memory_type="shared"))
-
     async def _process_actions(self, actions: list, agent: AgentConfig, db: AsyncSession):
-        _signal_count = 0
+        _lead_count = 0
         _content_count = 0
 
         for action in actions:
@@ -659,38 +443,20 @@ class AgentRunner:
                             memory_type=action.get("memory_type", "general"),
                         ))
 
-            elif action_type == "save_shared_memory":
-                key = action.get("key")
-                value = action.get("value")
-                if key and value:
-                    existing = await db.execute(
-                        select(AgentMemory).where(AgentMemory.agent_id.is_(None), AgentMemory.key == key)
-                    )
-                    mem = existing.scalar_one_or_none()
-                    if mem:
-                        mem.value = str(value)
-                    else:
-                        db.add(AgentMemory(agent_id=None, key=key, value=str(value), memory_type="shared"))
-
-            elif action_type == "create_signal" and "marketing_signals" in (agent.data_writes or []):
-                from app.db.models import MarketingSignal
-                signal = MarketingSignal(
-                    title=action.get("title", "Untitled signal"),
-                    body=action.get("body", ""),
-                    source=f"agent:{agent.slug}",
-                    source_type=action.get("source_type", "other"),
-                    source_url=action.get("source_url"),
-                    relevance_score=min(max(action.get("relevance_score", 0.5), 0.0), 1.0),
-                    signal_type=action.get("signal_type", "opportunity"),
-                    channel_metadata=action.get("channel_metadata", {}),
+            elif action_type == "create_lead" and "tasks" in (agent.data_writes or []):
+                lead = Task(
+                    text=action.get("title") or action.get("text") or "Untitled lead",
+                    description=action.get("body", ""),
+                    url=action.get("url"),
+                    priority=_lead_priority(action.get("relevance_score")),
                     project_id=agent.project_id,
-                    agent_id=agent.id,
-                    tags=action.get("tags", []),
+                    source=f"agent:{agent.slug}",
+                    tags=_lead_tags(action),
                 )
-                db.add(signal)
+                db.add(lead)
                 await db.flush()
-                await broadcast("signal.created", {"id": str(signal.id), "title": signal.title})
-                _signal_count += 1
+                await broadcast("task.created", {"id": str(lead.id), "text": lead.text, "source": lead.source})
+                _lead_count += 1
 
             elif action_type == "create_content" and "marketing_content" in (agent.data_writes or []):
                 from app.db.models import MarketingContent
@@ -699,7 +465,7 @@ class AgentRunner:
                     body=action.get("body", ""),
                     channel=action.get("channel", "other"),
                     source=f"agent:{agent.slug}",
-                    signal_id=UUID(action["signal_id"]) if action.get("signal_id") else None,
+                    task_id=UUID(action["task_id"]) if action.get("task_id") else None,
                     project_id=agent.project_id,
                     agent_id=agent.id,
                     tags=action.get("tags", []),
@@ -713,10 +479,10 @@ class AgentRunner:
         from app.api.brand import get_notification_prefs_dict
         prefs = await get_notification_prefs_dict(db)
 
-        if _signal_count > 0 and prefs.get("signal_summary", True):
+        if _lead_count > 0 and prefs.get("signal_summary", True):
             await create_notification(
-                db, title=f"Found {_signal_count} new leads",
-                category="signal", source=f"agent:{agent.slug}",
+                db, title=f"Found {_lead_count} new lead{'s' if _lead_count > 1 else ''}",
+                category="lead", source=f"agent:{agent.slug}",
                 priority="routine",
             )
 
@@ -725,3 +491,25 @@ class AgentRunner:
                 db, title=f"{_content_count} new draft{'s' if _content_count > 1 else ''} ready",
                 category="content", source=f"agent:{agent.slug}",
             )
+
+
+def _lead_priority(relevance) -> str:
+    try:
+        score = float(relevance)
+    except (TypeError, ValueError):
+        return "medium"
+    if score >= 0.8:
+        return "high"
+    if score < 0.5:
+        return "low"
+    return "medium"
+
+
+def _lead_tags(action: dict) -> list[str]:
+    tags = [LEAD_TAG]
+    if action.get("source_type"):
+        tags.append(str(action["source_type"]))
+    for tag in action.get("tags") or []:
+        if tag not in tags:
+            tags.append(tag)
+    return tags

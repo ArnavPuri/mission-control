@@ -13,7 +13,7 @@ import yaml
 from sqlalchemy import select
 
 from app.config import settings
-from app.db.models import AgentConfig, AgentStatus
+from app.db.models import AgentConfig
 from app.db.session import async_session
 
 logger = logging.getLogger(__name__)

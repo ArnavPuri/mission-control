@@ -16,7 +16,7 @@ class ContentCreate(BaseModel):
     title: str
     body: str
     channel: str
-    signal_id: str | None = None
+    task_id: str | None = None
     project_id: str | None = None
     tags: list[str] = []
     notes: str | None = None
@@ -40,7 +40,7 @@ def _serialize(c: MarketingContent) -> dict:
         "channel": c.channel,
         "status": c.status.value,
         "source": c.source,
-        "signal_id": str(c.signal_id) if c.signal_id else None,
+        "task_id": str(c.task_id) if c.task_id else None,
         "project_id": str(c.project_id) if c.project_id else None,
         "agent_id": str(c.agent_id) if c.agent_id else None,
         "posted_url": c.posted_url,
@@ -57,7 +57,7 @@ async def list_content(
     status: str | None = None,
     channel: str | None = None,
     project_id: str | None = None,
-    signal_id: str | None = None,
+    task_id: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -69,8 +69,8 @@ async def list_content(
         query = query.where(MarketingContent.channel == channel)
     if project_id:
         query = query.where(MarketingContent.project_id == UUID(project_id))
-    if signal_id:
-        query = query.where(MarketingContent.signal_id == UUID(signal_id))
+    if task_id:
+        query = query.where(MarketingContent.task_id == UUID(task_id))
     query = query.offset(offset).limit(limit)
     result = await db.execute(query)
     return [_serialize(c) for c in result.scalars().all()]
@@ -90,7 +90,7 @@ async def create_content(data: ContentCreate, db: AsyncSession = Depends(get_db)
         title=data.title,
         body=data.body,
         channel=data.channel,
-        signal_id=UUID(data.signal_id) if data.signal_id else None,
+        task_id=UUID(data.task_id) if data.task_id else None,
         project_id=UUID(data.project_id) if data.project_id else None,
         tags=data.tags,
         notes=data.notes,

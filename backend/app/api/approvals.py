@@ -3,10 +3,9 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel
 
 from app.db.session import get_db
-from app.db.models import AgentApproval, ApprovalStatus, AgentConfig, AgentRun
+from app.db.models import AgentApproval, ApprovalStatus, AgentConfig
 from app.orchestrator.runner import AgentRunner
 from app.api.ws import broadcast
 

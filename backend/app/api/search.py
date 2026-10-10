@@ -5,7 +5,7 @@ from sqlalchemy import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.db.models import Task, Project, Note, MarketingSignal, MarketingContent
+from app.db.models import Task, Project, Note, MarketingContent
 
 router = APIRouter()
 
@@ -13,13 +13,13 @@ router = APIRouter()
 @router.get("")
 async def search(
     q: str = Query(..., min_length=1, description="Search query"),
-    entity_types: str = Query("all", description="Comma-separated: tasks,notes,projects,signals,content"),
+    entity_types: str = Query("all", description="Comma-separated: tasks,notes,projects,content"),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
     query_lower = f"%{q.lower()}%"
     types = set(entity_types.split(",")) if entity_types != "all" else {
-        "tasks", "notes", "projects", "signals", "content"
+        "tasks", "notes", "projects", "content"
     }
     results = []
 
@@ -54,19 +54,6 @@ async def search(
             {"type": "project", "id": str(p.id), "title": p.name,
              "status": p.status.value, "created_at": p.created_at.isoformat()}
             for p in rows
-        ])
-
-    if "signals" in types:
-        stmt = select(MarketingSignal).where(
-            or_(func.lower(MarketingSignal.title).like(query_lower),
-                func.lower(MarketingSignal.body).like(query_lower))
-        ).order_by(MarketingSignal.created_at.desc()).limit(limit)
-        rows = (await db.execute(stmt)).scalars().all()
-        results.extend([
-            {"type": "signal", "id": str(s.id), "title": s.title,
-             "status": s.status.value, "source_type": s.source_type,
-             "created_at": s.created_at.isoformat()}
-            for s in rows
         ])
 
     if "content" in types:

@@ -1,4 +1,4 @@
-# Lightweight Docker Compose for SQLite mode (no Postgres/Redis required)
+# Lightweight Docker Compose for SQLite mode (no Postgres required)
 # Usage: docker compose -f docker-compose.sqlite.yml up -d
 version: "3.9"
 

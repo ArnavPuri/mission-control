@@ -1,6 +1,5 @@
 from uuid import UUID
-from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
@@ -34,12 +33,13 @@ async def list_notes(
     db: AsyncSession = Depends(get_db),
 ):
     query = select(Note).order_by(Note.is_pinned.desc(), Note.updated_at.desc())
-    if tag:
-        query = query.where(Note.tags.any(tag))
     if pinned_only:
         query = query.where(Note.is_pinned == True)
     result = await db.execute(query)
     notes = result.scalars().all()
+    if tag:
+        # tags is a JSON list; filter here so it works on PostgreSQL and SQLite
+        notes = [n for n in notes if tag in (n.tags or [])]
     return [
         {
             "id": str(n.id),

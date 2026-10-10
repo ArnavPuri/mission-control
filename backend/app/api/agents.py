@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from app.db.session import get_db
-from app.db.models import AgentConfig, AgentRun, AgentStatus, AgentRunStatus, EventLog
+from app.db.models import AgentConfig, AgentRun, AgentStatus, EventLog
 from app.orchestrator.runner import AgentRunner
 from app.api.ws import broadcast
 
@@ -102,7 +102,6 @@ def _serialize_full(a: AgentConfig) -> dict:
         "last_run_at": a.last_run_at.isoformat() if a.last_run_at else None,
         "created_at": a.created_at.isoformat(),
         "updated_at": a.updated_at.isoformat() if a.updated_at else None,
-        "session_window_days": a.session_window_days or 7,
     }
 
 

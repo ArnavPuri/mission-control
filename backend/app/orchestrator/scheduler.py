@@ -15,7 +15,6 @@ import re
 from datetime import datetime, timezone, timedelta
 
 from sqlalchemy import select, or_
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import async_session
 from app.db.models import AgentConfig, AgentStatus

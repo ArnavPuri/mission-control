@@ -55,6 +55,3 @@ prompt_template: |
 requires_approval: false
 max_actions_per_run: 15
 
-config:
-  self_eval: true
-  min_confidence: 0.5

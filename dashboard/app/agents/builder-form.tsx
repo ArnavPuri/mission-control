@@ -19,10 +19,10 @@ function slugify(name: string): string {
 
 // ─── Data Access Options ─────────────────────────────────
 
-const DATA_OPTIONS = [
-  'projects', 'tasks', 'notes',
-  'marketing_signals', 'marketing_content',
-] as const;
+const READ_OPTIONS = ['projects', 'tasks', 'notes', 'leads', 'marketing_content'] as const;
+
+// "tasks" also covers leads (a lead is a task tagged "lead")
+const WRITE_OPTIONS = ['tasks', 'notes', 'marketing_content'] as const;
 
 const TOOL_OPTIONS = ['web_search', 'bash', 'write'] as const;
 
@@ -37,7 +37,7 @@ const VARIABLE_MAP: Record<string, string> = {
   projects: '{{projects}}',
   tasks: '{{tasks}}',
   notes: '{{notes}}',
-  marketing_signals: '{{marketing_signals}}',
+  leads: '{{leads}}',
   marketing_content: '{{marketing_content}}',
 };
 
@@ -45,7 +45,7 @@ const PREVIEW_MAP: Record<string, string> = {
   projects: '[3 projects]',
   tasks: '[5 tasks]',
   notes: '[5 notes]',
-  marketing_signals: '[6 signals]',
+  leads: '[6 leads]',
   marketing_content: '[3 content pieces]',
 };
 
@@ -72,15 +72,15 @@ const TEMPLATES: AgentTemplate[] = [
       max_budget_usd: 0.25,
       tools: ['web_search'],
       data_reads: ['projects', 'tasks'],
-      data_writes: ['marketing_signals', 'marketing_content'],
+      data_writes: ['tasks', 'marketing_content'],
       schedule_type: 'interval',
       schedule_value: '6h',
       prompt_template: `You are a Reddit scout agent. Your job is to find relevant Reddit threads where our projects could be mentioned or where our target audience is discussing related problems.
 
 Search for threads related to the projects in your context. For each relevant thread:
 1. Assess relevance (0-1 score)
-2. Identify the signal type (opportunity, feedback, competitor, trend)
-3. Create a marketing signal with the thread details
+2. Note what kind of opportunity it is (question, feedback, competitor, trend) as a tag
+3. Create a lead (create_lead) with the thread title, summary and URL
 
 Focus on threads from the last 24 hours. Prioritize high-engagement threads.`,
       config: { requires_approval: false, max_actions: 5 },
@@ -132,8 +132,6 @@ interface FormState {
   schedule_value: string;
   requires_approval: boolean;
   max_actions: number;
-  chain_to: string;
-  session_window_days: number;
 }
 
 function defaultFormState(): FormState {
@@ -153,8 +151,6 @@ function defaultFormState(): FormState {
     schedule_value: '',
     requires_approval: false,
     max_actions: 5,
-    chain_to: '',
-    session_window_days: 7,
   };
 }
 
@@ -176,8 +172,6 @@ function formStateFromDefaults(defaults: Partial<api.AgentDetail>): FormState {
     schedule_value: defaults.schedule_value || '',
     requires_approval: (config.requires_approval as boolean) ?? false,
     max_actions: (config.max_actions as number) ?? 5,
-    chain_to: (config.chain_to as string) ?? '',
-    session_window_days: (defaults as Record<string, unknown>).session_window_days as number ?? 7,
   };
 }
 
@@ -285,7 +279,7 @@ export function AgentBuilderForm({
 
     setSaving(true);
     try {
-      const payload: Partial<api.AgentDetail> & { session_window_days?: number } = {
+      const payload: Partial<api.AgentDetail> = {
         name: form.name.trim(),
         slug: form.slug.trim(),
         description: form.description.trim(),
@@ -298,12 +292,10 @@ export function AgentBuilderForm({
         data_writes: form.data_writes,
         schedule_type: form.schedule_type === 'manual' ? undefined : form.schedule_type,
         schedule_value: form.schedule_value || undefined,
-        session_window_days: form.session_window_days,
         config: {
           timeout_seconds: form.timeout_seconds,
           requires_approval: form.requires_approval,
           max_actions: form.max_actions,
-          ...(form.chain_to ? { chain_to: form.chain_to } : {}),
         },
       };
 
@@ -623,7 +615,7 @@ export function AgentBuilderForm({
               <div>
                 <label className={labelClass}>Reads from</label>
                 <div className="grid grid-cols-2 gap-2">
-                  {DATA_OPTIONS.map((opt) =>
+                  {READ_OPTIONS.map((opt) =>
                     checkboxItem(opt, form.data_reads.includes(opt), () => toggleArrayField('data_reads', opt)),
                   )}
                 </div>
@@ -631,7 +623,7 @@ export function AgentBuilderForm({
               <div>
                 <label className={labelClass}>Writes to</label>
                 <div className="grid grid-cols-2 gap-2">
-                  {DATA_OPTIONS.map((opt) =>
+                  {WRITE_OPTIONS.map((opt) =>
                     checkboxItem(opt, form.data_writes.includes(opt), () => toggleArrayField('data_writes', opt)),
                   )}
                 </div>
@@ -698,7 +690,7 @@ export function AgentBuilderForm({
           {/* Section 7 — Advanced */}
           <Card className="p-5">
             {sectionTitle('Advanced', 7)}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="flex items-center gap-2.5 cursor-pointer">
                   <span
@@ -729,28 +721,6 @@ export function AgentBuilderForm({
                   min={1}
                   className={inputClass + ' font-mono'}
                 />
-              </div>
-              <div>
-                <label className={labelClass}>Chain to</label>
-                <input
-                  type="text"
-                  value={form.chain_to}
-                  onChange={(e) => updateField('chain_to', e.target.value)}
-                  placeholder="agent-slug"
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-mc-muted dark:text-gray-400 mb-1">Session Memory (days)</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={30}
-                  value={form.session_window_days}
-                  onChange={(e) => setForm({ ...form, session_window_days: parseInt(e.target.value) || 0 })}
-                  className="w-full border border-mc-border dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-mc-text dark:text-gray-200 outline-none focus:border-mc-accent"
-                />
-                <p className="text-[11px] text-mc-dim mt-1">0 = fresh start each run. Agent resumes its conversation within this window.</p>
               </div>
             </div>
           </Card>
