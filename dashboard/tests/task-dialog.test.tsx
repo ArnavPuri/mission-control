@@ -26,7 +26,7 @@ describe('TaskDialog', () => {
 
   it('shows the thread with agent names and the waiting status', async () => {
     vi.spyOn(api.tasks, 'get').mockResolvedValue(detail);
-    render(<TaskDialog taskId="t1" agents={agents} refreshTick={0} onClose={() => {}} onChanged={() => {}} />);
+    render(<TaskDialog taskId="t1" agents={agents} projects={[]} refreshTick={0} onClose={() => {}} onChanged={() => {}} />);
 
     expect(await screen.findByText('Which region?')).toBeInTheDocument();
     expect(screen.getByText('waiting on you')).toBeInTheDocument();
@@ -37,7 +37,7 @@ describe('TaskDialog', () => {
     vi.spyOn(api.tasks, 'get').mockResolvedValue(detail);
     const comment = vi.spyOn(api.tasks, 'comment').mockResolvedValue({ added: true, agent: 'navigator-web-researcher' });
     const onChanged = vi.fn();
-    render(<TaskDialog taskId="t1" agents={agents} refreshTick={0} onClose={() => {}} onChanged={onChanged} />);
+    render(<TaskDialog taskId="t1" agents={agents} projects={[]} refreshTick={0} onClose={() => {}} onChanged={onChanged} />);
 
     const box = await screen.findByPlaceholderText(/Reply to Navigator/);
     fireEvent.change(box, { target: { value: 'EU' } });

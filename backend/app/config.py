@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     bot_name: str = "MC"
     identity_file: str = "workspace/identity.md"
 
+    # --- GitHub (dev tasks become issues that Claude Code picks up) ---
+    github_token: str | None = None
+    # Mention @claude in issues so the Claude GitHub app starts working on them
+    github_mention_claude: bool = True
+
     # --- Voice (optional) ---
     openai_api_key: str | None = None
 

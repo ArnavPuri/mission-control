@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Bot, ChevronDown, ExternalLink, Loader2, Send, User, X } from 'lucide-react';
+import { Bot, ChevronDown, ExternalLink, GitPullRequest, Loader2, Send, User, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import * as api from '../lib/api';
 import { Badge } from './shared';
@@ -28,9 +28,10 @@ function authorLabel(author: string, agents: api.Agent[]): string {
  * and reply. `refreshTick` changes whenever the backend broadcasts an event,
  * so agent replies show up without reopening the dialog.
  */
-export function TaskDialog({ taskId, agents, refreshTick, onClose, onChanged }: {
+export function TaskDialog({ taskId, agents, projects, refreshTick, onClose, onChanged }: {
   taskId: string | null;
   agents: api.Agent[];
+  projects: api.Project[];
   refreshTick: number;
   onClose: () => void;
   onChanged: () => void;
@@ -74,6 +75,33 @@ export function TaskDialog({ taskId, agents, refreshTick, onClose, onChanged }: 
       onChanged();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not assign');
+    }
+  };
+
+  const handleProject = async (projectId: string) => {
+    if (!task) return;
+    setError(null);
+    try {
+      await api.tasks.update(task.id, { project_id: projectId || null });
+      await load();
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not change project');
+    }
+  };
+
+  const handleGitHub = async () => {
+    if (!task) return;
+    setSending(true);
+    setError(null);
+    try {
+      await api.tasks.sendToGitHub(task.id);
+      await load();
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not open the GitHub issue');
+    } finally {
+      setSending(false);
     }
   };
 
@@ -125,8 +153,36 @@ export function TaskDialog({ taskId, agents, refreshTick, onClose, onChanged }: 
             </Dialog.Close>
           </div>
 
-          {/* Assignee */}
+          {/* Project + GitHub */}
           {task && (
+            <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 border-b border-mc-border dark:border-gray-800 text-sm">
+              <label className="flex items-center gap-2 text-mc-muted dark:text-gray-400">
+                Project
+                <select
+                  value={task.project_id ?? ''}
+                  onChange={(e) => handleProject(e.target.value)}
+                  className="border border-mc-border dark:border-gray-700 rounded-lg px-2 py-1 text-sm bg-white dark:bg-gray-800 text-mc-text dark:text-gray-200"
+                >
+                  <option value="">None</option>
+                  {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </label>
+              {task.github_issue ? (
+                <a href={task.github_issue} target="_blank" rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 text-mc-accent hover:underline">
+                  <GitPullRequest size={13} /> GitHub issue <ExternalLink size={11} />
+                </a>
+              ) : task.project_has_repo ? (
+                <button onClick={handleGitHub} disabled={sending}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-mc-border dark:border-gray-700 text-mc-text dark:text-gray-200 hover:border-mc-accent/40 disabled:opacity-50 cursor-pointer">
+                  <GitPullRequest size={13} /> Send to Claude Code
+                </button>
+              ) : null}
+            </div>
+          )}
+
+          {/* Assignee */}
+          {task && !task.github_issue && (
             <div className="flex items-center justify-between px-5 py-3 border-b border-mc-border dark:border-gray-800 text-sm">
               <span className="text-mc-muted dark:text-gray-400">Assigned to</span>
               <DropdownMenu.Root>
@@ -214,7 +270,10 @@ export function TaskDialog({ taskId, agents, refreshTick, onClose, onChanged }: 
                   onChange={(e) => setReply(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSend(); }}
                   rows={2}
-                  placeholder={task.assigned_agent_name ? `Reply to ${task.assigned_agent_name}…` : 'Add a note…'}
+                  placeholder={
+                    task.assigned_agent_name ? `Reply to ${task.assigned_agent_name}…`
+                      : task.github_issue ? 'Comment on the GitHub issue…' : 'Add a note…'
+                  }
                   className="flex-1 resize-none border border-mc-border dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-mc-text dark:text-gray-200 bg-white dark:bg-gray-800 outline-none focus:border-mc-accent placeholder:text-mc-dim"
                 />
                 <button

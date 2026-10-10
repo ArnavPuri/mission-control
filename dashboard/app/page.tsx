@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { TaskDialog } from './components/task-dialog';
+import { ProjectDialog } from './components/project-dialog';
 
 // ─── Theme ───────────────────────────────────────────────
 
@@ -277,22 +278,33 @@ function TasksSection({ tasks, onRefresh, onOpen }: {
 
 // ─── Projects Section ────────────────────────────────────
 
-function ProjectsSection({ projects }: { projects: api.Project[] }) {
+function ProjectsSection({ projects, onRefresh, onOpen }: {
+  projects: api.Project[]; onRefresh: () => void; onOpen: (p: api.Project) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const handleAdd = async (name: string) => {
+    await api.projects.create({ name, status: 'active' });
+    setAdding(false);
+    onRefresh();
+  };
+
   const statusVariant: Record<string, 'success' | 'warning' | 'default' | 'purple'> = {
     active: 'success', planning: 'warning', launched: 'purple', paused: 'default', archived: 'default',
   };
 
   return (
     <Card className="p-4">
-      <SectionHeader icon={FolderOpen} title="Projects" count={projects.length} />
+      <SectionHeader icon={FolderOpen} title="Projects" count={projects.length} onAdd={() => setAdding(true)} />
+      {adding && <InlineInput placeholder="Project name..." onSubmit={handleAdd} onCancel={() => setAdding(false)} />}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {projects.length === 0 && (
           <p className="text-sm text-mc-dim dark:text-gray-500 py-4 text-center col-span-2">No projects</p>
         )}
         {projects.map((project) => (
-          <div
+          <button
             key={project.id}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-mc-border dark:border-gray-800 hover:shadow-card-hover transition-shadow"
+            onClick={() => onOpen(project)}
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-mc-border dark:border-gray-800 hover:shadow-card-hover transition-shadow text-left cursor-pointer"
           >
             <div
               className="w-2.5 h-2.5 rounded-full flex-shrink-0"
@@ -308,10 +320,11 @@ function ProjectsSection({ projects }: { projects: api.Project[] }) {
               <div className="flex items-center gap-3 mt-0.5 text-[11px] text-mc-dim dark:text-gray-500">
                 <span>{project.open_task_count} open tasks</span>
                 {project.agent_count > 0 && <span>{project.agent_count} agents</span>}
+                {project.github_repo && <span className="truncate">{project.github_repo}</span>}
               </div>
             </div>
             <ChevronRight size={14} className="text-mc-dim dark:text-gray-600 flex-shrink-0" />
-          </div>
+          </button>
         ))}
       </div>
     </Card>
@@ -710,6 +723,7 @@ export default function Dashboard() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const [editingProject, setEditingProject] = useState<api.Project | null>(null);
   const [eventTick, setEventTick] = useState(0);
 
   const fetchAll = useCallback(async () => {
@@ -851,7 +865,7 @@ export default function Dashboard() {
           <ReviewSection approvals={pendingApprovals} onRefresh={fetchAll} />
           <TasksSection tasks={tasks} onRefresh={fetchAll} onOpen={setOpenTaskId} />
           <AgentsSection agents={agents} onRefresh={fetchAll} />
-          <ProjectsSection projects={projects} />
+          <ProjectsSection projects={projects} onRefresh={fetchAll} onOpen={setEditingProject} />
           <NotesSection notes={notesList} onRefresh={fetchAll} />
           <div className="lg:col-span-2">
             <ContentSection content={content} onRefresh={fetchAll} />
@@ -862,9 +876,11 @@ export default function Dashboard() {
       {/* ─── Dialogs ─── */}
       <NotificationPanel open={showNotifications} onClose={() => { setShowNotifications(false); api.notifications.count().then(nc => setUnreadCount(nc.unread)).catch(() => {}); }} />
       <SearchDialog open={showSearch} onClose={() => setShowSearch(false)} />
+      <ProjectDialog project={editingProject} onClose={() => setEditingProject(null)} onSaved={fetchAll} />
       <TaskDialog
         taskId={openTaskId}
         agents={agents}
+        projects={projects}
         refreshTick={eventTick}
         onClose={() => setOpenTaskId(null)}
         onChanged={fetchAll}

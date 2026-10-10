@@ -99,6 +99,7 @@ class Project(Base):
     status = Column(Enum(ProjectStatus), default=ProjectStatus.PLANNING, nullable=False)
     color = Column(String(7), default="#00ffc8")
     url = Column(String(512))
+    github_repo = Column(String(200), nullable=True)  # "owner/repo" — where /dev opens issues
     metadata_ = Column("metadata", JSON, default=dict)
     created_at = Column(DateTime(timezone=True), default=_now)
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)

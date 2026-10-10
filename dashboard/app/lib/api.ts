@@ -29,6 +29,7 @@ export interface Project {
   status: 'active' | 'planning' | 'launched' | 'paused' | 'archived';
   color: string;
   url?: string;
+  github_repo?: string | null;
   metadata?: Record<string, unknown>;
   task_count: number;
   open_task_count: number;
@@ -53,7 +54,11 @@ export interface Task {
   url?: string | null;
   status: 'todo' | 'in_progress' | 'blocked' | 'done';
   priority: 'critical' | 'high' | 'medium' | 'low';
-  project_id?: string;
+  project_id?: string | null;
+  project_name?: string | null;
+  project_has_repo?: boolean;
+  /** URL of the GitHub issue when this is a dev task handed to Claude Code */
+  github_issue?: string | null;
   assigned_agent_id?: string | null;
   assigned_agent_name?: string | null;
   source: string;
@@ -91,6 +96,8 @@ export const tasks = {
     request<{ assigned: string | null; started?: boolean }>(`/api/tasks/${id}/assign`, {
       method: 'POST', body: JSON.stringify({ agent_id: agentId, note }),
     }),
+  /** Open a GitHub issue for this task in its project's repo (for Claude Code). */
+  sendToGitHub: (id: string) => request<{ issue_url: string }>(`/api/tasks/${id}/github`, { method: 'POST' }),
   comment: (id: string, body: string) =>
     request<{ added: boolean; agent: string | null }>(`/api/tasks/${id}/comments`, {
       method: 'POST', body: JSON.stringify({ body }),

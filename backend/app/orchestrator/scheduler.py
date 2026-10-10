@@ -21,6 +21,7 @@ from app.db.session import async_session
 from app.db.models import AgentConfig, AgentStatus
 from app.orchestrator.runner import start_background_run
 from app.orchestrator.threads import pending_assignments
+from app.integrations import github
 
 logger = logging.getLogger(__name__)
 
@@ -108,8 +109,10 @@ def cron_is_due(cron_expr: str, now: datetime, last_run: datetime | None) -> boo
 class Scheduler:
     """Periodically checks for agents that need to run."""
 
-    def __init__(self, check_interval: int = 60):
+    def __init__(self, check_interval: int = 60, github_sync_every: int = 10):
         self.check_interval = check_interval
+        self.github_sync_every = github_sync_every  # in scheduler ticks
+        self._ticks = 0
 
     async def run(self):
         """Main scheduler loop."""
@@ -120,6 +123,13 @@ class Scheduler:
                 await self._check_schedules()
             except Exception as e:
                 logger.error(f"Scheduler error: {e}")
+            self._ticks += 1
+            if github.configured() and self._ticks % self.github_sync_every == 0:
+                try:
+                    async with async_session() as db:
+                        await github.sync_dev_tasks(db)
+                except Exception as e:
+                    logger.error(f"GitHub sync error: {e}")
             await asyncio.sleep(self.check_interval)
 
     async def _check_schedules(self):

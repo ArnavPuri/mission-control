@@ -15,10 +15,11 @@ from app.config import settings
 from app.integrations.commands import (
     cmd_task, cmd_note, cmd_status, cmd_run, cmd_ask,
     cmd_projects, cmd_approve, cmd_help,
-    cmd_brand, cmd_leads, cmd_agents_list, cmd_morning, cmd_drafts,
+    cmd_brand, cmd_leads, cmd_agents_list, cmd_morning, cmd_drafts, cmd_dev, cmd_repo,
 )
 from app.db.session import async_session
 from app.integrations.chat import handle_chat
+from app.integrations import github
 from app.orchestrator import review, threads
 
 logger = logging.getLogger(__name__)
@@ -141,7 +142,12 @@ async def handle_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             task = await threads.find_task_by_telegram_message(db, replied_to.message_id)
             if task:
                 agent = await threads.add_user_reply(db, task, text, telegram_message_id=update.message.message_id)
-                note = f"↩️ Sent to {agent.name}" if agent else "📝 Added to the task thread"
+                if agent:
+                    note = f"↩️ Sent to {agent.name}"
+                elif github.issue_ref(task):
+                    note = "↩️ Posted on the GitHub issue"
+                else:
+                    note = "📝 Added to the task thread"
                 await reply(update.message, note)
                 return
 
@@ -222,6 +228,8 @@ async def start_telegram_bot():
     app.add_handler(CallbackQueryHandler(handle_button))
     app.add_handler(CommandHandler("status", _make_handler(cmd_status, needs_args=False)))
     app.add_handler(CommandHandler("ask", _make_handler(cmd_ask)))
+    app.add_handler(CommandHandler("dev", _make_handler(cmd_dev)))
+    app.add_handler(CommandHandler("repo", _make_handler(cmd_repo)))
     app.add_handler(CommandHandler("run", _make_handler(cmd_run)))
     app.add_handler(CommandHandler("projects", _make_handler(cmd_projects, needs_args=False)))
     app.add_handler(CommandHandler("brand", _make_handler(cmd_brand, needs_args=False)))
@@ -241,6 +249,8 @@ async def start_telegram_bot():
         BotCommand("drafts", "Review content drafts"),
         BotCommand("status", "Dashboard stats"),
         BotCommand("ask", "Hand a task to an agent"),
+        BotCommand("dev", "Hand coding work to Claude Code"),
+        BotCommand("repo", "Link a project to its GitHub repo"),
         BotCommand("run", "Run an agent's scheduled job now"),
         BotCommand("projects", "List projects"),
         BotCommand("brand", "View brand profile"),

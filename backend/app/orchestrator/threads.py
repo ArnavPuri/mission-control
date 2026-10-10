@@ -74,6 +74,13 @@ async def add_user_reply(
     await db.commit()
     if agent:
         _start(agent.id, task.id)
+    else:
+        # Dev tasks live on GitHub: the reply goes to the issue as a comment
+        from app.integrations import github
+        try:
+            await github.forward_reply(task, body)
+        except github.GitHubError as e:
+            logger.warning(f"Could not forward reply to GitHub: {e}")
     return agent
 
 

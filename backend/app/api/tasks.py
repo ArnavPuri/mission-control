@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from app.db.session import get_db
 from app.db.models import AgentConfig, AgentStatus, Task, TaskComment, TaskStatus, TaskPriority
+from app.integrations import github
 from app.orchestrator import threads
 from app.orchestrator.runner import is_running
 from app.api.ws import broadcast
@@ -65,6 +66,9 @@ def _serialize(t: Task) -> dict:
         "status": t.status.value,
         "priority": t.priority.value,
         "project_id": str(t.project_id) if t.project_id else None,
+        "project_name": t.project.name if t.project else None,
+        "project_has_repo": bool(t.project and t.project.github_repo),
+        "github_issue": t.url if github.issue_ref(t) else None,
         "assigned_agent_id": str(t.assigned_agent_id) if t.assigned_agent_id else None,
         "assigned_agent_name": t.assigned_agent.name if t.assigned_agent else None,
         "source": t.source,
@@ -123,6 +127,24 @@ async def assign_task(task_id: UUID, data: AssignRequest, db: AsyncSession = Dep
     started = await threads.assign_task(db, task, agent, data.note)
     await broadcast("task.updated", {"id": str(task.id)})
     return {"assigned": agent.slug, "started": started}
+
+
+@router.post("/{task_id}/github")
+async def send_to_github(task_id: UUID, db: AsyncSession = Depends(get_db)):
+    """Turn a task into a GitHub issue in its project's repo for Claude Code."""
+    task = await db.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if github.issue_ref(task):
+        raise HTTPException(status_code=409, detail="Task already has a GitHub issue")
+    if not task.project:
+        raise HTTPException(status_code=400, detail="Set the task's project first")
+    try:
+        url = await github.open_dev_issue(db, task, task.project)
+    except github.GitHubError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    await broadcast("task.updated", {"id": str(task.id)})
+    return {"issue_url": url}
 
 
 class CommentCreate(BaseModel):

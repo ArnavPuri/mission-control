@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from app.db.session import get_db
+from app.integrations import github
 from app.db.models import (
     Project, ProjectStatus, Task, TaskStatus,
     MarketingContent,
@@ -19,6 +20,7 @@ class ProjectCreate(BaseModel):
     status: ProjectStatus = ProjectStatus.PLANNING
     color: str = "#00ffc8"
     url: str | None = None
+    github_repo: str | None = None
     metadata: dict | None = None
 
 
@@ -28,7 +30,19 @@ class ProjectUpdate(BaseModel):
     status: ProjectStatus | None = None
     color: str | None = None
     url: str | None = None
+    github_repo: str | None = None
     metadata: dict | None = None
+
+
+def _clean_repo(fields: dict) -> dict:
+    if fields.get("github_repo"):
+        repo = github.normalize_repo(fields["github_repo"])
+        if not repo:
+            raise HTTPException(status_code=400, detail="github_repo must be owner/repo or a github.com URL")
+        fields["github_repo"] = repo
+    elif "github_repo" in fields:
+        fields["github_repo"] = None
+    return fields
 
 
 @router.get("")
@@ -69,6 +83,7 @@ async def list_projects(db: AsyncSession = Depends(get_db)):
             "status": p.status.value,
             "color": p.color,
             "url": p.url,
+            "github_repo": p.github_repo,
             "metadata": p.metadata_ or {},
             "task_count": task_count,
             "open_task_count": open_task_count,
@@ -82,7 +97,7 @@ async def list_projects(db: AsyncSession = Depends(get_db)):
 
 @router.post("")
 async def create_project(data: ProjectCreate, db: AsyncSession = Depends(get_db)):
-    fields = data.model_dump(exclude_unset=True)
+    fields = _clean_repo(data.model_dump(exclude_unset=True))
     if "metadata" in fields:
         fields["metadata_"] = fields.pop("metadata")
     project = Project(**fields)
@@ -103,6 +118,7 @@ async def get_project(project_id: UUID, db: AsyncSession = Depends(get_db)):
         "status": project.status.value,
         "color": project.color,
         "url": project.url,
+        "github_repo": project.github_repo,
         "metadata": project.metadata_ or {},
         "agent_count": len(project.agents) if project.agents else 0,
         "created_at": project.created_at.isoformat(),
@@ -115,7 +131,7 @@ async def update_project(project_id: UUID, data: ProjectUpdate, db: AsyncSession
     project = await db.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    fields = data.model_dump(exclude_unset=True)
+    fields = _clean_repo(data.model_dump(exclude_unset=True))
     if "metadata" in fields:
         fields["metadata_"] = fields.pop("metadata")
     for key, val in fields.items():

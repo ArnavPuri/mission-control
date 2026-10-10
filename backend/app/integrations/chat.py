@@ -21,7 +21,8 @@ from app.db.models import (
 )
 from app.db.context import build_db_context
 from app.orchestrator.runner import sdk_env, start_background_run
-from app.integrations.commands import delegate, find_agent
+from app.integrations import github
+from app.integrations.commands import create_dev_task, delegate, find_agent
 from app.api.ws import broadcast
 
 logger = logging.getLogger(__name__)
@@ -106,6 +107,18 @@ CHAT_TOOLS = [
                 "project_name": {"type": "string", "description": "Project it belongs to (optional)"},
             },
             "required": ["agent_slug", "request"],
+        },
+    },
+    {
+        "name": "create_dev_task",
+        "description": "Hand coding work (a feature, bug fix, refactor) on a project to Claude Code by opening a GitHub issue in the project's repo.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_name": {"type": "string", "description": "Project whose repo the work is in"},
+                "request": {"type": "string", "description": "What to build or fix, with all the detail the user gave"},
+            },
+            "required": ["project_name", "request"],
         },
     },
     {
@@ -286,6 +299,7 @@ You help manage projects, tasks, notes, agents, and content creation for social 
 - To hand work to an agent ("have the researcher look into X", "ask Echo to draft a post about Y"),
   use delegate_task. Pick the agent whose description fits; the agent answers in Telegram itself.
 - trigger_agent only runs an agent's regular scheduled job; it can't be given instructions
+- Coding work on a project (features, bugs) goes to create_dev_task, not to an agent
 
 ## Actions
 When you need to take an action (create task, update task, create note, trigger agent, create content),
@@ -301,6 +315,7 @@ Available action types:
 - create_note: title (required), content, tags
 - trigger_agent: agent_slug (required)
 - delegate_task: agent_slug (required), request (required), project_name
+- create_dev_task: project_name (required), request (required)
 - create_content_draft: title (required), body (required), channel (x/linkedin/instagram/youtube/blog)
 
 If no action is needed, just reply normally as plain text."""
@@ -463,6 +478,18 @@ async def execute_tool_call(
         task, started = await delegate(db, agent, input_data["request"], "telegram:chat", project)
         state = "is on it" if started else "is busy; it's queued"
         return f"{agent.name} {state}: {task.text}"
+
+    elif name == "create_dev_task":
+        project = (await db.execute(
+            select(Project).where(Project.name.ilike(f"%{input_data.get('project_name', '')}%")).order_by(Project.name)
+        )).scalars().first()
+        if not project:
+            return f"Project not found: {input_data.get('project_name')}"
+        try:
+            task, url = await create_dev_task(db, project, input_data["request"], "telegram:chat")
+        except github.GitHubError as e:
+            return f"Couldn't open the GitHub issue: {e}"
+        return f"Opened {url} for Claude Code"
 
     elif name == "create_content_draft":
         content = MarketingContent(

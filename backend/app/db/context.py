@@ -27,6 +27,7 @@ async def build_db_context(db: AsyncSession) -> dict:
             "description": p.description[:120] if p.description else "",
             "status": p.status.value,
             "id_prefix": str(p.id)[:8],
+            "github_repo": p.github_repo,
         }
         for p in result.scalars().all()
     ]

@@ -18,6 +18,8 @@ from app.db.models import (
     TaskStatus, AgentStatus, EventLog, AgentApproval, ApprovalStatus,
     BrandProfile, LEAD_TAG,
 )
+from app.config import settings
+from app.integrations import github
 from app.orchestrator import review, threads
 from app.orchestrator.runner import start_background_run
 
@@ -170,6 +172,69 @@ async def cmd_ask(args: str, source: str) -> CommandResult:
     if started:
         return CommandResult(f"{agent.name} is on it: \"{task.text}\". You'll get the answer here.")
     return CommandResult(f"Queued for {agent.name} (busy right now): \"{task.text}\". You'll get the answer here.")
+
+
+async def find_project(db: AsyncSession, words: list[str]) -> tuple[Project | None, int]:
+    """Match a project name at the start of `words` (names may contain spaces).
+    Returns the project and how many words its name used."""
+    projects = (await db.execute(select(Project))).scalars().all()
+    for n in range(len(words), 0, -1):
+        candidate = " ".join(words[:n]).lower()
+        exact = [p for p in projects if p.name.lower() == candidate]
+        if exact:
+            return exact[0], n
+    first = words[0].lower() if words else ""
+    partial = [p for p in projects if first and first in p.name.lower()]
+    return (partial[0], 1) if len(partial) == 1 else (None, 0)
+
+
+async def cmd_repo(args: str, source: str) -> CommandResult:
+    """Link a project to its GitHub repo: /repo <project> <owner/repo>."""
+    words = args.split()
+    if len(words) < 2:
+        return CommandResult("Usage: /repo <project> <owner/repo>")
+    repo = github.normalize_repo(words[-1])
+    if not repo:
+        return CommandResult(f"'{words[-1]}' isn't a GitHub repo. Use owner/repo or a github.com URL.")
+    async with async_session() as db:
+        project, _ = await find_project(db, words[:-1])
+        if not project:
+            return CommandResult(f"Project not found: {' '.join(words[:-1])}. See /projects.")
+        project.github_repo = repo
+        await db.commit()
+    return CommandResult(f"{project.name} → github.com/{repo}. Use /dev {project.name} <request> to hand it coding work.")
+
+
+async def create_dev_task(db: AsyncSession, project: Project, request: str, source: str) -> tuple[Task, str]:
+    request = request.strip()
+    title = request.split("\n", 1)[0][:120]
+    task = Task(text=title, description=request if request != title else None,
+                source=source, project_id=project.id, tags=[github.DEV_TAG])
+    db.add(task)
+    await db.flush()
+    url = await github.open_dev_issue(db, task, project)
+    return task, url
+
+
+async def cmd_dev(args: str, source: str) -> CommandResult:
+    """Hand coding work to Claude Code via a GitHub issue: /dev <project> <request>."""
+    if not github.configured():
+        return CommandResult("GitHub isn't set up. Add GITHUB_TOKEN to .env and restart.")
+    words = args.split()
+    async with async_session() as db:
+        project, used = await find_project(db, words)
+        request = " ".join(words[used:])
+        if not project or not request:
+            return CommandResult("Usage: /dev <project> <what to build or fix>")
+        try:
+            task, url = await create_dev_task(db, project, request, source)
+        except github.GitHubError as e:
+            return CommandResult(f"Couldn't open the issue: {e}")
+    lines = [f"Opened {url}"]
+    if settings.github_mention_claude:
+        lines.append("Claude Code will pick it up.")
+    lines.append("I'll tell you when a PR shows up. Reply to my messages about it to comment on the issue.")
+    return CommandResult("\n".join(lines))
 
 
 async def cmd_projects(source: str) -> CommandResult:
@@ -329,6 +394,8 @@ async def cmd_help(source: str) -> CommandResult:
         "/status - Dashboard stats\n"
         "/ask <agent> <request> - Hand a task to an agent\n"
         "/run <agent> - Run an agent's scheduled job now\n"
+        "/dev <project> <request> - Hand coding work to Claude Code (GitHub issue)\n"
+        "/repo <project> <owner/repo> - Link a project to its GitHub repo\n"
         "/projects - List projects\n"
         "/leads — View open marketing leads\n"
         "/agents — View agent status\n"
