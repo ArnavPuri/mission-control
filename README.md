@@ -128,7 +128,7 @@ All settings live in `.env` (see `.env.example`).
 
 ## Telegram
 
-Telegram is the main interface. Send a plain message and an LLM chat handles it. It can create and update tasks, create notes, delegate a task to an agent, open a dev task, or draft content. You can also use commands:
+Telegram is the main interface. Send a plain message and an LLM chat handles it. Quick things (tasks, notes, reminders, "what's due?") it does right away. Real work goes to the **coordinator**, who runs the team and gets back to you with one answer (see below). It can also open a dev task or draft content. You can also use commands:
 
 | Command | What it does |
 |---------|--------------|
@@ -136,7 +136,8 @@ Telegram is the main interface. Send a plain message and an LLM chat handles it.
 | `/note <title>` | Create a note |
 | `/remind <when> <what>` | Add a task with a reminder, e.g. `/remind tomorrow 9am call Sam`. On its own it lists upcoming reminders |
 | `/today` | What's overdue, due today, and today's reminders |
-| `/ask <agent> <request>` | Hand a task to an agent. It replies in a thread |
+| `/do <request>` | Hand work to the coordinator, who splits it across the team and answers once |
+| `/ask <agent> <request>` | Hand a task to a specific agent. It replies in a thread |
 | `/run <agent>` | Run an agent's scheduled job now, in the background. You get a message when it finishes |
 | `/dev <project> <request>` | Hand coding work to Claude Code via a GitHub issue |
 | `/repo <project> <owner/repo>` | Link a project to its GitHub repo |
@@ -157,6 +158,19 @@ Agents are matched by slug or by part of their name, so `/ask navigator compare 
 **Voice messages** are transcribed with OpenAI Whisper and handled like text. This only works when `OPENAI_API_KEY` is set.
 
 ---
+
+## The coordinator
+
+One agent, Ace, is the **coordinator**: you tell it what you want, and it runs the team. Send a plain message on Telegram ("compare Plausible and Fathom and draft a LinkedIn post about why we switched"), or use `/do`.
+
+1. Ace does small things itself. Bigger requests it splits up and hands each piece to the right specialist: Navigator researches, Echo drafts. Independent pieces run in parallel; a piece that needs another's result goes out once that result is in.
+2. You get one message with the plan ("On it: Navigator compares the tools, Echo drafts the post").
+3. The specialists report back to Ace, not to you. If one has a question, Ace answers it from context or asks you; your reply goes back to the right agent.
+4. When everything is in, Ace sends you **one finished answer**: the research and the draft, not a status report.
+
+In the dashboard, the request is one task with its handed-off pieces underneath. Home shows who it's waiting on. Ace gets at most 5 rounds and 6 handoffs per round for a request. Set `COORDINATOR_RELAY_TEAMMATES=true` to also get each specialist's reply on Telegram.
+
+Any agent can be the coordinator: put `role: coordinator` in its skill file (only one should have it). Naming an agent ("ask Echo to …") or `/ask echo …` still goes straight to that agent.
 
 ## Delegating work to agents
 

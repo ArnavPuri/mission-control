@@ -22,6 +22,7 @@ from app.config import settings
 from app.api.ws import broadcast
 from app.integrations import github
 from app.orchestrator import review, threads
+from app.orchestrator.coordinator import get_coordinator
 from app.orchestrator.runner import start_background_run
 from app.orchestrator.reminders import upcoming_reminders
 from app.timeutil import aware, describe, end_of_day, local_tz, split_reminder
@@ -259,6 +260,19 @@ async def cmd_ask(args: str, source: str) -> CommandResult:
     return CommandResult(f"Queued for {agent.name} (busy right now): \"{task.text}\". You'll get the answer here.")
 
 
+async def cmd_do(args: str, source: str) -> CommandResult:
+    """Hand a request to the coordinator: /do <what you want done>."""
+    if not args.strip():
+        return CommandResult("Usage: /do <what you want done>\nExample: /do research Plausible vs Fathom and draft a LinkedIn post on why we switched")
+    async with async_session() as db:
+        lead = await get_coordinator(db)
+        if not lead:
+            return CommandResult("No coordinator agent is set up (an agent with role: coordinator). Use /ask <agent> instead.")
+        task, started = await delegate(db, lead, args, source)
+    state = "is on it" if started else "will pick it up shortly"
+    return CommandResult(f"{lead.name} {state}: \"{task.text}\". You'll get one answer here.")
+
+
 async def find_project(db: AsyncSession, words: list[str]) -> tuple[Project | None, int]:
     """Match a project name at the start of `words` (names may contain spaces).
     Returns the project and how many words its name used."""
@@ -479,7 +493,8 @@ async def cmd_help(source: str) -> CommandResult:
         "/approve - Review pending agent actions\n"
         "/drafts - Review content drafts\n"
         "/status - Dashboard stats\n"
-        "/ask <agent> <request> - Hand a task to an agent\n"
+        "/do <request> - Hand work to the coordinator, who runs the team\n"
+        "/ask <agent> <request> - Hand a task to a specific agent\n"
         "/run <agent> - Run an agent's scheduled job now\n"
         "/dev <project> <request> - Hand coding work to Claude Code (GitHub issue)\n"
         "/repo <project> <owner/repo> - Link a project to its GitHub repo\n"

@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     linkedin_author_urn: str | None = None
     linkedin_api_version: str = "202609"
 
+    # --- Coordinator ---
+    # Also send each teammate's reply to Telegram, not just the coordinator's answer
+    coordinator_relay_teammates: bool = False
+
     # --- Voice (optional) ---
     openai_api_key: str | None = None
 

@@ -163,6 +163,8 @@ export interface Agent {
   schedule_type?: string;
   schedule_value?: string;
   project_id?: string;
+  /** "coordinator" for the agent that takes requests and runs the team */
+  role?: string | null;
   last_run_at?: string;
   recent_runs: AgentRun[];
 }

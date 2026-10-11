@@ -374,7 +374,10 @@ export function TaskDialog({ taskId, agents, projects, refreshTick, onClose, onC
                 {/* Work handed to teammates */}
                 {task.handoffs && task.handoffs.length > 0 && (
                   <div className="px-6 py-4 border-b border-mc-line">
-                    <div className="text-xs font-medium text-mc-muted mb-2">Handed off</div>
+                    <div className="text-xs font-medium text-mc-muted mb-2">
+                      Handed off
+                      <span className="text-mc-dim font-normal"> · {task.handoffs.filter((h) => h.status === 'done').length} of {task.handoffs.length} done</span>
+                    </div>
                     <ul className="flex flex-col">
                       {task.handoffs.map((h) => (
                         <li key={h.id}>

@@ -159,7 +159,12 @@ function NeedsYou() {
 
 function WithAgents() {
   const { tasks, agents, projects, openTask, openCommandMenu } = useWorkspace();
-  const delegated = tasks.filter((t) => t.assigned_agent_id && (t.status === 'todo' || t.status === 'in_progress'));
+  const isOpen = (t: api.Task) => t.status === 'todo' || t.status === 'in_progress';
+  const active = tasks.filter((t) => t.assigned_agent_id && isOpen(t));
+  // Work handed out by another listed task shows under it, not on its own
+  const activeIds = new Set(active.map((t) => t.id));
+  const delegated = active.filter((t) => !t.parent_task_id || !activeIds.has(t.parent_task_id));
+  const teamOf = (t: api.Task) => tasks.filter((c) => c.parent_task_id === t.id);
   const steps = useLatestSteps();
 
   return (
@@ -177,13 +182,23 @@ function WithAgents() {
           const agent = agents.find((a) => a.id === t.assigned_agent_id);
           const working = agent?.status === 'running';
           const project = projects.find((p) => p.id === t.project_id);
+          const team = teamOf(t);
+          const busy = team.filter(isOpen);
+          const teamStep = busy.map((c) => steps[c.id] && `${agentDisplay(c.assigned_agent_name).name}: ${steps[c.id]}`).find(Boolean);
           return (
             <Row key={t.id} onClick={() => openTask(t.id)} className="items-center">
               <Avatar name={t.assigned_agent_name ?? 'Agent'} size={24} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-mc-text truncate">{t.text}</p>
-                <p className="text-xs mt-0.5 flex items-center gap-1.5">
-                  {working
+                <p className="text-xs mt-0.5 flex items-center gap-1.5 min-w-0">
+                  {busy.length > 0 ? (
+                    teamStep
+                      ? <span className="text-shimmer truncate">{teamStep}</span>
+                      : <span className="text-mc-muted truncate">
+                          {agentDisplay(t.assigned_agent_name).name} · waiting on {busy.map((c) => agentDisplay(c.assigned_agent_name).name).join(', ')}
+                          {team.length > busy.length && ` · ${team.length - busy.length} of ${team.length} done`}
+                        </span>
+                  ) : working
                     ? <span className="text-shimmer truncate">{agentDisplay(t.assigned_agent_name).name}{steps[t.id] ? `: ${steps[t.id]}` : ' is working…'}</span>
                     : <span className="text-mc-muted">{agentDisplay(t.assigned_agent_name).name} · in progress</span>}
                   {project && (
@@ -193,6 +208,13 @@ function WithAgents() {
                   )}
                 </p>
               </div>
+              {busy.length > 0 && (
+                <span className="hidden sm:flex -space-x-1.5 flex-shrink-0" aria-label="Teammates working">
+                  {busy.slice(0, 4).map((c) => (
+                    <span key={c.id} title={c.assigned_agent_name ?? ''}><Avatar name={c.assigned_agent_name ?? 'Agent'} size={18} className="ring-2 ring-mc-panel" /></span>
+                  ))}
+                </span>
+              )}
               <ArrowRight size={14} className="text-mc-dim" />
             </Row>
           );

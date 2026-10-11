@@ -193,7 +193,7 @@ export default function AgentsPage() {
                   <Avatar name={a.name} size={30} />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-mc-text truncate">{d.name}</p>
-                    <p className="text-xs text-mc-muted truncate">{d.role || a.agent_type}</p>
+                    <p className="text-xs text-mc-muted truncate">{a.role === 'coordinator' ? 'Coordinator' : d.role || a.agent_type}</p>
                   </div>
                   <StatusIndicator status={a.status} />
                 </button>
@@ -211,6 +211,7 @@ export default function AgentsPage() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <h2 className="text-lg font-semibold text-mc-text">{agentDisplay(selected.name).name}</h2>
                       <span className="text-sm text-mc-muted">{agentDisplay(selected.name).role}</span>
+                      {selected.role === 'coordinator' && <Badge variant="accent">Coordinator</Badge>}
                       <Badge variant={selected.status === 'running' ? 'success' : selected.status === 'error' ? 'error' : 'default'}>
                         {selected.status === 'error' ? 'last run failed' : selected.status}
                       </Badge>

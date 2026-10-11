@@ -53,6 +53,7 @@ describe('TaskDialog handoffs and progress', () => {
     const open = vi.fn();
     render(<TaskDialog taskId="t1" agents={[]} projects={[]} refreshTick={0} onClose={() => {}} onChanged={() => {}} onOpenTask={open} />);
     expect(await screen.findByText('Handed off')).toBeInTheDocument();
+    expect(screen.getByText(/1 of 1 done/)).toBeInTheDocument();
     fireEvent.click(screen.getAllByText('Draft a reply to the r/SaaS thread').at(-1)!);
     expect(open).toHaveBeenCalledWith('t2');
   });

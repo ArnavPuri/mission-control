@@ -156,6 +156,8 @@ async def list_agents(db: AsyncSession = Depends(get_db)):
             "schedule_type": a.schedule_type,
             "schedule_value": a.schedule_value,
             "project_id": str(a.project_id) if a.project_id else None,
+            # "coordinator" for the agent that takes requests and runs the team
+            "role": (a.config or {}).get("role"),
             "last_run_at": a.last_run_at.isoformat() if a.last_run_at else None,
             "recent_runs": [
                 {

@@ -17,12 +17,12 @@ async def recent_activity(limit: int = Query(20, ge=1, le=100), db: AsyncSession
         select(TaskComment, Task)
         .join(Task, Task.id == TaskComment.task_id)
         .order_by(TaskComment.created_at.desc())
-        .limit(limit)
+        .limit(limit * 3)
     )).all()
-    names = {
-        f"agent:{a.slug}": a.name
-        for a in (await db.execute(select(AgentConfig))).scalars().all()
-    }
+    agents = (await db.execute(select(AgentConfig))).scalars().all()
+    names = {f"agent:{a.slug}": a.name for a in agents}
+    slugs = {a.id: a.slug for a in agents}
+    rows = [(c, t) for c, t in rows if not _team_chatter(c, t, slugs)][:limit]
     return [
         {
             "id": str(c.id),
@@ -35,3 +35,13 @@ async def recent_activity(limit: int = Query(20, ge=1, le=100), db: AsyncSession
         }
         for c, t in rows
     ]
+
+
+def _team_chatter(c: TaskComment, t: Task, slugs: dict) -> bool:
+    """Agents talking among themselves: handoff requests and follow-ups, replies
+    relayed to a coordinator (each agent's own reply is shown instead), and
+    "handed off" notes."""
+    if c.author == "system":
+        return c.body.startswith("↪")
+    return (c.author.startswith("agent:") and t.assigned_agent_id is not None
+            and c.author != f"agent:{slugs.get(t.assigned_agent_id)}")

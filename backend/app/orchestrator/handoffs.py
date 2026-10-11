@@ -21,6 +21,7 @@ from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import AgentConfig, AgentStatus, EventLog, Task, TaskComment, TaskStatus
+from app.orchestrator.coordinator import has_open_handoffs, is_coordinator
 
 logger = logging.getLogger(__name__)
 
@@ -133,13 +134,49 @@ async def handed_by(db: AsyncSession, task: Task, agent: AgentConfig) -> str | N
     return None
 
 
-async def report_to_parent(db: AsyncSession, task: Task, agent: AgentConfig, needs_input: bool) -> Task | None:
-    """Note a handed-off task's outcome in the thread it came from."""
+async def report_to_parent(db: AsyncSession, task: Task, agent: AgentConfig, needs_input: bool,
+                           reply: str = "") -> Task | None:
+    """Pass a handed-off task's outcome back to the thread it came from.
+
+    A coordinator gets the teammate's whole reply, and its turn back once all
+    the work it handed out has settled. Anyone else gets a one-line note.
+    """
     if not task.parent_task_id:
         return None
     parent = await db.get(Task, task.parent_task_id)
     if not parent:
         return None
+    owner = await db.get(AgentConfig, parent.assigned_agent_id) if parent.assigned_agent_id else None
+    if is_coordinator(owner):
+        state = "asks about" if needs_input else "finished"
+        db.add(TaskComment(
+            task_id=parent.id, author=f"agent:{agent.slug}",
+            body=f"**{agent.name}** {state} “{task.text}”:\n\n{reply}",
+        ))
+        await db.flush()
+        if parent.status != TaskStatus.DONE and not await has_open_handoffs(db, parent):
+            _start_after_commit(db, owner.id, parent.id)
+        return parent
     outcome = "is waiting on you for" if needs_input else "finished"
     db.add(TaskComment(task_id=parent.id, author=SYSTEM, body=f"↪ {agent.name} {outcome} “{task.text}”"))
     return parent
+
+
+async def follow_up(db: AsyncSession, from_agent: AgentConfig, action: dict) -> Task:
+    """Send more to a teammate working on a task you handed out (an answer to
+    its question, or a change of plan). It's the teammate's turn again."""
+    request = (action.get("request") or action.get("text") or "").strip()
+    if not request:
+        raise ValueError("follow_up needs a request")
+    try:
+        task = await db.get(Task, UUID(str(action.get("task_id"))))
+    except ValueError:
+        task = None
+    parent = await db.get(Task, task.parent_task_id) if task and task.parent_task_id else None
+    if not task or not parent or parent.assigned_agent_id != from_agent.id or not task.assigned_agent_id:
+        raise ValueError("follow_up needs the task_id of work you handed out")
+    db.add(TaskComment(task_id=task.id, author=f"agent:{from_agent.slug}", body=request))
+    if task.status != TaskStatus.IN_PROGRESS:
+        task.status, task.completed_at = TaskStatus.IN_PROGRESS, None
+    _start_after_commit(db, task.assigned_agent_id, task.id)
+    return task

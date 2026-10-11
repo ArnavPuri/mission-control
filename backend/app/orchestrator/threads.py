@@ -23,6 +23,8 @@ from app.db.models import (
 )
 from app.api.ws import broadcast
 from app.notifications.dispatcher import send_telegram
+from app.config import settings
+from app.orchestrator import coordinator
 from app.orchestrator.handoffs import handed_by, report_to_parent
 from app.orchestrator.reminders import complete_task
 
@@ -112,8 +114,12 @@ async def pending_assignments(db: AsyncSession) -> list[tuple[UUID, UUID]]:
         if not agent or agent.status == AgentStatus.DISABLED:
             continue
         thread = await load_thread(db, task.id, limit=1)
-        if thread and is_agents_turn(thread[-1], agent):
-            pending.append((agent.id, task.id))
+        if not thread or not is_agents_turn(thread[-1], agent):
+            continue
+        # A coordinator waits until all the work it handed out has settled
+        if coordinator.is_coordinator(agent) and await coordinator.has_open_handoffs(db, task):
+            continue
+        pending.append((agent.id, task.id))
     return pending
 
 
@@ -123,7 +129,9 @@ def is_agents_turn(last: TaskComment, agent: AgentConfig) -> bool:
 
 
 def assignment_prompt(agent: AgentConfig, task: Task, thread: list[TaskComment], context: dict,
-                      parent: Task | None = None, handed_by: str | None = None) -> str:
+                      parent: Task | None = None, handed_by: str | None = None,
+                      handoffs: list[Task] | None = None) -> str:
+    coordinating = coordinator.is_coordinator(agent)
     if handed_by:
         lines = [f"Your teammate {handed_by} handed you a task.\n\nTASK: {task.text}"]
     else:
@@ -143,8 +151,14 @@ def assignment_prompt(agent: AgentConfig, task: Task, thread: list[TaskComment],
             who = "You" if c.author == agent_author(agent) else c.author.replace("agent:", "teammate ")
             lines.append(f"[{who}] {c.body}")
 
+    if coordinating:
+        lines.append(coordinator.team_status(handoffs or [], coordinator.rounds_used(thread, agent)))
+
     lines.append("\nCONTEXT:\n" + json.dumps(context, indent=2, default=str))
     writes = ", ".join(agent.data_writes or []) or "nothing (reply only)"
+    statuses = '"done" if the task is complete, or "needs_input" if you asked a question'
+    if coordinating:
+        statuses += ', or "waiting" if you handed work out and wait for your teammates'
     lines.append(f"""
 Do the work now, using your tools where useful. If you can't finish without
 an answer from the user, ask one clear question instead.
@@ -153,7 +167,7 @@ Respond with JSON only:
 {{
   "summary": "one line on what you did",
   "reply": "your message to the user, in markdown. This IS the deliverable: the findings, the draft, the answer. Not a description of it.",
-  "status": "done" if the task is complete, or "needs_input" if you asked a question,
+  "status": {statuses},
   "actions": []
 }}
 "actions" is optional and uses the usual action types. You can write to: {writes}.""")
@@ -163,17 +177,28 @@ Respond with JSON only:
 async def post_agent_reply(db: AsyncSession, task: Task, agent: AgentConfig, result: dict, run: AgentRun):
     """Record the agent's answer in the thread, update the task and tell the user."""
     reply = str(result.get("reply") or result.get("summary") or "(no reply)").strip()
-    needs_input = str(result.get("status", "")).lower() in ("needs_input", "blocked", "question")
+    status = str(result.get("status", "done")).lower()
+    needs_input = status in ("needs_input", "blocked", "question")
+    # Handed work out and waits for it (only meaningful while some of it is open)
+    waiting = status == "waiting" and await coordinator.has_open_handoffs(db, task)
     if needs_input:
         task.status = TaskStatus.BLOCKED
-    elif str(result.get("status", "done")).lower() == "done" and task.status != TaskStatus.DONE:
+    elif waiting:
+        task.status = TaskStatus.IN_PROGRESS
+    elif status in ("done", "waiting") and task.status != TaskStatus.DONE:
+        # "waiting" with nothing handed out is as good as done
         await complete_task(db, task, source=agent_author(agent))
 
+    # Only the first "here's the plan" is worth a message; later waiting rounds are internal
+    quiet = waiting and await _has_replied(db, task, agent)
     comment = TaskComment(task_id=task.id, author=agent_author(agent), body=reply, run_id=run.id)
     db.add(comment)
-    parent = await report_to_parent(db, task, agent, needs_input)
+    parent = await report_to_parent(db, task, agent, needs_input, reply)
     if parent:
         await broadcast("task.updated", {"id": str(parent.id)})
+    # Work done for the coordinator goes to it, not to you: it answers once
+    if quiet or (await coordinator.coordinated_by(db, task) and not settings.coordinator_relay_teammates):
+        return
 
     header = f"🤖 *{agent.name}* · {task.text[:80]}"
     teammate = await handed_by(db, task, agent)
@@ -184,6 +209,13 @@ async def post_agent_reply(db: AsyncSession, task: Task, agent: AgentConfig, res
     comment.telegram_message_id = await send_telegram(f"{header}\n\n{body}\n\n{footer}")
 
 
+async def _has_replied(db: AsyncSession, task: Task, agent: AgentConfig) -> bool:
+    result = await db.execute(
+        select(TaskComment.id).where(TaskComment.task_id == task.id, TaskComment.author == agent_author(agent)).limit(1)
+    )
+    return result.first() is not None
+
+
 async def post_run_failure(db: AsyncSession, task_id: UUID, agent_name: str, error: str):
     task = await db.get(Task, task_id)
     if not task:
@@ -192,6 +224,10 @@ async def post_run_failure(db: AsyncSession, task_id: UUID, agent_name: str, err
     text = f"{agent_name} couldn't finish this: {error[:300]}"
     comment = TaskComment(task_id=task_id, author=SYSTEM, body=text)
     db.add(comment)
+    if task.assigned_agent and await coordinator.coordinated_by(db, task):
+        # The coordinator decides what to do about it
+        await report_to_parent(db, task, task.assigned_agent, needs_input=True, reply=f"⚠️ {text}")
+        return
     comment.telegram_message_id = await send_telegram(
         f"⚠️ {text}\n\nTask: {task.text[:80]}\nReply to this message to try again."
     )

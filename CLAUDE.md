@@ -8,8 +8,10 @@ and notes, delegates tasks to agents (research, writing, marketing), hands codin
 to Claude Code via GitHub issues, sends a morning briefing, and helps build your
 personal brand on X, LinkedIn, Instagram, and YouTube.
 
-Delegation works through task threads: `/ask <agent> <request>` (or chat, or the
-dashboard) assigns a task to an agent, which runs in the background and replies in the
+Requests from chat (and `/do`) go to the coordinator agent (Ace), which splits them
+into handoffs to specialists, waits for their results and answers once. Delegation
+works through task threads: `/ask <agent> <request>` (or the dashboard) assigns a task
+to a specific agent, which runs in the background and replies in the
 task's thread (`task_comments`) and on Telegram. Replying to that Telegram message
 continues the thread. `/dev <project> <request>` opens a GitHub issue mentioning
 `@claude` instead; PRs and issue closure are reported back to the thread.
@@ -35,7 +37,8 @@ A simple dashboard provides an overview and lets you manage agents and scheduled
 - `backend/app/orchestrator/runner.py` — Agent execution engine (context, retry, timeout, actions, background runs)
 - `backend/app/orchestrator/scheduler.py` — Interval/cron scheduler; picks up waiting assigned tasks; GitHub sync
 - `backend/app/orchestrator/threads.py` — Task threads: assigning tasks to agents and replies
-- `backend/app/orchestrator/handoffs.py` — Agent-to-agent handoffs (`handoff` action → linked task for a teammate)
+- `backend/app/orchestrator/handoffs.py` — Agent-to-agent handoffs (`handoff` action → linked task for a teammate; `follow_up`)
+- `backend/app/orchestrator/coordinator.py` — The coordinator agent (`role: coordinator`, Ace): takes requests from chat and `/do`, delegates, answers once
 - `backend/app/orchestrator/review.py` — Approvals and content drafts (shared by API, commands, Telegram buttons)
 - `backend/app/orchestrator/reminders.py` — Telegram reminders (Done/Snooze buttons) and recurring tasks; complete tasks via `complete_task`
 - `backend/app/timeutil.py` — Parsing "tomorrow at 9" / "every monday", recurrence steps, UTC helpers
@@ -100,6 +103,7 @@ cd dashboard && npx vitest run
 - Agent skill files are YAML in `backend/skills/`
 - Agent output must be JSON with `summary` and `actions` fields; on an assigned task the agent also returns `reply` and `status` (`done` | `needs_input`)
 - An agent hands work to a teammate with `{"type": "handoff", "agent": "<slug>", "request": "..."}`; it's an agent's turn on a task when the last comment is from the user or from another agent
+- The coordinator replies with status `waiting` after handing off; it gets its turn back when all its handoffs have settled, and only it messages you (teammates working for it stay quiet on Telegram)
 - The `event_log` table tracks all changes for audit
 - Model columns use portable types (`Uuid`, `JSON`) so PostgreSQL and SQLite both work; never use PostgreSQL-only types
 - Datetimes are stored and compared in UTC (SQLite drops offsets); user-facing times are in `NOTIFICATION_TIMEZONE`

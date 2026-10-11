@@ -23,7 +23,7 @@ from app.db.models import (
     Project, Task, EventLog, TaskStatus, TaskPriority,
     AgentApproval, AgentMemory, Note, MarketingContent, TaskComment, LEAD_TAG,
 )
-from app.orchestrator import handoffs, review, threads
+from app.orchestrator import coordinator, handoffs, review, threads
 from app.db.session import async_session
 from app.api.brand import get_notification_prefs_dict
 from app.api.ws import broadcast
@@ -115,6 +115,8 @@ class AgentRunner:
             '"task_id": "<id of the task it relates to, if any>"}\n'
             f"Hand off only when it adds real value; at most {handoffs.MAX_PER_RUN} per run."
         )
+        if coordinator.is_coordinator(agent):
+            parts.append(coordinator.SYSTEM_PROMPT)
 
         if tone:
             parts.append(f"Tone: {tone}.")
@@ -425,7 +427,9 @@ class AgentRunner:
                 prompt = threads.assignment_prompt(
                     agent, task, thread, context, parent=parent,
                     handed_by=await handoffs.handed_by(db, task, agent),
+                    handoffs=await coordinator.handoffs_of(db, task) if coordinator.is_coordinator(agent) else None,
                 )
+                rounds = coordinator.rounds_used(thread, agent)
             else:
                 prompt = self.render_prompt(agent.prompt_template, context)
             run.input_data = {
@@ -442,7 +446,9 @@ class AgentRunner:
             if max_actions is not None and len(actions) > max_actions:
                 validation_warnings.append(f"{len(actions) - max_actions} actions over the limit of {max_actions} were dropped")
                 actions = actions[:max_actions]
-            actions, handoff_warnings = _limit_handoffs(actions, task)
+            actions, handoff_warnings = _limit_handoffs(
+                actions, task, agent, rounds if task_id else 0,
+            )
             validation_warnings += handoff_warnings
             if validation_warnings:
                 logger.warning(f"Agent {agent.name} output warnings: {validation_warnings}")
@@ -667,6 +673,10 @@ class AgentRunner:
             task = await handoffs.hand_off(db, agent, action)
             await broadcast("task.created", {"id": str(task.id), "text": task.text, "source": task.source})
 
+        elif action_type == "follow_up":
+            task = await handoffs.follow_up(db, agent, action)
+            await broadcast("task.updated", {"id": str(task.id)})
+
         elif action_type == "create_content":
             if "marketing_content" not in writes:
                 return False
@@ -690,14 +700,21 @@ class AgentRunner:
         return True
 
 
-def _limit_handoffs(actions: list[dict], task: Task | None) -> tuple[list[dict], list[str]]:
-    """Cap handoffs per run; a handoff from an assigned task links back to it."""
+def _limit_handoffs(actions: list[dict], task: Task | None, agent: AgentConfig | None = None,
+                    rounds: int = 0) -> tuple[list[dict], list[str]]:
+    """Cap handoffs per run (and a coordinator's rounds); a handoff from an
+    assigned task links back to it."""
+    coordinating = coordinator.is_coordinator(agent)
+    limit = coordinator.MAX_HANDOFFS_PER_ROUND if coordinating else handoffs.MAX_PER_RUN
+    if coordinating and rounds >= coordinator.MAX_ROUNDS - 1:
+        limit = 0
     kept, warnings, count = [], [], 0
     for action in actions:
         if action.get("type") == "handoff":
             count += 1
-            if count > handoffs.MAX_PER_RUN:
-                warnings.append(f"handoff to {action.get('agent')} dropped: more than {handoffs.MAX_PER_RUN} in one run")
+            if count > limit:
+                reason = "last round" if limit == 0 else f"more than {limit} in one run"
+                warnings.append(f"handoff to {action.get('agent')} dropped: {reason}")
                 continue
             if task and not action.get("task_id"):
                 action = {**action, "task_id": str(task.id)}

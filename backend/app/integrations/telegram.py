@@ -13,7 +13,7 @@ from telegram.ext import (
 
 from app.config import settings
 from app.integrations.commands import (
-    cmd_task, cmd_note, cmd_remind, cmd_today, cmd_status, cmd_run, cmd_ask,
+    cmd_task, cmd_note, cmd_remind, cmd_today, cmd_do, cmd_status, cmd_run, cmd_ask,
     cmd_projects, cmd_approve, cmd_help,
     cmd_brand, cmd_leads, cmd_agents_list, cmd_morning, cmd_drafts, cmd_dev, cmd_repo,
 )
@@ -233,6 +233,7 @@ async def start_telegram_bot():
     app.add_handler(CommandHandler("drafts", _make_handler(cmd_drafts, needs_args=False)))
     app.add_handler(CallbackQueryHandler(handle_button))
     app.add_handler(CommandHandler("status", _make_handler(cmd_status, needs_args=False)))
+    app.add_handler(CommandHandler("do", _make_handler(cmd_do)))
     app.add_handler(CommandHandler("ask", _make_handler(cmd_ask)))
     app.add_handler(CommandHandler("dev", _make_handler(cmd_dev)))
     app.add_handler(CommandHandler("repo", _make_handler(cmd_repo)))
@@ -256,7 +257,8 @@ async def start_telegram_bot():
         BotCommand("approve", "Review pending agent actions"),
         BotCommand("drafts", "Review content drafts"),
         BotCommand("status", "Dashboard stats"),
-        BotCommand("ask", "Hand a task to an agent"),
+        BotCommand("do", "Hand work to the coordinator"),
+        BotCommand("ask", "Hand a task to a specific agent"),
         BotCommand("dev", "Hand coding work to Claude Code"),
         BotCommand("repo", "Link a project to its GitHub repo"),
         BotCommand("run", "Run an agent's scheduled job now"),

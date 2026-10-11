@@ -18,6 +18,7 @@ from app.db.models import (
     Task, Project, Note,
     AgentStatus, TaskPriority, TaskStatus, EventLog, MarketingContent,
 )
+from app.orchestrator.coordinator import get_coordinator
 from app.orchestrator.reminders import complete_task, set_reminder
 from app.timeutil import RECURRENCES, describe, end_of_day, now_local, parse_datetime
 from app.db.context import build_db_context
@@ -101,6 +102,18 @@ CHAT_TOOLS = [
                 "agent_slug": {"type": "string", "description": "Slug of the agent to trigger"},
             },
             "required": ["agent_slug"],
+        },
+    },
+    {
+        "name": "coordinate",
+        "description": "Hand a request to the coordinator agent, which splits it across the team and answers once.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "request": {"type": "string", "description": "What the user wants done, with all the detail they gave"},
+                "project_name": {"type": "string", "description": "Project it belongs to (optional)"},
+            },
+            "required": ["request"],
         },
     },
     {
@@ -279,6 +292,20 @@ def build_system_prompt(db_context: dict) -> str:
         tone_section += f"\nStyle: {style}"
 
     now = now_local()
+    coordinator_name = db_context.get("coordinator")
+    if coordinator_name:
+        delegation = (
+            f"- Work for the agents (research, writing, drafting, planning, anything multi-step) goes to\n"
+            f"  {coordinator_name} with coordinate: it splits the work across the team and answers once.\n"
+            f"  Pass the request with all the detail the user gave. Only when the user names a specific\n"
+            f"  agent (\"ask Echo to ...\") use delegate_task with that agent instead.\n"
+            f"- Quick things (tasks, notes, reminders, status questions) you handle yourself, right away"
+        )
+    else:
+        delegation = (
+            "- To hand work to an agent (\"have the researcher look into X\", \"ask Echo to draft a post about Y\"),\n"
+            "  use delegate_task. Pick the agent whose description fits; the agent answers in Telegram itself."
+        )
     return f"""You are {bot_name}, a personal AI command center assistant.
 You help manage projects, tasks, notes, agents, and content creation for social media.{tone_section}
 {identity_section}
@@ -306,8 +333,7 @@ Now: {now.strftime("%A %Y-%m-%d %H:%M")} ({settings.notification_timezone})
 - When listing items, use compact formatting
 - Match tasks by text content, not by ID
 - You can create content drafts for X, LinkedIn, Instagram, YouTube, blog
-- To hand work to an agent ("have the researcher look into X", "ask Echo to draft a post about Y"),
-  use delegate_task. Pick the agent whose description fits; the agent answers in Telegram itself.
+{delegation}
 - trigger_agent only runs an agent's regular scheduled job; it can't be given instructions
 - Coding work on a project (features, bugs) goes to create_dev_task, not to an agent
 - "Remind me ..." is a create_task with remind_at (and due set to that day). Give times as local
@@ -329,6 +355,7 @@ Available action types:
   due, remind_at, recurrence ("none" clears any of the three)
 - create_note: title (required), content, tags
 - trigger_agent: agent_slug (required)
+- coordinate: request (required), project_name — hand the request to the coordinator
 - delegate_task: agent_slug (required), request (required), project_name
 - create_dev_task: project_name (required), request (required)
 - create_content_draft: title (required), body (required), channel (x/linkedin/instagram/youtube/blog)
@@ -486,6 +513,19 @@ async def execute_tool_call(
             return f"Agent {agent.name} is already running"
         return f"Started {agent.name}. I'll message you when it's done."
 
+    elif name == "coordinate":
+        lead = await get_coordinator(db)
+        if not lead:
+            return "No coordinator agent is set up; use delegate_task with a specific agent"
+        project = None
+        if input_data.get("project_name"):
+            project = (await db.execute(
+                select(Project).where(Project.name.ilike(f"%{input_data['project_name']}%")).order_by(Project.name)
+            )).scalars().first()
+        task, started = await delegate(db, lead, input_data["request"], "telegram:chat", project)
+        state = "is on it" if started else "will pick it up shortly"
+        return f"{lead.name} {state}: {task.text}"
+
     elif name == "delegate_task":
         agent, matches = await find_agent(db, input_data.get("agent_slug", ""))
         if not agent:
@@ -590,6 +630,9 @@ async def handle_chat(user_id: int, user_message: str, db: AsyncSession) -> list
     await session_store.add(user_id, "user", user_message, db=db)
 
     db_context = await build_db_context(db)
+    lead = await get_coordinator(db)
+    if lead:
+        db_context["coordinator"] = lead.name
     system_prompt = build_system_prompt(db_context)
     messages = await session_store.get_api_messages(user_id, db=db)
 

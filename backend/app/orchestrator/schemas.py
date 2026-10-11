@@ -10,7 +10,7 @@ ALLOWED_ACTIONS = {
     "create_note",
     "save_memory",
     "create_lead", "create_content",
-    "handoff",
+    "handoff", "follow_up",
 }
 
 # Old action names still produced by agents created before leads became tasks
