@@ -18,28 +18,52 @@
 
 ## What it does
 
+- **Runs a small team for you.** Tell it what you want on Telegram. Ace, the coordinator, splits the work across specialist agents (research, writing, marketing), waits for them, and sends you one finished answer.
 - **Captures** tasks and notes from Telegram: slash commands, plain messages, or voice notes.
 - **Reminds you.** "Remind me tomorrow at 9 to call Sam" becomes a task that pings you on Telegram with Done / Snooze buttons. Tasks can have due dates and repeat daily, on weekdays, weekly or monthly.
-- **Delegates** work to agents. Hand any task to an agent and it works on it in the background, then replies in the task's thread and on Telegram. Reply to keep the conversation going.
+- **Delegates** work to a specific agent when you want one. It works in the background, replies in the task's thread and on Telegram, and you reply to keep the conversation going. You see what it's doing live in the dashboard.
 - **Hands coding work to Claude Code.** `/dev` opens a GitHub issue that mentions `@claude`, and Mission Control reports the pull request back to you.
 - **Runs agents on a schedule**, for example a Reddit scout every 12 hours or a weekly review on Sunday mornings.
-- **Helps with your personal brand.** Marketing agents find leads and draft posts for X, LinkedIn, Instagram, YouTube and your blog. You approve, post, or discard each draft.
+- **Helps with your personal brand.** Marketing agents find leads and draft posts for X, LinkedIn, Instagram, YouTube and your blog. You edit and approve each draft, then publish it to X or LinkedIn with one tap.
 - **Sends a morning briefing** on Telegram at 8:00 in your timezone, with what's due today and what's overdue.
 
-It runs on your **Claude Pro/Max subscription** through the Claude Agent SDK. You don't need an Anthropic API key.
+It runs on your **Claude Pro/Max subscription** through the Claude Agent SDK. You don't need an Anthropic API key. Run it on your laptop or on a small server, behind a password and HTTPS, with nightly backups.
+
+<p align="center">
+  <img src="assets/screenshots/home.png" alt="Home: what needs you, work with agents, your tasks and recent activity" width="100%" />
+</p>
+
+<table>
+  <tr>
+    <td width="50%"><img src="assets/screenshots/coordinator.png" alt="A request run by the coordinator: handed off to Navigator and Echo, with Navigator's findings in the thread" /></td>
+    <td width="50%"><img src="assets/screenshots/board.png" alt="Task board with due dates, reminders, repeating tasks and agent assignees" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>The coordinator splits a request across the team and collects the results</sub></td>
+    <td align="center"><sub>Task board: due dates, reminders, repeats, and who's on it</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="assets/screenshots/draft.png" alt="Reviewing a draft for X before publishing it" /></td>
+    <td width="50%"><img src="assets/screenshots/agents-dark.png" alt="Agents page in dark mode: Ace the coordinator, its runs and cost" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Edit a draft, then publish it to X or LinkedIn</sub></td>
+    <td align="center"><sub>Agents, their runs and cost (dark mode)</sub></td>
+  </tr>
+</table>
 
 **Stack:** Python/FastAPI · Next.js · PostgreSQL or SQLite · Claude Agent SDK · python-telegram-bot
 
 ```
- Telegram ──┐                                    ┌──▶ Claude Agent SDK
-            │      ┌────────────────────────┐    │    (agents + chat)
- Dashboard ─┼────▶ │  FastAPI backend       │────┤
-            │      │  scheduler · runner    │    └──▶ GitHub issues
- REST API ──┘      │  Telegram bot          │         (Claude Code)
-                   └───────────┬────────────┘
-                               │
-                    PostgreSQL / SQLite
-                  (single source of truth)
+ Telegram ──┐                                        ┌──▶ Claude Agent SDK
+            │      ┌────────────────────────────┐    │    (coordinator, agents, chat)
+ Dashboard ─┼─────▶│  FastAPI backend           │────┼──▶ GitHub issues (Claude Code)
+ (via Caddy)│      │  chat · coordinator        │    │
+ REST API ──┘      │  scheduler · runner · bot  │    └──▶ X / LinkedIn (publishing)
+                   └─────────────┬──────────────┘
+                                 │
+                       PostgreSQL / SQLite
+                     (single source of truth)
 ```
 
 ---
@@ -291,18 +315,23 @@ cd backend && alembic revision --autogenerate -m "description"
 
 ```
 mission-control/
-├── docker-compose.yml          # PostgreSQL + backend + dashboard
-├── docker-compose.sqlite.yml   # backend + dashboard on SQLite
+├── docker-compose.yml          # PostgreSQL + backend + dashboard + Caddy
+├── docker-compose.sqlite.yml   # backend + dashboard + Caddy on SQLite
+├── Caddyfile                   # one origin for dashboard + API, automatic HTTPS
 ├── setup.sh                    # interactive setup
+├── docs/                       # architecture, creating agents, cost, handoff notes
 ├── workspace/identity.md       # about you, injected into agents and chat
 ├── backend/
 │   ├── app/
 │   │   ├── main.py             # FastAPI app; starts scheduler, Telegram bot, notifier
 │   │   ├── config.py           # settings from .env
 │   │   ├── api/                # REST endpoints under /api
-│   │   ├── db/                 # models, Alembic migrations, startup migration
-│   │   ├── orchestrator/       # runner, scheduler, task threads, approvals/drafts
-│   │   ├── integrations/       # Telegram bot, chat, commands, GitHub
+│   │   ├── db/                 # models, Alembic migrations, startup migration, backups
+│   │   ├── auth.py             # dashboard login + API token
+│   │   ├── timeutil.py         # "tomorrow at 9", recurrence, UTC helpers
+│   │   ├── orchestrator/       # runner, scheduler, threads, handoffs, coordinator,
+│   │   │                       #   reminders, approvals/drafts
+│   │   ├── integrations/       # Telegram bot, chat, commands, GitHub, publishing
 │   │   ├── notifications/      # Telegram delivery + morning briefing
 │   │   └── agents/             # YAML skill loader
 │   ├── skills/                 # agent YAML files

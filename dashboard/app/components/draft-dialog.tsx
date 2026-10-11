@@ -7,7 +7,7 @@ import { clsx } from 'clsx';
 import * as api from '../lib/api';
 import { Badge, Button, inputClass, textareaClass } from './shared';
 
-const CHANNEL_NAMES: Record<string, string> = {
+export const CHANNEL_NAMES: Record<string, string> = {
   x: 'X', linkedin: 'LinkedIn', instagram: 'Instagram', youtube: 'YouTube', blog: 'Blog',
 };
 const LIMITS: Record<string, number> = { x: 280, linkedin: 3000 };
@@ -82,6 +82,7 @@ export function DraftDialog({ draft, publishing, onClose, onChanged }: {
         <Dialog.Overlay className="fixed inset-0 bg-black/40 backdrop-blur-[2px] z-50" />
         <Dialog.Content
           aria-describedby={undefined}
+          onOpenAutoFocus={(e) => e.preventDefault()}
           className="fixed left-1/2 top-[8%] -translate-x-1/2 w-[calc(100%-2rem)] max-w-xl bg-mc-panel rounded-xl shadow-dropdown z-50 animate-fade-up flex flex-col max-h-[84vh]"
         >
           <div className="flex items-center gap-2 px-5 h-12 border-b border-mc-line flex-shrink-0">

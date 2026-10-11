@@ -14,7 +14,7 @@ import {
 } from './components/shared';
 import { DueBadge, dueInfo } from './components/schedule';
 import { useLatestSteps } from './lib/live';
-import { DraftDialog } from './components/draft-dialog';
+import { CHANNEL_NAMES, DraftDialog } from './components/draft-dialog';
 
 const PRIORITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
@@ -128,7 +128,9 @@ function NeedsYou() {
             </span>
             <div className="flex-1 min-w-0">
               <p className="text-sm text-mc-text truncate">
-                <span className="text-mc-muted">{d.status === 'approved' ? `Ready to post on ${d.channel}` : `Draft for ${d.channel}`} · </span>{d.title}
+                <span className="text-mc-muted">
+                  {d.status === 'approved' ? 'Ready to post on ' : 'Draft for '}{CHANNEL_NAMES[d.channel] ?? d.channel} ·{' '}
+                </span>{d.title}
               </p>
               <p className="text-xs text-mc-muted mt-0.5 line-clamp-2">{d.body}</p>
             </div>

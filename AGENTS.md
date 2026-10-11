@@ -11,11 +11,18 @@ this file consistent with it. The essentials:
   (files starting with `_` are skipped). They run through the Claude Agent SDK on a
   Claude Pro/Max subscription (`CLAUDE_CODE_OAUTH_TOKEN`). No API key is used.
 - **Agent output** is JSON with `summary` and `actions`. Allowed actions: `create_task`,
-  `update_task`, `create_note`, `create_lead`, `create_content`, `save_memory`. On an
-  assigned task the agent also returns `reply` and `status` (`done` | `needs_input`).
+  `update_task`, `create_note`, `create_lead`, `create_content`, `save_memory`,
+  `handoff`, `follow_up`. On an assigned task the agent also returns `reply` and `status`
+  (`done` | `needs_input`, plus `waiting` for the coordinator).
+- **Coordinator:** the agent with `role: coordinator` (Ace) takes requests from chat and
+  `/do`, hands pieces to specialists (`handoff` → a task with `parent_task_id`), gets its
+  turn back once they've all settled, and answers once. Specialists working for it stay
+  quiet on Telegram.
 - **Delegation:** tasks assigned to an agent get a thread in `task_comments`. The agent
   replies there and on Telegram, and a Telegram reply continues the thread.
   `/dev` turns coding work into a GitHub issue for Claude Code.
+- **Time:** datetimes are stored in UTC; user-facing times are in `NOTIFICATION_TIMEZONE`.
+  Complete tasks with `reminders.complete_task` so repeating tasks create the next one.
 - **Schema changes** go through Alembic (`backend/app/db/migrations/versions/`). Migrations
   run automatically on startup. Use portable column types (`Uuid`, `JSON`), never
   PostgreSQL-only types.

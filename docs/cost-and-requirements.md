@@ -7,6 +7,9 @@
 | **Claude Pro or Max subscription** | Yes | Every agent run, chat message and agent-builder prompt goes through the Claude Agent SDK, using your subscription (`CLAUDE_CODE_OAUTH_TOKEN`). No Anthropic API key or API billing is involved |
 | **A machine to run it on** | Yes | Your own computer, a home server, or a small VPS. See the hardware section below |
 | OpenAI API | Optional | Only for transcribing Telegram voice messages (Whisper). Billed by OpenAI |
+| X API | Optional | Only for publishing drafts to X. X bills API posting on its developer plans; check yours on the developer portal |
+| LinkedIn API | Optional | Publishing to LinkedIn with a member token is free |
+| A domain | Optional | Only to reach the dashboard over HTTPS from anywhere. Caddy gets the certificate for free |
 | Claude Code on GitHub | Optional | `/dev` issues are implemented by the Claude GitHub app, which runs in GitHub, not in Mission Control. Its usage, and any GitHub Actions minutes, depend on how you set up that app in your repo |
 
 Telegram and the GitHub API (for `/dev`) cost nothing.
@@ -22,9 +25,10 @@ For each run, the SDK reports a **dollar figure** (`total_cost_usd`). Mission Co
 What uses the subscription:
 
 - **Scheduled agent runs.** These are the steady background load (see the table below).
-- **Delegated tasks.** Each turn in a task thread is one run.
+- **Coordinated requests.** A request you send in chat or with `/do` costs at least two coordinator runs (planning, then combining), plus one run per piece it hands out, plus a coordinator run per extra round. Small requests the coordinator does itself are one run.
+- **Delegated tasks.** Each turn in a task thread is one run. Handoffs between agents are runs too.
 - **Telegram chat.** Each plain message is one model call with `CHAT_MODEL` (Sonnet by default).
-- **Morning briefing.** This is built from the database and doesn't use the model.
+- **Morning briefing, reminders, `/today`, `/remind`.** These are built from the database and don't use the model.
 
 Usage per run varies a lot. A Haiku agent with no tools is light. A Sonnet agent that searches the web for several turns is much heavier. Check the recorded per-run figures to see what your agents actually use.
 
@@ -36,12 +40,13 @@ Usage per run varies a lot. A Haiku agent with no tools is light. A Sonnet agent
 | Scout (Opportunity Finder) | Sonnet + web search | every 24h | ~30/month |
 | Radar (Feedback Monitor) | Haiku + web search | daily | ~30/month |
 | Atlas (Weekly Review) | Sonnet | Sundays 10:00 | ~4/month |
-| Ace, Navigator, Echo | Sonnet | manual | only when you use them |
+| Ace (coordinator), Navigator, Echo | Sonnet | manual | only when you use them |
 
 ## Keeping usage down
 
 - **Run scouts less often.** For example, change Pulse's `every: 12h` to `24h` in `reddit-scout.yaml`.
 - **Make agents manual.** Set `schedule.type: manual`. Delegation (`/ask`) and `/run` still work.
+- **Use `/ask <agent>` for single-agent jobs.** It skips the coordinator's planning and combining runs.
 - **Disable agents you don't use** from the dashboard, or delete their YAML file. Agents whose file is gone are disabled on the next startup.
 - **Use Haiku** for scanning and classifying.
 - **Lower `max_budget_usd`** to cap individual runs.

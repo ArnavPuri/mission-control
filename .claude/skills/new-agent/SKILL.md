@@ -21,7 +21,7 @@ Guides the user through creating a new agent skill file. See `docs/creating-agen
    - Set the schedule: `interval` (e.g. `every: 12h`), `cron` (e.g. `every: "0 9 * * *"`, read in `NOTIFICATION_TIMEZONE`), or `manual`.
    - Write a focused `prompt_template`:
      - Use `{{...}}` variables for the data it reads. Its memory and recent runs are appended automatically.
-     - Spell out the JSON it must return: `summary`, plus `actions` using `create_task`, `update_task`, `create_note`, `create_lead`, `create_content` or `save_memory`.
+     - Spell out the JSON it must return: `summary`, plus `actions` using `create_task`, `update_task`, `create_note`, `create_lead`, `create_content` or `save_memory`. Any agent can also hand work to a teammate with `handoff`; its teammates are in its context automatically.
    - Set `max_budget_usd`, `max_actions_per_run`, and `requires_approval: true` if its actions should wait for Approve/Reject on Telegram.
 
 3. **Load it.** Skills are synced on backend startup:
@@ -38,4 +38,5 @@ Guides the user through creating a new agent skill file. See `docs/creating-agen
 - One agent, one job. Don't make multi-purpose agents.
 - Set `max_budget_usd` modestly, e.g. 0.10 for Haiku and 0.25-0.30 for Sonnet. It caps one run against the SDK's cost estimate.
 - Use tags on the tasks, leads and notes the agent creates so they're easy to filter and dedupe.
-- Any agent can also be handed tasks with `/ask <agent> <request>`, so a clear `description` matters. The chat uses it to pick an agent.
+- Any agent can also be handed tasks with `/ask <agent> <request>`, and the coordinator (Ace) hands it work based on its `description`, so a clear description matters.
+- Don't give a new agent `role: coordinator`; Ace already has it, and only one agent should.

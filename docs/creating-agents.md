@@ -50,6 +50,7 @@ prompt_template: |
 requires_approval: false       # true: actions wait for Approve/Reject on Telegram
 max_actions_per_run: 5         # extra actions are dropped
 timeout_seconds: 300           # optional, default 300
+# role: coordinator            # only for the one agent that runs the team (Ace)
 ```
 
 You don't need to put identity in the prompt. The runner builds the system prompt automatically from the agent's `name`, `description`, `persona` and `tone`, the contents of `workspace/identity.md` (about you), and the JSON output rules. Your `prompt_template` only needs to describe the job and the data.
@@ -85,7 +86,7 @@ These variables are added automatically:
 | `{{project}}` | The agent is bound to a project (`project_id`, settable through the API) | That project |
 | `{{brand}}` | `reads` includes `leads` or `marketing_content` | Your brand profile: tone, topics, talking points, things to avoid, example posts |
 
-Data variables (`{{projects}}`, `{{tasks}}`, ...) only appear where you put them in the template. `{{project}}`, `{{brand}}`, `{{memory}}` and `{{past_runs}}` are always included: if the template doesn't place them, they're appended after it. On **assigned tasks**, the whole context is included automatically.
+Data variables (`{{projects}}`, `{{tasks}}`, ...) only appear where you put them in the template. `{{project}}`, `{{brand}}`, `{{memory}}`, `{{past_runs}}` and `{{teammates}}` are always included: if the template doesn't place them, they're appended after it. On **assigned tasks**, the whole context is included automatically.
 
 ## Actions
 
@@ -100,7 +101,9 @@ The agent responds with JSON:
     {"type": "create_note", "title": "...", "content": "markdown", "tags": ["tag"]},
     {"type": "create_lead", "title": "...", "body": "...", "url": "https://...", "source_type": "reddit", "relevance_score": 0.8, "tags": ["tag"]},
     {"type": "create_content", "title": "...", "body": "...", "channel": "x", "task_id": "<lead id>"},
-    {"type": "save_memory", "key": "...", "value": "..."}
+    {"type": "save_memory", "key": "...", "value": "..."},
+    {"type": "handoff", "agent": "<teammate slug>", "request": "everything they need to know", "task_id": "<related task>"},
+    {"type": "follow_up", "task_id": "<a task you handed out>", "request": "..."}
   ]
 }
 ```
@@ -113,6 +116,8 @@ The agent responds with JSON:
 | `create_note` | `notes` | Markdown content |
 | `create_content` | `marketing_content` | `channel` is one of `x`, `linkedin`, `instagram`, `youtube` or `blog`. `task_id` can point to the lead it responds to |
 | `save_memory` | — | Always allowed. Stores a value under the key, overwriting any existing value for that key |
+| `handoff` | — | Always allowed. Creates a task for a teammate (by slug), linked to `task_id` (on an assigned task, the current task). The teammate starts right away. At most 3 per run; chains are at most 3 tasks deep |
+| `follow_up` | — | Only on a task this agent handed out. Adds the request to that task's thread, so the teammate continues |
 
 Actions the agent isn't allowed to take, and malformed actions, are skipped with a warning. The rest are still applied. Tasks, notes and content created by an agent are marked with `source: agent:<slug>`.
 
@@ -130,8 +135,15 @@ When a task is assigned to the agent (via `/ask`, chat, or the dashboard), its `
 ```
 
 - Use `"status": "needs_input"` when the agent has asked you a question. The task is then marked blocked until you reply.
-- The `reply` is posted in the task thread and sent to Telegram.
-- Agents meant mainly for delegation, like Ace or Navigator, should have a short scheduled prompt (or `manual`), a clear `description`, and the tools they need. The chat uses the description to pick an agent.
+- The `reply` is posted in the task thread and sent to Telegram. When the task was handed out by the coordinator, the reply goes to the coordinator instead, and it answers you.
+- When a teammate handed the task over, the prompt says who, and what the task is part of.
+- Agents meant mainly for delegation, like Navigator or Echo, should have a short scheduled prompt (or `manual`), a clear `description`, and the tools they need. The coordinator and the chat use the description to pick an agent.
+
+## The coordinator
+
+One agent can have `role: coordinator` (Ace, in `assistant.yaml`). Requests from the Telegram chat and `/do` go to it. On top of the usual rules it's told to do small things itself, split bigger requests into handoffs, reply with `"status": "waiting"` while teammates work, and combine their results into one answer. Its prompt lists the work it handed out and where each piece stands. It may hand out up to 6 pieces per round, for at most 5 rounds. See [architecture.md](architecture.md#handoffs-and-the-coordinator).
+
+Give the coordinator `web_search` and Sonnet, and a `max_actions_per_run` of about 10 so a round of handoffs isn't cut short. Only one agent should have the role.
 
 ## Choosing a model
 

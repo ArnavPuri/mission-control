@@ -34,6 +34,8 @@ A simple dashboard provides an overview and lets you manage agents and scheduled
 - `backend/app/db/migrate.py` — Runs Alembic on startup (+ one-time conversion of pre-0.8 databases)
 - `backend/app/db/migrations/versions/` — Alembic migrations
 - `backend/app/config.py` — Settings
+- `backend/app/auth.py` — Dashboard login (`DASHBOARD_PASSWORD`, signed session cookie) and `API_TOKEN` bearer auth
+- `backend/app/db/backup.py` — Nightly backups (SQLite backup API or `pg_dump`), also `python -m app.db.backup`
 - `backend/app/orchestrator/runner.py` — Agent execution engine (context, retry, timeout, actions, background runs)
 - `backend/app/orchestrator/scheduler.py` — Interval/cron scheduler; picks up waiting assigned tasks; GitHub sync
 - `backend/app/orchestrator/threads.py` — Task threads: assigning tasks to agents and replies
@@ -54,6 +56,10 @@ A simple dashboard provides an overview and lets you manage agents and scheduled
 - `dashboard/app/components/app-shell.tsx` — Sidebar, ⌘K command menu, and the task/project dialogs any page can open
 - `dashboard/app/components/workspace.tsx` — Shared live data (tasks, projects, agents, review items), refreshed on backend events
 - `dashboard/app/components/shared.tsx` — UI primitives (Button, Badge, Avatar, PageHeader, …)
+- `dashboard/app/components/task-dialog.tsx` — The task sheet (properties, handoffs, live progress, thread); `schedule.tsx` has the due/reminder pickers and badges
+- `dashboard/app/components/draft-dialog.tsx` — Review, edit and publish a content draft
+- `Caddyfile` — Reverse proxy: one origin for dashboard + API, automatic HTTPS when `SITE_ADDRESS` is a domain
+- `docs/architecture.md` — How it all fits together; `docs/handoff.md` — current state and what's next
 - `dashboard/app/globals.css` — Design tokens as CSS variables (light + dark); use `mc-*` Tailwind colors, not raw grays
 - `dashboard/app/lib/api.ts` — API client
 
@@ -101,7 +107,7 @@ cd dashboard && npx vitest run
 - Telegram is the primary interface — most interaction happens there
 - Dashboard is for overview and management (agents, scheduled tasks)
 - Agent skill files are YAML in `backend/skills/`
-- Agent output must be JSON with `summary` and `actions` fields; on an assigned task the agent also returns `reply` and `status` (`done` | `needs_input`)
+- Agent output must be JSON with `summary` and `actions` fields; on an assigned task the agent also returns `reply` and `status` (`done` | `needs_input`; the coordinator also uses `waiting`)
 - An agent hands work to a teammate with `{"type": "handoff", "agent": "<slug>", "request": "..."}`; it's an agent's turn on a task when the last comment is from the user or from another agent
 - The coordinator replies with status `waiting` after handing off; it gets its turn back when all its handoffs have settled, and only it messages you (teammates working for it stay quiet on Telegram)
 - The `event_log` table tracks all changes for audit
@@ -110,6 +116,19 @@ cd dashboard && npx vitest run
 - Mark tasks done with `reminders.complete_task` so repeating tasks create their next occurrence
 - Use Haiku for cheap agents, Sonnet for smart ones
 - Content is generated for: X, LinkedIn, Instagram, YouTube, blog
+
+## Working on this repo
+
+- Never let local or e2e runs spend the user's Claude subscription: start the backend with
+  `ANTHROPIC_BASE_URL=http://127.0.0.1:9 CLAUDE_CODE_OAUTH_TOKEN=invalid` (and an empty
+  `CLAUDE_CONFIG_DIR`) so agent runs fail fast. Tests stub `AgentRunner.execute_with_agent_sdk`.
+- On a fresh database the scheduler starts interval agents on its first tick (60s after
+  startup); set `last_run_at` when seeding demo data.
+- `tests/conftest.py` clears secrets from settings so a developer's `.env` can't leak into tests.
+- Background work that must start after a commit (handoffs) uses a SQLAlchemy
+  `after_commit` hook (`handoffs._start_after_commit`).
+- README screenshots live in `assets/screenshots/`; regenerate them from seeded demo data with
+  a production dashboard build (`next build` + `next start`), not `next dev`.
 
 ## Auth
 
