@@ -59,7 +59,7 @@ A simple dashboard provides an overview and lets you manage agents and scheduled
 - `dashboard/app/components/task-dialog.tsx` — The task sheet (properties, handoffs, live progress, thread); `schedule.tsx` has the due/reminder pickers and badges
 - `dashboard/app/components/draft-dialog.tsx` — Review, edit and publish a content draft
 - `Caddyfile` — Reverse proxy: one origin for dashboard + API, automatic HTTPS when `SITE_ADDRESS` is a domain
-- `docs/architecture.md` — How it all fits together; `docs/handoff.md` — current state and what's next
+- `docs/architecture.md` — How it all fits together; `docs/handoff.md` — current state and what's next; `docs/research.md` — papers with ideas for what to build next
 - `dashboard/app/globals.css` — Design tokens as CSS variables (light + dark); use `mc-*` Tailwind colors, not raw grays
 - `dashboard/app/lib/api.ts` — API client
 

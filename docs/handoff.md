@@ -36,6 +36,8 @@ These are covered by tests against fakes, but haven't run for real:
 
 ## Known limits and good next steps
 
+See also [research.md](research.md): eight papers with concrete ideas for what to build next (prompt-injection safety for web-reading agents, making the coordinator more reliable, agents that learn from your feedback, long-term memory).
+
 - **Ace works on one request at a time** (one run per agent). Others queue and are picked up within a minute. If that's too slow, allow a coordinator several concurrent runs (runs are keyed by agent id in `runner._active_runs`).
 - **Posts are text only.** Images and video, and scheduling a post for later, are the natural next publishing features.
 - **X thread splitting** counts characters as written (X counts links as 23), so it errs on the short side.
